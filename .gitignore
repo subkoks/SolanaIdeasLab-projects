@@ -8,6 +8,8 @@ build/
 out/
 coverage/
 .cache/
+.next/
+**/.next/
 **/dist/
 **/build/
 **/out/

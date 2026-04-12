@@ -1,15 +1,15 @@
 # Token Safety Bot
 
-> **3-day build, doubles revenue.** Comprehensive token safety analysis with rug detection, contract scanning, and risk assessment.
+> **Current continuation target in this repo.** Safety analysis baseline with contract checks, concentration checks, and monitoring scaffolding.
 
 ---
 
 ## 🎯 Project Overview
 
-**Tier:** T1 (Weekend Build)  
-**Build Time:** 3-5 days  
-**Revenue Potential:** $4K–20K/mo  
-**Status:** 🟢 Scaffold ready
+**Tier:** T1 (Weekend Build)
+**Build Time:** 3-5 days
+**Revenue Potential:** $4K–20K/mo
+**Status:** Partial implementation baseline (builds, lints, type-checks, persists local state to disk, expanded Telegram commands)
 
 ### The Problem
 
@@ -61,10 +61,8 @@ Telegram bot that provides **complete token safety analysis**:
 ### Prerequisites
 
 - Node.js 18+
-- PostgreSQL 15+
-- Redis 7+
 - Solana RPC endpoint
-- Telegram bot token
+- Telegram bot token (optional for chat mode)
 
 ### Installation
 
@@ -75,10 +73,12 @@ npm install
 
 # Copy environment
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env with your runtime values
 
-# Setup database
-npm run db:migrate
+# Verify the current baseline
+npm run type-check
+npm run lint
+npm test
 
 # Start development
 npm run dev
@@ -87,25 +87,26 @@ npm run dev
 ### Environment Variables
 
 ```bash
+# Server
+PORT=3000
+HOST=0.0.0.0
+CORS_ORIGIN=*
+
 # Solana/Blockchain
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 SOLANA_COMMITMENT=confirmed
 
-# Telegram Bot
+# Local persistence
+DATA_STORE_PATH=./data/token-safety-store.json
+
+# Telegram Bot (optional)
 TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_BOT_USERNAME=token_safety_bot
 TELEGRAM_WEBHOOK_URL=https://your-domain.com/webhook
 
-# Database
-DATABASE_URL=postgresql://user:pass@localhost:5432/token_safety
-REDIS_URL=redis://localhost:6379
-
 # Authentication
-JWT_SECRET=your_jwt_secret_here
-
-# External APIs
-SOLSCAN_API_KEY=your_solscan_key
-DEXTOOLS_API_KEY=your_dextools_key
-RUGCHECK_API_KEY=your_rugcheck_key
+JWT_SECRET=replace_me
+SKIP_AUTH_IN_DEV=true
 ```
 
 ---
@@ -114,18 +115,18 @@ RUGCHECK_API_KEY=your_rugcheck_key
 
 ### Pricing Tiers
 
-| Tier | Price | Features | Scans/Day |
-| ---- | ----- | -------- | --------- |
-| **Free** | $0 | Basic scans, 5/day | 150 |
-| **Basic** | $20/mo | Contract analysis, rug detection | 1,000 |
-| **Pro** | $50/mo | Developer tracking, API access | 5,000 |
-| **Enterprise** | $100/mo | Custom alerts, priority support | Unlimited |
+| Tier           | Price   | Features                         | Scans/Day |
+| -------------- | ------- | -------------------------------- | --------- |
+| **Free**       | $0      | Basic scans, 5/day               | 150       |
+| **Basic**      | $20/mo  | Contract analysis, rug detection | 1,000     |
+| **Pro**        | $50/mo  | Developer tracking, API access   | 5,000     |
+| **Enterprise** | $100/mo | Custom alerts, priority support  | Unlimited |
 
 ### Revenue Projections
 
 ```text
 Month 1: 80 users × $20/mo = $1,600/mo
-Month 3: 200 users × $35/mo avg = $7,000/mo  
+Month 3: 200 users × $35/mo avg = $7,000/mo
 Month 6: 400 users × $45/mo avg = $18,000/mo
 ```
 
@@ -137,23 +138,19 @@ Month 6: 400 users × $45/mo avg = $18,000/mo
 
 - **Runtime:** Node.js 18+ with TypeScript
 - **Framework:** Express.js + Telegraf.js
-- **Blockchain:** Solana Web3.js + Anchor
-- **Database:** PostgreSQL + Prisma ORM
-- **Cache:** Redis for scan results
+- **Blockchain:** Solana Web3.js
+- **Persistence:** Local JSON-backed persistent store (PostgreSQL/Redis integration still optional next step)
+- **Validation + Logging:** Zod + Winston
 
 ### Key Dependencies
 
 ```json
 {
   "dependencies": {
-    "express": "^4.18.0",
-    "telegraf": "^4.16.0",
-    "@solana/web3.js": "^1.87.0",
-    "@coral-xyz/anchor": "^0.29.0",
-    "prisma": "^5.7.0",
-    "@prisma/client": "^5.7.0",
-    "redis": "^4.6.10",
-    "axios": "^1.6.0",
+    "express": "^4.18.2",
+    "telegraf": "^4.16.3",
+    "@solana/web3.js": "^1.95.0",
+    "zod": "^3.24.2",
     "winston": "^3.11.0",
     "jsonwebtoken": "^9.0.2"
   }
@@ -167,24 +164,29 @@ Month 6: 400 users × $45/mo avg = $18,000/mo
 ### User Commands
 
 ```
-/start          - Start bot and connect wallet
-/scan <token>  - Scan token for safety issues
-/score <token>  - Get detailed safety score
-/report <token> - Generate full safety report
-/monitor <token> - Start monitoring token
-/alerts         - Manage safety alerts
-/premium        - Upgrade to premium tier
-/help           - Show all commands
+/start           - Welcome and quick orientation
+/scan <mint>     - Quick safety scan
+/score <mint>    - Score plus key red flags
+/report <mint>   - Full-depth scan summary (may split across messages)
+/monitor <mint>  - Start monitoring
+/status <mint>   - Monitoring status
+/alerts          - List alerts
+/alerts add <mint> [type]    - Create alert (default type: safety_watch)
+/alerts remove <alertId>     - Remove alert
+/premium         - Pricing overview (upgrade via HTTP API / wallet)
+/help            - Show all commands
 ```
 
 ### Admin Commands
 
+Requires `TELEGRAM_ADMIN_CHAT_IDS` (numeric chat IDs).
+
 ```
-/stats          - Show bot statistics
-/scan-all      - Scan all new tokens
-/broadcast      - Send safety alert to users
-/blacklist      - Manage blacklisted tokens
-/maintenance    - Put bot in maintenance mode
+/stats           - Aggregate user / alert / scan / monitoring stats
+/scan-all        - Not wired in Telegram (use HTTP or your own feed)
+/broadcast <msg> - Message all chats the bot has seen
+/blacklist <mint> <reason…> - Blacklist a mint
+/maintenance on|off - Maintenance gate for non-admins
 ```
 
 ---
@@ -195,23 +197,23 @@ Month 6: 400 users × $45/mo avg = $18,000/mo
 
 ```typescript
 interface SafetyScore {
-  total: number              // 0-100 safety score (higher = safer)
-  riskLevel: 'low' | 'medium' | 'high' | 'critical'
+  total: number; // 0-100 safety score (higher = safer)
+  riskLevel: "low" | "medium" | "high" | "critical";
   categories: {
-    contract: number          // Contract security (0-100)
-    liquidity: number         // Liquidity analysis (0-100)
-    distribution: number       // Token distribution (0-100)
-    developer: number         // Developer reputation (0-100)
-    social: number           // Social signals (0-100)
-  }
+    contract: number; // Contract security (0-100)
+    liquidity: number; // Liquidity analysis (0-100)
+    distribution: number; // Token distribution (0-100)
+    developer: number; // Developer reputation (0-100)
+    social: number; // Social signals (0-100)
+  };
   flags: {
-    honeypot: boolean
-    rugPullRisk: boolean
-    pumpAndDump: boolean
-    honeypotRisk: boolean
-    contractVulnerable: boolean
-  }
-  recommendations: string[]
+    honeypot: boolean;
+    rugPullRisk: boolean;
+    pumpAndDump: boolean;
+    honeypotRisk: boolean;
+    contractVulnerable: boolean;
+  };
+  recommendations: string[];
 }
 ```
 
@@ -219,23 +221,23 @@ interface SafetyScore {
 
 ```typescript
 interface ContractAnalysis {
-  programId: string
-  functions: ContractFunction[]
-  vulnerabilities: Vulnerability[]
-  permissions: Permission[]
-  risks: ContractRisk[]
-  
+  programId: string;
+  functions: ContractFunction[];
+  vulnerabilities: Vulnerability[];
+  permissions: Permission[];
+  risks: ContractRisk[];
+
   // Security checks
-  hasMintAuthority: boolean
-  hasFreezeAuthority: boolean
-  hasUpdateAuthority: boolean
-  revocableMint: boolean
-  mutableSupply: boolean
-  
+  hasMintAuthority: boolean;
+  hasFreezeAuthority: boolean;
+  hasUpdateAuthority: boolean;
+  revocableMint: boolean;
+  mutableSupply: boolean;
+
   // Code patterns
-  usesHoneypotPattern: boolean
-  hasBlacklistedFunctions: boolean
-  suspiciousLogic: boolean
+  usesHoneypotPattern: boolean;
+  hasBlacklistedFunctions: boolean;
+  suspiciousLogic: boolean;
 }
 ```
 
@@ -243,20 +245,20 @@ interface ContractAnalysis {
 
 ```typescript
 interface RugPullRisk {
-  detected: boolean
-  riskLevel: 'low' | 'medium' | 'high' | 'critical'
-  patterns: RugPullPattern[]
+  detected: boolean;
+  riskLevel: "low" | "medium" | "high" | "critical";
+  patterns: RugPullPattern[];
   indicators: {
-    liquidityRemoval: boolean
-    holderDump: boolean
-    contractRenounced: boolean
-    devWalletActivity: boolean
-  }
+    liquidityRemoval: boolean;
+    holderDump: boolean;
+    contractRenounced: boolean;
+    devWalletActivity: boolean;
+  };
   timeline: {
-    createdAt: Date
-    firstSuspiciousActivity?: Date
-    riskEscalation: Date[]
-  }
+    createdAt: Date;
+    firstSuspiciousActivity?: Date;
+    riskEscalation: Date[];
+  };
 }
 ```
 
@@ -324,30 +326,30 @@ CREATE TABLE developer_reputation (
 class TokenSafetyScanner {
   async scanToken(tokenAddress: string): Promise<SafetyScore> {
     // Stage 1: Quick checks (contract verification)
-    const quickCheck = await this.quickContractCheck(tokenAddress)
+    const quickCheck = await this.quickContractCheck(tokenAddress);
     if (quickCheck.isBlacklisted) {
-      return this.createCriticalScore(quickCheck)
+      return this.createCriticalScore(quickCheck);
     }
 
     // Stage 2: Contract analysis
-    const contractAnalysis = await this.analyzeContract(tokenAddress)
-    
+    const contractAnalysis = await this.analyzeContract(tokenAddress);
+
     // Stage 3: Distribution analysis
-    const distribution = await this.analyzeDistribution(tokenAddress)
-    
+    const distribution = await this.analyzeDistribution(tokenAddress);
+
     // Stage 4: Developer analysis
-    const developer = await this.analyzeDeveloper(tokenAddress)
-    
+    const developer = await this.analyzeDeveloper(tokenAddress);
+
     // Stage 5: Social signals
-    const social = await this.analyzeSocialSignals(tokenAddress)
-    
+    const social = await this.analyzeSocialSignals(tokenAddress);
+
     // Stage 6: Calculate final score
     return this.calculateSafetyScore({
       contract: contractAnalysis,
       distribution,
       developer,
-      social
-    })
+      social,
+    });
   }
 }
 ```
@@ -358,22 +360,22 @@ class TokenSafetyScanner {
 class TokenMonitor {
   async startMonitoring(tokenAddress: string): Promise<void> {
     // Monitor contract changes
-    this.subscribeToProgram(tokenAddress)
-    
+    this.subscribeToProgram(tokenAddress);
+
     // Monitor large transfers
-    this.subscribeToTransfers(tokenAddress)
-    
+    this.subscribeToTransfers(tokenAddress);
+
     // Monitor liquidity changes
-    this.subscribeToLiquidity(tokenAddress)
-    
+    this.subscribeToLiquidity(tokenAddress);
+
     // Monitor social mentions
-    this.subscribeToSocialSignals(tokenAddress)
+    this.subscribeToSocialSignals(tokenAddress);
   }
 
   private async handleProgramChange(change: ProgramChange): Promise<void> {
-    const risk = await this.assessChangeRisk(change)
-    if (risk.severity === 'high') {
-      await this.sendAlert(change.tokenAddress, risk)
+    const risk = await this.assessChangeRisk(change);
+    if (risk.severity === "high") {
+      await this.sendAlert(change.tokenAddress, risk);
     }
   }
 }
@@ -406,21 +408,21 @@ tests/
 ### Key Test Cases
 
 ```typescript
-describe('Safety Scoring', () => {
-  test('should detect honeypot contracts', async () => {
-    const honeypotContract = createHoneypotContract()
-    const score = await scanner.scanToken(honeypotContract.address)
-    expect(score.total).toBeLessThan(20)
-    expect(score.flags.honeypot).toBe(true)
-  })
-  
-  test('should identify rug pull patterns', async () => {
-    const rugPullToken = createRugPullToken()
-    const risk = await scanner.detectRugPullRisk(rugPullToken.address)
-    expect(risk.detected).toBe(true)
-    expect(risk.riskLevel).toBe('high')
-  })
-})
+describe("Safety Scoring", () => {
+  test("should detect honeypot contracts", async () => {
+    const honeypotContract = createHoneypotContract();
+    const score = await scanner.scanToken(honeypotContract.address);
+    expect(score.total).toBeLessThan(20);
+    expect(score.flags.honeypot).toBe(true);
+  });
+
+  test("should identify rug pull patterns", async () => {
+    const rugPullToken = createRugPullToken();
+    const risk = await scanner.detectRugPullRisk(rugPullToken.address);
+    expect(risk.detected).toBe(true);
+    expect(risk.riskLevel).toBe("high");
+  });
+});
 ```
 
 ---
@@ -432,29 +434,29 @@ describe('Safety Scoring', () => {
 ```typescript
 interface SafetyBotMetrics {
   scans: {
-    total: number
-    successful: number
-    failed: number
-    avgScanTime: number
-  }
+    total: number;
+    successful: number;
+    failed: number;
+    avgScanTime: number;
+  };
   alerts: {
-    sent: number
-    acknowledged: number
-    falsePositives: number
-    accuracy: number
-  }
+    sent: number;
+    acknowledged: number;
+    falsePositives: number;
+    accuracy: number;
+  };
   detections: {
-    honeypots: number
-    rugPulls: number
-    vulnerabilities: number
-    preventedLoss: number
-  }
+    honeypots: number;
+    rugPulls: number;
+    vulnerabilities: number;
+    preventedLoss: number;
+  };
   users: {
-    total: number
-    active: number
-    premium: number
-    satisfaction: number
-  }
+    total: number;
+    active: number;
+    premium: number;
+    satisfaction: number;
+  };
 }
 ```
 
@@ -464,20 +466,24 @@ interface SafetyBotMetrics {
 // Scan performance tracking
 class PerformanceMonitor {
   trackScanTime(tokenAddress: string, duration: number): void {
-    this.metrics.recordScanTime(tokenAddress, duration)
+    this.metrics.recordScanTime(tokenAddress, duration);
   }
-  
-  trackScanAccuracy(tokenAddress: string, prediction: boolean, actual: boolean): void {
-    this.metrics.updateAccuracy(tokenAddress, prediction, actual)
+
+  trackScanAccuracy(
+    tokenAddress: string,
+    prediction: boolean,
+    actual: boolean,
+  ): void {
+    this.metrics.updateAccuracy(tokenAddress, prediction, actual);
   }
-  
+
   getPerformanceReport(): PerformanceReport {
     return {
       avgScanTime: this.metrics.getAverageScanTime(),
       accuracy: this.metrics.getOverallAccuracy(),
       errorRate: this.metrics.getErrorRate(),
-      throughput: this.metrics.getThroughput()
-    }
+      throughput: this.metrics.getThroughput(),
+    };
   }
 }
 ```
@@ -506,7 +512,7 @@ CMD ["npm", "start"]
 
 ```yaml
 # docker-compose.prod.yml
-version: '3.8'
+version: "3.8"
 services:
   token-safety-bot:
     image: token-safety-bot:latest
@@ -518,10 +524,10 @@ services:
       replicas: 2
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
     restart: unless-stopped
-    
+
   safety-scanner:
     image: token-safety-bot:latest
     command: npm run scan-worker
@@ -543,7 +549,7 @@ services:
 # Test with known malicious contracts
 npm run test:malicious
 
-# Test with known safe contracts  
+# Test with known safe contracts
 npm run test:safe
 
 # Performance testing
@@ -660,13 +666,13 @@ GET /api/v1/developer/:address/reputation
 
 ```typescript
 interface SafetyAlert {
-  type: 'honeypot' | 'rug_pull' | 'vulnerability' | 'suspicious_activity'
-  severity: 'low' | 'medium' | 'high' | 'critical'
-  tokenAddress: string
-  description: string
-  evidence: any[]
-  recommendations: string[]
-  timestamp: Date
+  type: "honeypot" | "rug_pull" | "vulnerability" | "suspicious_activity";
+  severity: "low" | "medium" | "high" | "critical";
+  tokenAddress: string;
+  description: string;
+  evidence: any[];
+  recommendations: string[];
+  timestamp: Date;
 }
 ```
 
@@ -677,16 +683,16 @@ interface SafetyAlert {
 ### User Support
 
 - **Telegram:** @TokenSafetySupport
-- **Email:** support@tokensafety.bot
-- **Documentation:** docs.tokensafety.bot
-- **Status Page:** status.tokensafety.bot
+- **Email:** [support@tokensafety.bot](mailto:support@tokensafety.bot)
+- **Documentation:** <https://docs.tokensafety.bot>
+- **Status Page:** <https://status.tokensafety.bot>
 
 ### Emergency Contact
 
 - **Critical Issues:** @TokenSafetyEmergency
-- **Security Incidents:** security@tokensafety.bot
-- **False Positive Reports:** false-positive@tokensafety.bot
+- **Security Incidents:** [security@tokensafety.bot](mailto:security@tokensafety.bot)
+- **False Positive Reports:** [false-positive@tokensafety.bot](mailto:false-positive@tokensafety.bot)
 
 ---
 
-**Ready to protect users?** Start with `npm run dev` and help prevent rug pulls!
+**Current baseline:** run `npm install`, `npm run type-check`, and `npm run dev` before extending the scanner or reintroducing persistent storage.
