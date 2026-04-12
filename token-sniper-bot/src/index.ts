@@ -1,308 +1,324 @@
-import express from 'express'
-import { Telegraf, session } from 'telegraf'
-import { config } from './config/environment'
-import { logger } from './utils/logger'
-import { DatabaseService } from './services/database'
-import { HeliusService } from './services/helius'
-import { RiskScoringService } from './services/risk-scoring'
-import { TelegramBotService } from './services/telegram-bot'
-import { QueueService } from './services/queue'
-import { authMiddleware } from './middleware/auth'
-import { errorHandler } from './middleware/error-handler'
-import { rateLimitMiddleware } from './middleware/rate-limit'
+import compression from "compression";
+import cors from "cors";
+import express from "express";
+import helmet from "helmet";
+import { Telegraf, session } from "telegraf";
+import { config } from "./config/environment";
+import type { AuthenticatedRequest } from "./middleware/auth";
+import { authMiddleware } from "./middleware/auth";
+import { errorHandler } from "./middleware/error-handler";
+import { globalRateLimiter } from "./middleware/rate-limit";
+import { DatabaseService } from "./services/database";
+import { HeliusService } from "./services/helius";
+import { QueueService } from "./services/queue";
+import { RiskScoringService } from "./services/risk-scoring";
+import { TelegramBotService } from "./services/telegram-bot";
+import { logger } from "./utils/logger";
 
 class TokenSniperBot {
-  private app: express.Application
-  private bot: Telegraf
-  private db: DatabaseService
-  private helius: HeliusService
-  private riskScorer: RiskScoringService
-  private telegramBot: TelegramBotService
-  private queue: QueueService
+  private app: express.Application;
+  private bot: Telegraf;
+  private db: DatabaseService;
+  private helius: HeliusService;
+  private riskScorer: RiskScoringService;
+  private telegramBot: TelegramBotService;
+  private queue: QueueService;
 
   constructor() {
-    this.app = express()
-    this.bot = new Telegraf(config.telegram.botToken)
-    this.db = new DatabaseService()
-    this.helius = new HeliusService()
-    this.riskScorer = new RiskScoringService()
-    this.telegramBot = new TelegramBotService(this.bot)
-    this.queue = new QueueService()
-    
-    this.setupMiddleware()
-    this.setupRoutes()
-    this.setupTelegramBot()
-    this.setupErrorHandling()
+    this.app = express();
+    this.bot = new Telegraf(config.telegram.botToken);
+    this.db = new DatabaseService();
+    this.helius = new HeliusService();
+    this.riskScorer = new RiskScoringService(this.helius, this.db);
+    this.telegramBot = new TelegramBotService(this.bot);
+    this.queue = new QueueService();
+
+    this.setupMiddleware();
+    this.setupRoutes();
+    this.setupTelegramBot();
+    this.setupErrorHandling();
   }
 
   private setupMiddleware(): void {
-    this.app.use(express.json())
-    this.app.use(express.urlencoded({ extended: true }))
-    this.app.use(rateLimitMiddleware())
-    this.app.use(cors())
-    this.app.use(helmet())
-    this.app.use(compression())
+    this.app.use(express.json());
+    this.app.use(express.urlencoded({ extended: true }));
+    this.app.use(globalRateLimiter);
+    this.app.use(cors());
+    this.app.use(helmet());
+    this.app.use(compression());
   }
 
   private setupRoutes(): void {
     // Health check
-    this.app.get('/health', async (req, res) => {
+    this.app.get("/health", async (req, res) => {
       try {
-        const health = await this.getHealthStatus()
-        res.json(health)
+        const health = await this.getHealthStatus();
+        res.json(health);
       } catch (error) {
-        res.status(500).json({ status: 'error', message: 'Health check failed' })
+        res
+          .status(500)
+          .json({ status: "error", message: "Health check failed" });
       }
-    })
+    });
 
     // API routes
-    this.app.use('/api/v1/auth', this.authRoutes())
-    this.app.use('/api/v1/tokens', this.tokenRoutes())
-    this.app.use('/api/v1/alerts', this.alertRoutes())
-    this.app.use('/api/v1/users', authMiddleware, this.userRoutes())
+    this.app.use("/api/v1/auth", this.authRoutes());
+    this.app.use("/api/v1/tokens", this.tokenRoutes());
+    this.app.use("/api/v1/alerts", this.alertRoutes());
+    this.app.use("/api/v1/users", authMiddleware, this.userRoutes());
 
     // Webhook for Telegram
-    this.app.post('/webhook/telegram', (req, res) => {
-      this.bot.handleUpdate(req.body)
-      res.sendStatus(200)
-    })
+    this.app.post("/webhook/telegram", (req, res) => {
+      this.bot.handleUpdate(req.body);
+      res.sendStatus(200);
+    });
 
     // Admin routes (protected)
-    this.app.use('/api/v1/admin', authMiddleware, this.adminRoutes())
+    this.app.use("/api/v1/admin", authMiddleware, this.adminRoutes());
   }
 
   private setupTelegramBot(): void {
     // Session middleware for bot
-    this.bot.use(session())
+    this.bot.use(session());
 
     // Register bot commands
-    this.telegramBot.registerCommands()
+    this.telegramBot.registerCommands();
 
     // Start bot
     this.bot.launch().catch((error) => {
-      logger.error('Failed to start Telegram bot:', error)
-      process.exit(1)
-    })
+      logger.error("Failed to start Telegram bot:", error);
+      process.exit(1);
+    });
   }
 
   private setupErrorHandling(): void {
-    this.app.use(errorHandler)
+    this.app.use(errorHandler);
 
     // Handle unhandled promise rejections
-    process.on('unhandledRejection', (reason, promise) => {
-      logger.error('Unhandled Rejection at:', promise, 'reason:', reason)
-    })
+    process.on("unhandledRejection", (reason, promise) => {
+      logger.error("Unhandled Rejection at:", promise, "reason:", reason);
+    });
 
     // Handle uncaught exceptions
-    process.on('uncaughtException', (error) => {
-      logger.error('Uncaught Exception:', error)
-      process.exit(1)
-    })
+    process.on("uncaughtException", (error) => {
+      logger.error("Uncaught Exception:", error);
+      process.exit(1);
+    });
   }
 
   private authRoutes(): express.Router {
-    const router = express.Router()
-    
-    router.post('/wallet/connect', async (req, res) => {
-      try {
-        const { walletAddress, signature } = req.body
-        const auth = await this.db.authenticateWallet(walletAddress, signature)
-        res.json(auth)
-      } catch (error) {
-        res.status(401).json({ error: 'Authentication failed' })
-      }
-    })
+    const router = express.Router();
 
-    router.post('/refresh', async (req, res) => {
+    router.post("/wallet/connect", async (req, res) => {
       try {
-        const { refreshToken } = req.body
-        const auth = await this.db.refreshToken(refreshToken)
-        res.json(auth)
+        const { walletAddress, signature } = req.body;
+        const auth = await this.db.authenticateWallet(walletAddress, signature);
+        res.json(auth);
       } catch (error) {
-        res.status(401).json({ error: 'Token refresh failed' })
+        res.status(401).json({ error: "Authentication failed" });
       }
-    })
+    });
 
-    return router
+    router.post("/refresh", async (req, res) => {
+      try {
+        const { refreshToken } = req.body;
+        const auth = await this.db.refreshToken(refreshToken);
+        res.json(auth);
+      } catch (error) {
+        res.status(401).json({ error: "Token refresh failed" });
+      }
+    });
+
+    return router;
   }
 
   private tokenRoutes(): express.Router {
-    const router = express.Router()
-    
-    router.post('/analyze', async (req, res) => {
-      try {
-        const { tokenAddress, analysisDepth = 'quick' } = req.body
-        const analysis = await this.riskScorer.analyzeToken(tokenAddress, analysisDepth)
-        res.json(analysis)
-      } catch (error) {
-        res.status(500).json({ error: 'Token analysis failed' })
-      }
-    })
+    const router = express.Router();
 
-    router.get('/:tokenAddress/score', async (req, res) => {
+    router.post("/analyze", async (req, res) => {
       try {
-        const { tokenAddress } = req.params
-        const score = await this.riskScorer.getRiskScore(tokenAddress)
-        res.json(score)
+        const { tokenAddress, analysisDepth = "quick" } = req.body;
+        const analysis = await this.riskScorer.analyzeToken(
+          tokenAddress,
+          analysisDepth,
+        );
+        res.json(analysis);
       } catch (error) {
-        res.status(404).json({ error: 'Token not found' })
+        res.status(500).json({ error: "Token analysis failed" });
       }
-    })
+    });
 
-    router.get('/:tokenAddress/bundles', async (req, res) => {
+    router.get("/:tokenAddress/score", async (req, res) => {
       try {
-        const { tokenAddress } = req.params
-        const bundles = await this.riskScorer.detectBundles(tokenAddress)
-        res.json(bundles)
+        const { tokenAddress } = req.params;
+        const score = await this.riskScorer.getRiskScore(tokenAddress);
+        res.json(score);
       } catch (error) {
-        res.status(500).json({ error: 'Bundle detection failed' })
+        res.status(404).json({ error: "Token not found" });
       }
-    })
+    });
 
-    return router
+    router.get("/:tokenAddress/bundles", async (req, res) => {
+      try {
+        const { tokenAddress } = req.params;
+        const bundles = await this.riskScorer.detectBundles(tokenAddress);
+        res.json(bundles);
+      } catch (error) {
+        res.status(500).json({ error: "Bundle detection failed" });
+      }
+    });
+
+    return router;
   }
 
   private alertRoutes(): express.Router {
-    const router = express.Router()
-    
-    router.get('/', authMiddleware, async (req, res) => {
-      try {
-        const userId = req.user!.id
-        const alerts = await this.db.getUserAlerts(userId)
-        res.json(alerts)
-      } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch alerts' })
-      }
-    })
+    const router = express.Router();
 
-    router.post('/', authMiddleware, async (req, res) => {
+    router.get("/", authMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
-        const userId = req.user!.id
-        const alert = await this.db.createAlert(userId, req.body)
-        res.json(alert)
+        const userId = req.user!.id;
+        const alerts = await this.db.getUserAlerts(userId);
+        res.json(alerts);
       } catch (error) {
-        res.status(400).json({ error: 'Failed to create alert' })
+        res.status(500).json({ error: "Failed to fetch alerts" });
       }
-    })
+    });
 
-    router.delete('/:alertId', authMiddleware, async (req, res) => {
+    router.post("/", authMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
-        const userId = req.user!.id
-        const { alertId } = req.params
-        await this.db.deleteAlert(userId, alertId)
-        res.json({ success: true })
+        const userId = req.user!.id;
+        const alert = await this.db.createAlert(userId, req.body);
+        res.json(alert);
       } catch (error) {
-        res.status(404).json({ error: 'Alert not found' })
+        res.status(400).json({ error: "Failed to create alert" });
       }
-    })
+    });
 
-    return router
+    router.delete(
+      "/:alertId",
+      authMiddleware,
+      async (req: AuthenticatedRequest, res) => {
+        try {
+          const userId = req.user!.id;
+          const { alertId } = req.params;
+          await this.db.deleteAlert(userId, alertId);
+          res.json({ success: true });
+        } catch (error) {
+          res.status(404).json({ error: "Alert not found" });
+        }
+      },
+    );
+
+    return router;
   }
 
   private userRoutes(): express.Router {
-    const router = express.Router()
-    
-    router.get('/profile', async (req, res) => {
-      try {
-        const userId = req.user!.id
-        const profile = await this.db.getUserProfile(userId)
-        res.json(profile)
-      } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch profile' })
-      }
-    })
+    const router = express.Router();
 
-    router.put('/profile', async (req, res) => {
+    router.get("/profile", async (req: AuthenticatedRequest, res) => {
       try {
-        const userId = req.user!.id
-        const profile = await this.db.updateUserProfile(userId, req.body)
-        res.json(profile)
+        const userId = req.user!.id;
+        const profile = await this.db.getUserProfile(userId);
+        res.json(profile);
       } catch (error) {
-        res.status(400).json({ error: 'Failed to update profile' })
+        res.status(500).json({ error: "Failed to fetch profile" });
       }
-    })
+    });
 
-    router.post('/upgrade', async (req, res) => {
+    router.put("/profile", async (req: AuthenticatedRequest, res) => {
       try {
-        const userId = req.user!.id
-        const { tier } = req.body
-        const subscription = await this.db.upgradeSubscription(userId, tier)
-        res.json(subscription)
+        const userId = req.user!.id;
+        const profile = await this.db.updateUserProfile(userId, req.body);
+        res.json(profile);
       } catch (error) {
-        res.status(400).json({ error: 'Failed to upgrade subscription' })
+        res.status(400).json({ error: "Failed to update profile" });
       }
-    })
+    });
 
-    return router
+    router.post("/upgrade", async (req: AuthenticatedRequest, res) => {
+      try {
+        const userId = req.user!.id;
+        const { tier } = req.body;
+        const subscription = await this.db.upgradeSubscription(userId, tier);
+        res.json(subscription);
+      } catch (error) {
+        res.status(400).json({ error: "Failed to upgrade subscription" });
+      }
+    });
+
+    return router;
   }
 
   private adminRoutes(): express.Router {
-    const router = express.Router()
-    
-    router.get('/stats', async (req, res) => {
-      try {
-        const stats = await this.getAdminStats()
-        res.json(stats)
-      } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch stats' })
-      }
-    })
+    const router = express.Router();
 
-    router.post('/broadcast', async (req, res) => {
+    router.get("/stats", async (req, res) => {
       try {
-        const { message, targetTier = 'all' } = req.body
-        const result = await this.telegramBot.broadcast(message, targetTier)
-        res.json(result)
+        const stats = await this.getAdminStats();
+        res.json(stats);
       } catch (error) {
-        res.status(400).json({ error: 'Broadcast failed' })
+        res.status(500).json({ error: "Failed to fetch stats" });
       }
-    })
+    });
 
-    router.get('/users', async (req, res) => {
+    router.post("/broadcast", async (req, res) => {
       try {
-        const users = await this.db.getAllUsers()
-        res.json(users)
+        const { message, targetTier = "all" } = req.body;
+        const result = await this.telegramBot.broadcastSafetyAlert(
+          message,
+          targetTier,
+        );
+        res.json(result);
       } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch users' })
+        res.status(400).json({ error: "Broadcast failed" });
       }
-    })
+    });
 
-    return router
+    router.get("/users", async (req, res) => {
+      try {
+        const users = await this.db.getAllUsers();
+        res.json(users);
+      } catch (error) {
+        res.status(500).json({ error: "Failed to fetch users" });
+      }
+    });
+
+    return router;
   }
 
   private async getHealthStatus(): Promise<any> {
     const [dbStatus, redisStatus, heliusStatus] = await Promise.allSettled([
       this.db.healthCheck(),
       this.queue.healthCheck(),
-      this.helius.healthCheck()
-    ])
+      this.helius.healthCheck(),
+    ]);
 
     return {
-      status: 'ok',
+      status: "ok",
       timestamp: new Date().toISOString(),
       services: {
-        database: dbStatus.status === 'fulfilled' ? 'healthy' : 'unhealthy',
-        redis: redisStatus.status === 'fulfilled' ? 'healthy' : 'unhealthy',
-        helius: heliusStatus.status === 'fulfilled' ? 'healthy' : 'unhealthy',
-        telegram: 'healthy' // Basic check, could be enhanced
+        database: dbStatus.status === "fulfilled" ? "healthy" : "unhealthy",
+        redis: redisStatus.status === "fulfilled" ? "healthy" : "unhealthy",
+        helius: heliusStatus.status === "fulfilled" ? "healthy" : "unhealthy",
+        telegram: "healthy", // Basic check, could be enhanced
       },
-      metrics: await this.getBotMetrics()
-    }
+      metrics: await this.getBotMetrics(),
+    };
   }
 
   private async getAdminStats(): Promise<any> {
     const [userStats, alertStats, revenueStats] = await Promise.all([
       this.db.getUserStats(),
       this.db.getAlertStats(),
-      this.db.getRevenueStats()
-    ])
+      this.db.getRevenueStats(),
+    ]);
 
     return {
       users: userStats,
       alerts: alertStats,
       revenue: revenueStats,
-      performance: await this.getPerformanceMetrics()
-    }
+      performance: await this.getPerformanceMetrics(),
+    };
   }
 
   private async getBotMetrics(): Promise<any> {
@@ -310,82 +326,82 @@ class TokenSniperBot {
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       activeConnections: this.queue.getActiveConnections(),
-      queueSize: await this.queue.getQueueSize()
-    }
+      queueSize: await this.queue.getQueueSize(),
+    };
   }
 
   private async getPerformanceMetrics(): Promise<any> {
     return {
       responseTime: await this.db.getAverageResponseTime(),
       errorRate: await this.db.getErrorRate(),
-      throughput: await this.db.getThroughput()
-    }
+      throughput: await this.db.getThroughput(),
+    };
   }
 
   public async start(): Promise<void> {
     try {
       // Initialize database
-      await this.db.connect()
-      logger.info('Database connected')
+      await this.db.connect();
+      logger.info("Database connected");
 
       // Initialize queue
-      await this.queue.connect()
-      logger.info('Queue service connected')
+      await this.queue.connect();
+      logger.info("Queue service connected");
 
       // Initialize Helius WebSocket
-      await this.helius.connect()
-      logger.info('Helius WebSocket connected')
+      await this.helius.connect();
+      logger.info("Helius WebSocket connected");
 
       // Start queue processors
-      this.queue.startProcessors()
-      logger.info('Queue processors started')
+      this.queue.startProcessors();
+      logger.info("Queue processors started");
 
       // Start HTTP server
-      const port = config.server.port || 8000
+      const port = config.server.port || 8000;
       this.app.listen(port, () => {
-        logger.info(`Token Sniper Bot server started on port ${port}`)
-        logger.info(`Telegram bot: @${config.telegram.botUsername}`)
-      })
+        logger.info(`Token Sniper Bot server started on port ${port}`);
+        logger.info(`Telegram bot: @${config.telegram.botUsername}`);
+      });
     } catch (error) {
-      logger.error('Failed to start server:', error)
-      process.exit(1)
+      logger.error("Failed to start server:", error);
+      process.exit(1);
     }
   }
 
   public async stop(): Promise<void> {
-    logger.info('Shutting down Token Sniper Bot...')
-    
+    logger.info("Shutting down Token Sniper Bot...");
+
     try {
-      await this.queue.disconnect()
-      await this.helius.disconnect()
-      await this.db.disconnect()
-      this.bot.stop()
-      logger.info('Token Sniper Bot stopped gracefully')
+      await this.queue.disconnect();
+      await this.helius.disconnect();
+      await this.db.disconnect();
+      this.bot.stop();
+      logger.info("Token Sniper Bot stopped gracefully");
     } catch (error) {
-      logger.error('Error during shutdown:', error)
-      process.exit(1)
+      logger.error("Error during shutdown:", error);
+      process.exit(1);
     }
   }
 }
 
 // Start the bot
-const bot = new TokenSniperBot()
+const bot = new TokenSniperBot();
 
 // Handle graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, shutting down gracefully')
-  await bot.stop()
-  process.exit(0)
-})
+process.on("SIGTERM", async () => {
+  logger.info("SIGTERM received, shutting down gracefully");
+  await bot.stop();
+  process.exit(0);
+});
 
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received, shutting down gracefully')
-  await bot.stop()
-  process.exit(0)
-})
+process.on("SIGINT", async () => {
+  logger.info("SIGINT received, shutting down gracefully");
+  await bot.stop();
+  process.exit(0);
+});
 
 // Start the bot
 bot.start().catch((error) => {
-  logger.error('Failed to start bot:', error)
-  process.exit(1)
-})
+  logger.error("Failed to start bot:", error);
+  process.exit(1);
+});

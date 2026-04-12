@@ -1,15 +1,15 @@
 # Wallet Tracker Pro
 
-> **2-4 week build, enterprise revenue.** Professional wallet tracking with behavioral analytics, copy trading insights, and portfolio monitoring.
+> **Spec-heavy later-phase build.** Professional wallet tracking with behavioral analytics, copy trading insights, and portfolio monitoring.
 
 ---
 
 ## 🎯 Project Overview
 
-**Tier:** T4 (Strategic Build)  
-**Build Time:** 2-4 weeks  
-**Revenue Potential:** $10K–75K/mo  
-**Status:** 🟢 Scaffold ready
+**Tier:** T4 (Strategic Build)
+**Build Time:** 2-4 weeks
+**Revenue Potential:** $10K–$75K/mo
+**Status:** � Spec-heavy scaffold / placeholder
 
 ### The Problem
 
@@ -68,6 +68,8 @@ Professional wallet tracking platform with **advanced analytics**:
 
 ### Installation
 
+Current repo note: this project is still a strategic scaffold. Use the roadmap and README here as the product spec, not as proof of a verified runnable baseline yet.
+
 ```bash
 # Clone and setup
 cd projects/wallet-tracker-pro
@@ -113,18 +115,18 @@ DEXSCREENER_API_KEY=your_dexscreener_key
 
 ### Pricing Tiers
 
-| Tier | Price | Features | Wallets Tracked |
-| ---- | ----- | -------- | --------------- |
-| **Free** | $0 | Basic tracking, 5 wallets | 5 |
-| **Basic** | $40/mo | Analytics, alerts, 25 wallets | 25 |
-| **Pro** | $100/mo | Advanced analytics, copy trading, 100 wallets | 100 |
-| **Enterprise** | $200/mo | API access, unlimited wallets, custom reports | Unlimited |
+| Tier           | Price   | Features                                      | Wallets Tracked |
+| -------------- | ------- | --------------------------------------------- | --------------- |
+| **Free**       | $0      | Basic tracking, 5 wallets                     | 5               |
+| **Basic**      | $40/mo  | Analytics, alerts, 25 wallets                 | 25              |
+| **Pro**        | $100/mo | Advanced analytics, copy trading, 100 wallets | 100             |
+| **Enterprise** | $200/mo | API access, unlimited wallets, custom reports | Unlimited       |
 
 ### Revenue Projections
 
 ```text
 Month 1: 50 users × $60/mo avg = $3,000/mo
-Month 3: 150 users × $80/mo avg = $12,000/mo  
+Month 3: 150 users × $80/mo avg = $12,000/mo
 Month 6: 300 users × $120/mo avg = $36,000/mo
 ```
 
@@ -168,20 +170,20 @@ Month 6: 300 users × $120/mo avg = $36,000/mo
 
 ```typescript
 interface TradingPattern {
-  pattern: 'day_trader' | 'swing_trader' | 'holder' | 'arbitrage'
-  confidence: number        // 0-100
+  pattern: "day_trader" | "swing_trader" | "holder" | "arbitrage";
+  confidence: number; // 0-100
   characteristics: {
-    avgHoldTime: number
-    tradeFrequency: number
-    volumeProfile: number[]
-    timingPreferences: number[]
-  }
+    avgHoldTime: number;
+    tradeFrequency: number;
+    volumeProfile: number[];
+    timingPreferences: number[];
+  };
   performance: {
-    winRate: number
-    avgReturn: number
-    riskAdjustedReturn: number
-    maxDrawdown: number
-  }
+    winRate: number;
+    avgReturn: number;
+    riskAdjustedReturn: number;
+    maxDrawdown: number;
+  };
 }
 ```
 
@@ -190,26 +192,26 @@ interface TradingPattern {
 ```typescript
 interface PerformanceMetrics {
   overall: {
-    totalReturn: number
-    annualizedReturn: number
-    sharpeRatio: number
-    maxDrawdown: number
-    volatility: number
-  }
+    totalReturn: number;
+    annualizedReturn: number;
+    sharpeRatio: number;
+    maxDrawdown: number;
+    volatility: number;
+  };
   byToken: {
     [tokenAddress: string]: {
-      return: number
-      winRate: number
-      avgHoldTime: number
-      totalTrades: number
-    }
-  }
+      return: number;
+      winRate: number;
+      avgHoldTime: number;
+      totalTrades: number;
+    };
+  };
   byTimeframe: {
-    hourly: PerformanceData
-    daily: PerformanceData
-    weekly: PerformanceData
-    monthly: PerformanceData
-  }
+    hourly: PerformanceData;
+    daily: PerformanceData;
+    weekly: PerformanceData;
+    monthly: PerformanceData;
+  };
 }
 ```
 
@@ -217,25 +219,25 @@ interface PerformanceMetrics {
 
 ```typescript
 interface CopyTradingInsight {
-  walletAddress: string
-  followScore: number       // 0-100 recommendation score
-  riskLevel: 'low' | 'medium' | 'high'
+  walletAddress: string;
+  followScore: number; // 0-100 recommendation score
+  riskLevel: "low" | "medium" | "high";
   strategies: {
-    entryTiming: number
-    exitTiming: number
-    positionSizing: number
-    tokenSelection: number
-  }
+    entryTiming: number;
+    exitTiming: number;
+    positionSizing: number;
+    tokenSelection: number;
+  };
   recentPerformance: {
-    last7Days: number
-    last30Days: number
-    last90Days: number
-  }
+    last7Days: number;
+    last30Days: number;
+    last90Days: number;
+  };
   alerts: {
-    largePosition: boolean
-    unusualActivity: boolean
-    highRiskTrade: boolean
-  }
+    largePosition: boolean;
+    unusualActivity: boolean;
+    highRiskTrade: boolean;
+  };
 }
 ```
 
@@ -311,24 +313,24 @@ CREATE TABLE user_watchlists (
 ```typescript
 class PatternDetector {
   async analyzeTradingPattern(walletAddress: string): Promise<TradingPattern> {
-    const transactions = await this.getTransactionHistory(walletAddress, 90)
-    
+    const transactions = await this.getTransactionHistory(walletAddress, 90);
+
     // Analyze timing patterns
-    const timingAnalysis = this.analyzeTimingPatterns(transactions)
-    
+    const timingAnalysis = this.analyzeTimingPatterns(transactions);
+
     // Analyze volume patterns
-    const volumeAnalysis = this.analyzeVolumePatterns(transactions)
-    
+    const volumeAnalysis = this.analyzeVolumePatterns(transactions);
+
     // Analyze holding patterns
-    const holdingAnalysis = this.analyzeHoldingPatterns(transactions)
-    
+    const holdingAnalysis = this.analyzeHoldingPatterns(transactions);
+
     // Classify trading style
     const pattern = this.classifyTradingStyle({
       timing: timingAnalysis,
       volume: volumeAnalysis,
-      holding: holdingAnalysis
-    })
-    
+      holding: holdingAnalysis,
+    });
+
     return {
       pattern,
       confidence: this.calculateConfidence(pattern),
@@ -336,10 +338,10 @@ class PatternDetector {
         avgHoldTime: holdingAnalysis.avgHoldTime,
         tradeFrequency: timingAnalysis.frequency,
         volumeProfile: volumeAnalysis.profile,
-        timingPreferences: timingAnalysis.preferences
+        timingPreferences: timingAnalysis.preferences,
       },
-      performance: await this.calculatePerformanceMetrics(walletAddress)
-    }
+      performance: await this.calculatePerformanceMetrics(walletAddress),
+    };
   }
 }
 ```
@@ -352,20 +354,24 @@ class RiskAnalyzer {
     const [portfolio, performance, concentration] = await Promise.all([
       this.getPortfolio(walletAddress),
       this.getPerformanceMetrics(walletAddress),
-      this.getConcentrationAnalysis(walletAddress)
-    ])
-    
+      this.getConcentrationAnalysis(walletAddress),
+    ]);
+
     return {
-      overallRisk: this.calculateOverallRisk(portfolio, performance, concentration),
+      overallRisk: this.calculateOverallRisk(
+        portfolio,
+        performance,
+        concentration,
+      ),
       factors: {
         concentration: concentration.risk,
         volatility: performance.volatility,
         liquidity: this.assessLiquidityRisk(portfolio),
-        correlation: this.assessCorrelationRisk(portfolio)
+        correlation: this.assessCorrelationRisk(portfolio),
       },
       recommendations: this.generateRiskRecommendations(portfolio, performance),
-      alerts: this.generateRiskAlerts(portfolio, performance, concentration)
-    }
+      alerts: this.generateRiskAlerts(portfolio, performance, concentration),
+    };
   }
 }
 ```
@@ -405,22 +411,25 @@ class RiskAnalyzer {
 ```typescript
 // WebSocket for real-time updates
 class RealtimeService {
-  async subscribeToWalletUpdates(walletAddress: string, userId: string): Promise<void> {
+  async subscribeToWalletUpdates(
+    walletAddress: string,
+    userId: string,
+  ): Promise<void> {
     // Subscribe to new transactions
     await this.subscribeToTransactions(walletAddress, (tx) => {
       this.sendUpdate(userId, {
-        type: 'new_transaction',
-        data: tx
-      })
-    })
-    
+        type: "new_transaction",
+        data: tx,
+      });
+    });
+
     // Subscribe to portfolio changes
     await this.subscribeToPortfolioChanges(walletAddress, (portfolio) => {
       this.sendUpdate(userId, {
-        type: 'portfolio_update',
-        data: portfolio
-      })
-    })
+        type: "portfolio_update",
+        data: portfolio,
+      });
+    });
   }
 }
 ```
@@ -452,21 +461,23 @@ tests/
 ### Key Test Cases
 
 ```typescript
-describe('Pattern Detection', () => {
-  test('should identify day trading patterns', async () => {
-    const dayTraderWallet = createDayTraderWallet()
-    const pattern = await detector.analyzeTradingPattern(dayTraderWallet.address)
-    expect(pattern.pattern).toBe('day_trader')
-    expect(pattern.confidence).toBeGreaterThan(80)
-  })
-  
-  test('should calculate accurate performance metrics', async () => {
-    const knownReturns = [0.05, -0.02, 0.08, 0.03, -0.01]
-    const metrics = await calculator.calculateMetrics(knownReturns)
-    expect(metrics.totalReturn).toBeCloseTo(0.13, 2)
-    expect(metrics.sharpeRatio).toBeGreaterThan(0)
-  })
-})
+describe("Pattern Detection", () => {
+  test("should identify day trading patterns", async () => {
+    const dayTraderWallet = createDayTraderWallet();
+    const pattern = await detector.analyzeTradingPattern(
+      dayTraderWallet.address,
+    );
+    expect(pattern.pattern).toBe("day_trader");
+    expect(pattern.confidence).toBeGreaterThan(80);
+  });
+
+  test("should calculate accurate performance metrics", async () => {
+    const knownReturns = [0.05, -0.02, 0.08, 0.03, -0.01];
+    const metrics = await calculator.calculateMetrics(knownReturns);
+    expect(metrics.totalReturn).toBeCloseTo(0.13, 2);
+    expect(metrics.sharpeRatio).toBeGreaterThan(0);
+  });
+});
 ```
 
 ---
@@ -495,15 +506,22 @@ SELECT add_retention_policy('transactions', INTERVAL '2 years');
 ```typescript
 class AnalyticsCache {
   async getCachedAnalytics(walletAddress: string): Promise<Analytics | null> {
-    const cached = await redis.get(`analytics:${walletAddress}`)
+    const cached = await redis.get(`analytics:${walletAddress}`);
     if (cached) {
-      return JSON.parse(cached)
+      return JSON.parse(cached);
     }
-    return null
+    return null;
   }
-  
-  async setCachedAnalytics(walletAddress: string, analytics: Analytics): Promise<void> {
-    await redis.setex(`analytics:${walletAddress}`, 3600, JSON.stringify(analytics))
+
+  async setCachedAnalytics(
+    walletAddress: string,
+    analytics: Analytics,
+  ): Promise<void> {
+    await redis.setex(
+      `analytics:${walletAddress}`,
+      3600,
+      JSON.stringify(analytics),
+    );
   }
 }
 ```
@@ -532,7 +550,7 @@ CMD ["npm", "start"]
 
 ```yaml
 # docker-compose.prod.yml
-version: '3.8'
+version: "3.8"
 services:
   wallet-tracker-pro:
     image: wallet-tracker-pro:latest
@@ -544,10 +562,10 @@ services:
       replicas: 2
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 1G
     restart: unless-stopped
-    
+
   analytics-worker:
     image: wallet-tracker-pro:latest
     command: npm run analytics-worker
@@ -667,21 +685,21 @@ POST /api/v1/analytics/calculate-performance
 ```typescript
 interface MLPrediction {
   nextMove: {
-    action: 'buy' | 'sell' | 'hold'
-    token: string
-    confidence: number
-    timeframe: string
-  }
+    action: "buy" | "sell" | "hold";
+    token: string;
+    confidence: number;
+    timeframe: string;
+  };
   riskSignals: {
-    marketRisk: number
-    positionRisk: number
-    correlationRisk: number
-  }
+    marketRisk: number;
+    positionRisk: number;
+    correlationRisk: number;
+  };
   performanceForecast: {
-    expectedReturn: number
-    confidenceInterval: [number, number]
-    timeHorizon: string
-  }
+    expectedReturn: number;
+    confidenceInterval: [number, number];
+    timeHorizon: string;
+  };
 }
 ```
 
@@ -698,18 +716,18 @@ interface MLPrediction {
 
 ### User Support
 
-- **Email:** support@wallettracker.pro
-- **Documentation:** docs.wallettracker.pro
-- **Status Page:** status.wallettracker.pro
+- **Email:** [support@wallettracker.pro](mailto:support@wallettracker.pro)
+- **Documentation:** <https://docs.wallettracker.pro>
+- **Status Page:** <https://status.wallettracker.pro>
 - **Community:** Discord server
 
 ### Enterprise Support
 
-- **Dedicated Account Manager:** enterprise@wallettracker.pro
-- **Custom Integration:** integration@wallettracker.pro
-- **SLA Options:** sla@wallettracker.pro
-- **Training:** training@wallettracker.pro
+- **Dedicated Account Manager:** [enterprise@wallettracker.pro](mailto:enterprise@wallettracker.pro)
+- **Custom Integration:** [integration@wallettracker.pro](mailto:integration@wallettracker.pro)
+- **SLA Options:** [sla@wallettracker.pro](mailto:sla@wallettracker.pro)
+- **Training:** [training@wallettracker.pro](mailto:training@wallettracker.pro)
 
 ---
 
-**Ready to track wallets professionally?** Start with `npm run dev` and unlock trading intelligence!
+**Current repo state:** treat this project as a later-phase strategic scaffold, not a verified runnable baseline yet.

@@ -1,65 +1,65 @@
-import { Connection, PublicKey, AccountInfo } from '@solana/web3.js'
-import { config } from '../config/environment'
-import { logger } from '../utils/logger'
+import type { Commitment } from "@solana/web3.js";
+import { AccountInfo, Connection, PublicKey } from "@solana/web3.js";
+import { config } from "../config/environment";
+import { logger } from "../utils/logger";
 
 export interface HeliusWebhookEvent {
-  signature: string
-  type: string
-  timestamp: number
-  account: string
-  slot: number
+  signature: string;
+  type: string;
+  timestamp: number;
+  account: string;
+  slot: number;
   parsed: {
-    info: AccountInfo
-    type: string
-    data: any
-  }
+    info: AccountInfo<Buffer>;
+    type: string;
+    data: any;
+  };
 }
 
 export interface TokenLaunchData {
-  tokenAddress: string
-  name: string
-  symbol: string
-  decimals: number
-  supply: string
-  creator: string
-  mintAuthority: string
-  freezeAuthority: string
+  tokenAddress: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  supply: string;
+  creator: string;
+  mintAuthority: string;
+  freezeAuthority: string;
   metadata: {
-    description?: string
-    image?: string
+    description?: string;
+    image?: string;
     external?: {
-      website?: string
-      twitter?: string
-      telegram?: string
-    }
-  }
+      website?: string;
+      twitter?: string;
+      telegram?: string;
+    };
+  };
 }
 
 export class HeliusService {
-  private connection: Connection
-  private webhookUrl?: string
-  private isWebSocketConnected: boolean = false
+  private connection: Connection;
+  private webhookUrl?: string;
+  private isWebSocketConnected: boolean = false;
 
   constructor() {
     this.connection = new Connection(config.solana.rpcUrl, {
-      commitment: config.solana.commitment as any,
-      confirmTransactionInitialTimeout: 60000
-    })
+      commitment: config.solana.commitment as Commitment,
+    });
   }
 
   async connect(): Promise<void> {
     try {
       // Test connection
-      const slot = await this.connection.getSlot()
-      logger.info(`Connected to Solana RPC, current slot: ${slot}`)
-      
+      const slot = await this.connection.getSlot();
+      logger.info(`Connected to Solana RPC, current slot: ${slot}`);
+
       // Setup WebSocket if webhook URL is configured
       if (config.telegram.webhookUrl) {
-        await this.setupWebSocket()
+        await this.setupWebSocket();
       }
     } catch (error) {
-      logger.error('Failed to connect to Helius/Solana:', error)
-      throw error
+      logger.error("Failed to connect to Helius/Solana:", error);
+      throw error;
     }
   }
 
@@ -67,25 +67,23 @@ export class HeliusService {
     try {
       if (this.isWebSocketConnected) {
         // Close WebSocket connections
-        this.isWebSocketConnected = false
-        logger.info('WebSocket connections closed')
+        this.isWebSocketConnected = false;
+        logger.info("WebSocket connections closed");
       }
-      
-      // Close RPC connection
-      await this.connection.rpc.close()
-      logger.info('RPC connection closed')
+
+      logger.info("RPC connection disconnected");
     } catch (error) {
-      logger.error('Error during disconnection:', error)
+      logger.error("Error during disconnection:", error);
     }
   }
 
   async healthCheck(): Promise<boolean> {
     try {
-      const slot = await this.connection.getSlot()
-      return slot > 0
+      const slot = await this.connection.getSlot();
+      return slot > 0;
     } catch (error) {
-      logger.error('Helius health check failed:', error)
-      return false
+      logger.error("Helius health check failed:", error);
+      return false;
     }
   }
 
@@ -93,263 +91,303 @@ export class HeliusService {
     try {
       // This would be implemented with actual Helius WebSocket API
       // For now, we'll simulate with polling
-      logger.info('WebSocket setup completed (simulated)')
-      this.isWebSocketConnected = true
+      logger.info("WebSocket setup completed (simulated)");
+      this.isWebSocketConnected = true;
     } catch (error) {
-      logger.error('Failed to setup WebSocket:', error)
-      throw error
+      logger.error("Failed to setup WebSocket:", error);
+      throw error;
     }
   }
 
-  async getTokenMetadata(tokenAddress: string): Promise<TokenLaunchData | null> {
+  async getTokenMetadata(
+    tokenAddress: string,
+  ): Promise<TokenLaunchData | null> {
     try {
-      const accountInfo = await this.connection.getAccountInfo(new PublicKey(tokenAddress))
-      
+      const accountInfo = await this.connection.getAccountInfo(
+        new PublicKey(tokenAddress),
+      );
+
       if (!accountInfo || !accountInfo.data) {
-        return null
+        return null;
       }
 
       // Parse token metadata (this would use actual Helius API in production)
-      const metadata = this.parseTokenMetadata(accountInfo, tokenAddress)
-      
-      return metadata
+      const metadata = this.parseTokenMetadata(accountInfo, tokenAddress);
+
+      return metadata;
     } catch (error) {
-      logger.error(`Failed to get token metadata for ${tokenAddress}:`, error)
-      return null
+      logger.error(`Failed to get token metadata for ${tokenAddress}:`, error);
+      return null;
     }
   }
 
   async getTokenSupply(tokenAddress: string): Promise<string | null> {
     try {
-      const mintInfo = await this.connection.getParsedAccountInfo(new PublicKey(tokenAddress))
-      
+      const mintInfo = await this.connection.getParsedAccountInfo(
+        new PublicKey(tokenAddress),
+      );
+
       if (!mintInfo || !mintInfo.value) {
-        return null
+        return null;
       }
 
       // For SPL tokens, supply is in data.parsed.info.supply
-      const parsed = mintInfo.value as any
+      const parsed = mintInfo.value as any;
       if (parsed.data?.parsed?.info?.supply) {
-        return parsed.data.parsed.info.supply.toString()
+        return parsed.data.parsed.info.supply.toString();
       }
 
-      return null
+      return null;
     } catch (error) {
-      logger.error(`Failed to get token supply for ${tokenAddress}:`, error)
-      return null
+      logger.error(`Failed to get token supply for ${tokenAddress}:`, error);
+      return null;
     }
   }
 
-  async getTokenHolders(tokenAddress: string, limit: number = 100): Promise<string[]> {
+  async getTokenHolders(
+    tokenAddress: string,
+    limit: number = 100,
+  ): Promise<string[]> {
     try {
       // This would use Helius API to get token holders
       // For now, return empty array as placeholder
-      logger.info(`Getting token holders for ${tokenAddress} (limit: ${limit})`)
-      return []
+      logger.info(
+        `Getting token holders for ${tokenAddress} (limit: ${limit})`,
+      );
+      return [];
     } catch (error) {
-      logger.error(`Failed to get token holders for ${tokenAddress}:`, error)
-      return []
+      logger.error(`Failed to get token holders for ${tokenAddress}:`, error);
+      return [];
     }
   }
 
-  async getRecentTransactions(walletAddress: string, limit: number = 10): Promise<any[]> {
+  async getRecentTransactions(
+    walletAddress: string,
+    limit: number = 10,
+  ): Promise<any[]> {
     try {
       const signatures = await this.connection.getSignaturesForAddress(
         new PublicKey(walletAddress),
-        { limit }
-      )
+        { limit },
+      );
 
-      const transactions = []
-      for (const sig of signatures.signatures) {
+      const transactions: Array<Record<string, unknown>> = [];
+      for (const sig of signatures) {
         try {
-          const tx = await this.connection.getParsedTransaction(sig.signature)
+          const tx = await this.connection.getParsedTransaction(sig.signature);
           if (tx) {
             transactions.push({
               signature: sig.signature,
               slot: tx.slot,
               blockTime: tx.blockTime,
               meta: tx.meta,
-              message: tx.message
-            })
+              transaction: tx.transaction,
+            });
           }
         } catch (error) {
           // Skip failed transaction parsing
-          continue
+          continue;
         }
       }
 
-      return transactions
+      return transactions;
     } catch (error) {
-      logger.error(`Failed to get recent transactions for ${walletAddress}:`, error)
-      return []
+      logger.error(
+        `Failed to get recent transactions for ${walletAddress}:`,
+        error,
+      );
+      return [];
     }
   }
 
-  async subscribeToAccount(accountAddress: string, callback: (accountInfo: AccountInfo) => void): Promise<void> {
+  async subscribeToAccount(
+    accountAddress: string,
+    callback: (accountInfo: AccountInfo<Buffer>) => void,
+  ): Promise<void> {
     try {
-      const publicKey = new PublicKey(accountAddress)
-      
-      const subscriptionId = this.connection.onAccountChange(
-        publicKey,
-        (accountInfo) => {
-          callback(accountInfo)
-        }
-      )
+      const publicKey = new PublicKey(accountAddress);
 
-      logger.info(`Subscribed to account changes: ${accountAddress}`)
+      this.connection.onAccountChange(publicKey, (accountInfo) => {
+        callback(accountInfo);
+      });
+
+      logger.info(`Subscribed to account changes: ${accountAddress}`);
     } catch (error) {
-      logger.error(`Failed to subscribe to account ${accountAddress}:`, error)
-      throw error
+      logger.error(`Failed to subscribe to account ${accountAddress}:`, error);
+      throw error;
     }
   }
 
-  async subscribeToProgram(programId: string, callback: (accountInfo: AccountInfo, accountKey: string) => void): Promise<void> {
+  async subscribeToProgram(
+    programId: string,
+    callback: (accountInfo: AccountInfo<Buffer>, accountKey: string) => void,
+  ): Promise<void> {
     try {
-      const programPublicKey = new PublicKey(programId)
-      
-      const subscriptionId = this.connection.onProgramAccountChange(
+      const programPublicKey = new PublicKey(programId);
+
+      this.connection.onProgramAccountChange(
         programPublicKey,
-        (accountInfo, accountKey) => {
-          callback(accountInfo, accountKey.toString())
-        }
-      )
+        (keyedAccountInfo) => {
+          callback(
+            keyedAccountInfo.accountInfo,
+            keyedAccountInfo.accountId.toString(),
+          );
+        },
+      );
 
-      logger.info(`Subscribed to program changes: ${programId}`)
+      logger.info(`Subscribed to program changes: ${programId}`);
     } catch (error) {
-      logger.error(`Failed to subscribe to program ${programId}:`, error)
-      throw error
+      logger.error(`Failed to subscribe to program ${programId}:`, error);
+      throw error;
     }
   }
 
   async subscribeToLogs(
-    filters: any[],
-    callback: (log: any) => void
+    filters: Parameters<Connection["onLogs"]>[0],
+    callback: (log: unknown) => void,
   ): Promise<void> {
     try {
-      const subscriptionId = this.connection.onLogs(
-        filters,
-        (log) => {
-          callback(log)
-        }
-      )
+      this.connection.onLogs(filters, (log) => {
+        callback(log);
+      });
 
-      logger.info(`Subscribed to logs with ${filters.length} filters`)
+      logger.info("Subscribed to logs");
     } catch (error) {
-      logger.error('Failed to subscribe to logs:', error)
-      throw error
+      logger.error("Failed to subscribe to logs:", error);
+      throw error;
     }
   }
 
   async getAccountBalance(accountAddress: string): Promise<number> {
     try {
-      const balance = await this.connection.getBalance(new PublicKey(accountAddress))
-      return balance.value
+      const balance = await this.connection.getBalance(
+        new PublicKey(accountAddress),
+      );
+      return balance;
     } catch (error) {
-      logger.error(`Failed to get balance for ${accountAddress}:`, error)
-      return 0
+      logger.error(`Failed to get balance for ${accountAddress}:`, error);
+      return 0;
     }
   }
 
-  async getTokenBalance(walletAddress: string, tokenAddress: string): Promise<number> {
+  async getTokenBalance(
+    walletAddress: string,
+    tokenAddress: string,
+  ): Promise<number> {
     try {
       const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(
-        new PublicKey(walletAddress)
-      )
+        new PublicKey(walletAddress),
+        { mint: new PublicKey(tokenAddress) },
+      );
 
-      const tokenAccount = tokenAccounts.value.find(
-        account => account.account.data.parsed.info.mint === tokenAddress
-      )
+      const tokenAccount = tokenAccounts.value[0];
 
       if (tokenAccount) {
-        return tokenAccount.account.data.parsed.info.tokenAmount.uiAmount
+        const parsedData = tokenAccount.account.data as {
+          parsed?: {
+            info?: {
+              tokenAmount?: {
+                uiAmount?: number;
+              };
+            };
+          };
+        };
+
+        return parsedData.parsed?.info?.tokenAmount?.uiAmount ?? 0;
       }
 
-      return 0
+      return 0;
     } catch (error) {
-      logger.error(`Failed to get token balance for ${walletAddress}/${tokenAddress}:`, error)
-      return 0
+      logger.error(
+        `Failed to get token balance for ${walletAddress}/${tokenAddress}:`,
+        error,
+      );
+      return 0;
     }
   }
 
-  private parseTokenMetadata(accountInfo: AccountInfo, tokenAddress: string): TokenLaunchData {
+  private parseTokenMetadata(
+    accountInfo: AccountInfo<Buffer>,
+    tokenAddress: string,
+  ): TokenLaunchData {
     // This is a simplified parser - in production, use actual Helius API
-    const data = accountInfo.data as any
-    
+    const data = accountInfo.data as any;
+
     return {
       tokenAddress,
-      name: data.name || 'Unknown Token',
-      symbol: data.symbol || 'UNKNOWN',
+      name: data.name || "Unknown Token",
+      symbol: data.symbol || "UNKNOWN",
       decimals: data.decimals || 9,
-      supply: data.supply || '0',
-      creator: data.creator || '',
-      mintAuthority: data.mintAuthority || '',
-      freezeAuthority: data.freezeAuthority || '',
+      supply: data.supply || "0",
+      creator: data.creator || "",
+      mintAuthority: data.mintAuthority || "",
+      freezeAuthority: data.freezeAuthority || "",
       metadata: {
         description: data.description,
         image: data.image,
-        external: data.external || {}
-      }
-    }
+        external: data.external || {},
+      },
+    };
   }
 
   async createWebhook(webhookConfig: any): Promise<string> {
     try {
       // This would use actual Helius webhook API
-      logger.info('Creating webhook (simulated)')
-      
-      const webhookId = `webhook_${Date.now()}`
-      this.webhookUrl = webhookConfig.url
-      
-      return webhookId
+      logger.info("Creating webhook (simulated)");
+
+      const webhookId = `webhook_${Date.now()}`;
+      this.webhookUrl = webhookConfig.url;
+
+      return webhookId;
     } catch (error) {
-      logger.error('Failed to create webhook:', error)
-      throw error
+      logger.error("Failed to create webhook:", error);
+      throw error;
     }
   }
 
   async deleteWebhook(webhookId: string): Promise<void> {
     try {
       // This would use actual Helius webhook API
-      logger.info(`Deleting webhook: ${webhookId}`)
-      this.webhookUrl = undefined
+      logger.info(`Deleting webhook: ${webhookId}`);
+      this.webhookUrl = undefined;
     } catch (error) {
-      logger.error('Failed to delete webhook:', error)
-      throw error
+      logger.error("Failed to delete webhook:", error);
+      throw error;
     }
   }
 
   async getWebhooks(): Promise<any[]> {
     try {
       // This would use actual Helius webhook API
-      logger.info('Getting webhooks (simulated)')
-      return []
+      logger.info("Getting webhooks (simulated)");
+      return [];
     } catch (error) {
-      logger.error('Failed to get webhooks:', error)
-      return []
+      logger.error("Failed to get webhooks:", error);
+      return [];
     }
   }
 
   // Utility methods
   isValidAddress(address: string): boolean {
     try {
-      new PublicKey(address)
-      return true
+      new PublicKey(address);
+      return true;
     } catch {
-      return false
+      return false;
     }
   }
 
   formatAmount(amount: number, decimals: number = 9): string {
-    return (amount / Math.pow(10, decimals)).toLocaleString()
+    return (amount / Math.pow(10, decimals)).toLocaleString();
   }
 
   async simulateTransaction(transaction: any): Promise<any> {
     try {
-      const simulation = await this.connection.simulateTransaction(transaction)
-      return simulation
+      const simulation = await this.connection.simulateTransaction(transaction);
+      return simulation;
     } catch (error) {
-      logger.error('Transaction simulation failed:', error)
-      throw error
+      logger.error("Transaction simulation failed:", error);
+      throw error;
     }
   }
 }

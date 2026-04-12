@@ -1,22 +1,22 @@
 # Token Sniper Alert Bot
 
-> **3-day build, first revenue this week.** Real-time token launch detection with intelligent risk scoring and whale alerts.
+> **Reference TypeScript/Node service scaffold.** Real-time token launch detection with intelligent risk scoring and whale alerts.
 
 ---
 
 ## 🎯 Project Overview
 
-**Tier:** T1 (Weekend Build)  
-**Build Time:** 3-5 days  
-**Revenue Potential:** $5K–25K/mo  
-**Status:** 🟢 Scaffold ready
+**Tier:** T1 (Weekend Build)
+**Build Time:** 3-5 days
+**Revenue Potential:** $5K–25K/mo
+**Status:** � Partial implementation reference scaffold
 
 ### The Problem
 
 18 sniper bots exist, but they all compete on execution speed. We compete on **intelligence**:
 
 - Risk scoring before buying
-- Bundle detection  
+- Bundle detection
 - Whale wallet tracking
 - Developer wallet analysis
 - Social sentiment analysis
@@ -68,6 +68,8 @@ Telegram bot that provides **actionable intelligence** on new token launches:
 
 ### Installation
 
+Current repo note: this project is still best treated as a reference scaffold. Use the structure and services here while stabilizing `token-safety-bot`, and expect follow-up config cleanup before treating this as a reliable setup path.
+
 ```bash
 # Clone and setup
 cd projects/token-sniper-bot
@@ -115,18 +117,18 @@ DEXSCREENER_API_KEY=your_dexscreener_key
 
 ### Pricing Tiers
 
-| Tier | Price | Features | Alerts/Month |
-| ---- | ----- | -------- | ------------- |
-| **Free** | $0 | Basic alerts, 5/day | 150 |
-| **Basic** | $20/mo | Risk scores, whale alerts | 1,000 |
-| **Pro** | $50/mo | Bundle detection, API access | 5,000 |
-| **Enterprise** | $100/mo | Custom alerts, priority support | Unlimited |
+| Tier           | Price   | Features                        | Alerts/Month |
+| -------------- | ------- | ------------------------------- | ------------ |
+| **Free**       | $0      | Basic alerts, 5/day             | 150          |
+| **Basic**      | $20/mo  | Risk scores, whale alerts       | 1,000        |
+| **Pro**        | $50/mo  | Bundle detection, API access    | 5,000        |
+| **Enterprise** | $100/mo | Custom alerts, priority support | Unlimited    |
 
 ### Revenue Projections
 
 ```text
 Month 1: 100 users × $20/mo = $2,000/mo
-Month 3: 250 users × $35/mo avg = $8,750/mo  
+Month 3: 250 users × $35/mo avg = $8,750/mo
 Month 6: 500 users × $45/mo avg = $22,500/mo
 ```
 
@@ -201,21 +203,21 @@ Month 6: 500 users × $45/mo avg = $22,500/mo
 
 ```typescript
 interface RiskScore {
-  total: number          // 0-100 overall score
+  total: number; // 0-100 overall score
   categories: {
-    contract: number      // Smart contract analysis (0-100)
-    liquidity: number     // Liquidity analysis (0-100)
-    distribution: number  // Token distribution (0-100)
-    social: number       // Social signals (0-100)
-    developer: number     // Developer history (0-100)
-  }
+    contract: number; // Smart contract analysis (0-100)
+    liquidity: number; // Liquidity analysis (0-100)
+    distribution: number; // Token distribution (0-100)
+    social: number; // Social signals (0-100)
+    developer: number; // Developer history (0-100)
+  };
   factors: {
-    renouncedMint: boolean
-    liquidityLocked: boolean
-    top10Holding: number
-    socialSentiment: number
-    developerReputation: number
-  }
+    renouncedMint: boolean;
+    liquidityLocked: boolean;
+    top10Holding: number;
+    socialSentiment: number;
+    developerReputation: number;
+  };
 }
 ```
 
@@ -223,15 +225,15 @@ interface RiskScore {
 
 ```typescript
 interface BundleActivity {
-  detected: boolean
-  wallets: string[]
+  detected: boolean;
+  wallets: string[];
   buyPattern: {
-    timing: number        // How synchronized (seconds)
-    amounts: number[]    // Buy amounts
-    addresses: string[]  // Wallet addresses
-  }
-  riskLevel: 'low' | 'medium' | 'high'
-  confidence: number     // 0-100
+    timing: number; // How synchronized (seconds)
+    amounts: number[]; // Buy amounts
+    addresses: string[]; // Wallet addresses
+  };
+  riskLevel: "low" | "medium" | "high";
+  confidence: number; // 0-100
 }
 ```
 
@@ -239,17 +241,17 @@ interface BundleActivity {
 
 ```typescript
 interface WhaleAlert {
-  whaleAddress: string
-  action: 'buy' | 'sell' | 'transfer'
-  tokenAddress: string
-  amount: number
-  usdValue: number
-  impact: 'low' | 'medium' | 'high'
+  whaleAddress: string;
+  action: "buy" | "sell" | "transfer";
+  tokenAddress: string;
+  amount: number;
+  usdValue: number;
+  impact: "low" | "medium" | "high";
   historicalData: {
-    winRate: number
-    avgHoldTime: number
-    totalPnL: number
-  }
+    winRate: number;
+    avgHoldTime: number;
+    totalPnL: number;
+  };
 }
 ```
 
@@ -311,23 +313,23 @@ CREATE TABLE alert_history (
 ```typescript
 // Helius WebSocket subscriptions
 const subscriptions = [
-  'accountSubscribe',     // New token mints
-  'programSubscribe',     // Program activity
-  'signatureSubscribe',    // Transaction monitoring
-]
+  "accountSubscribe", // New token mints
+  "programSubscribe", // Program activity
+  "signatureSubscribe", // Transaction monitoring
+];
 
 // Process new token launch
 async function handleTokenLaunch(accountInfo: AccountInfo) {
-  const tokenAddress = accountInfo.pubkey.toBase58()
-  
+  const tokenAddress = accountInfo.pubkey.toBase58();
+
   // Quick risk assessment
-  const quickScore = await quickRiskAnalysis(tokenAddress)
-  
+  const quickScore = await quickRiskAnalysis(tokenAddress);
+
   // Cache for detailed analysis
-  await queueDetailedAnalysis(tokenAddress)
-  
+  await queueDetailedAnalysis(tokenAddress);
+
   // Send to eligible users
-  await sendAlertToUsers(tokenAddress, quickScore)
+  await sendAlertToUsers(tokenAddress, quickScore);
 }
 ```
 
@@ -335,28 +337,28 @@ async function handleTokenLaunch(accountInfo: AccountInfo) {
 
 ```typescript
 // Background job processing
-const alertQueue = new Queue('token-alerts', {
-  redis: { port: 6379, host: 'localhost' },
+const alertQueue = new Queue("token-alerts", {
+  redis: { port: 6379, host: "localhost" },
   defaultJobOptions: {
     removeOnComplete: 100,
     removeOnFail: 50,
     attempts: 3,
-    backoff: 'exponential'
-  }
-})
+    backoff: "exponential",
+  },
+});
 
 // Queue detailed token analysis
-alertQueue.process('analyze-token', async (job) => {
-  const { tokenAddress, userId } = job.data
-  
-  const analysis = await comprehensiveTokenAnalysis(tokenAddress)
-  
+alertQueue.process("analyze-token", async (job) => {
+  const { tokenAddress, userId } = job.data;
+
+  const analysis = await comprehensiveTokenAnalysis(tokenAddress);
+
   // Update cache
-  await redis.setex(`analysis:${tokenAddress}`, 3600, JSON.stringify(analysis))
-  
+  await redis.setex(`analysis:${tokenAddress}`, 3600, JSON.stringify(analysis));
+
   // Send detailed alert
-  await sendDetailedAlert(userId, tokenAddress, analysis)
-})
+  await sendDetailedAlert(userId, tokenAddress, analysis);
+});
 ```
 
 ---
@@ -386,20 +388,20 @@ tests/
 ### Key Test Cases
 
 ```typescript
-describe('Risk Scoring', () => {
-  test('should assign high risk to tokens with locked liquidity', async () => {
-    const token = createMockToken({ liquidityLocked: false })
-    const score = await calculateRiskScore(token)
-    expect(score.categories.liquidity).toBeLessThan(30)
-  })
-  
-  test('should detect bundle activity', async () => {
-    const transactions = generateBundleTransactions()
-    const bundle = await detectBundleActivity(transactions)
-    expect(bundle.detected).toBe(true)
-    expect(bundle.confidence).toBeGreaterThan(80)
-  })
-})
+describe("Risk Scoring", () => {
+  test("should assign high risk to tokens with locked liquidity", async () => {
+    const token = createMockToken({ liquidityLocked: false });
+    const score = await calculateRiskScore(token);
+    expect(score.categories.liquidity).toBeLessThan(30);
+  });
+
+  test("should detect bundle activity", async () => {
+    const transactions = generateBundleTransactions();
+    const bundle = await detectBundleActivity(transactions);
+    expect(bundle.detected).toBe(true);
+    expect(bundle.confidence).toBeGreaterThan(80);
+  });
+});
 ```
 
 ---
@@ -411,29 +413,29 @@ describe('Risk Scoring', () => {
 ```typescript
 interface BotMetrics {
   users: {
-    total: number
-    active: number
-    premium: number
-    newToday: number
-  }
+    total: number;
+    active: number;
+    premium: number;
+    newToday: number;
+  };
   alerts: {
-    sent: number
-    delivered: number
-    failed: number
-    avgDeliveryTime: number
-  }
+    sent: number;
+    delivered: number;
+    failed: number;
+    avgDeliveryTime: number;
+  };
   performance: {
-    responseTime: number
-    errorRate: number
-    uptime: number
-    queueSize: number
-  }
+    responseTime: number;
+    errorRate: number;
+    uptime: number;
+    queueSize: number;
+  };
   revenue: {
-    mrr: number
-    arr: number
-    churnRate: number
-    ltv: number
-  }
+    mrr: number;
+    arr: number;
+    churnRate: number;
+    ltv: number;
+  };
 }
 ```
 
@@ -441,21 +443,21 @@ interface BotMetrics {
 
 ```typescript
 // API health endpoint
-app.get('/health', async (req, res) => {
+app.get("/health", async (req, res) => {
   const health = {
-    status: 'ok',
+    status: "ok",
     timestamp: new Date().toISOString(),
     services: {
       database: await checkDatabase(),
       redis: await checkRedis(),
       helius: await checkHeliusAPI(),
-      telegram: await checkTelegramBot()
+      telegram: await checkTelegramBot(),
     },
-    metrics: await getBotMetrics()
-  }
-  
-  res.status(200).json(health)
-})
+    metrics: await getBotMetrics(),
+  };
+
+  res.status(200).json(health);
+});
 ```
 
 ---
@@ -482,7 +484,7 @@ CMD ["npm", "start"]
 
 ```yaml
 # docker-compose.prod.yml
-version: '3.8'
+version: "3.8"
 services:
   token-sniper-bot:
     image: token-sniper-bot:latest
@@ -494,7 +496,7 @@ services:
       replicas: 2
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 256M
     restart: unless-stopped
 ```
@@ -604,19 +606,19 @@ GET /api/v1/whale-activity/:tokenAddress
 
 ### Technical Risks
 
-| Risk | Impact | Mitigation |
-| ---- | ------ | ---------- |
-| Helius API downtime | High | Multiple RPC providers, fallback mechanisms |
-| Telegram rate limits | Medium | Queue system, batch processing |
-| Database performance | Medium | Redis caching, read replicas |
+| Risk                 | Impact | Mitigation                                  |
+| -------------------- | ------ | ------------------------------------------- |
+| Helius API downtime  | High   | Multiple RPC providers, fallback mechanisms |
+| Telegram rate limits | Medium | Queue system, batch processing              |
+| Database performance | Medium | Redis caching, read replicas                |
 
 ### Business Risks
 
-| Risk | Impact | Mitigation |
-| ---- | ------ | ---------- |
-| Competition | Medium | Focus on intelligence layer, unique features |
-| Regulatory changes | Low | Monitor regulations, adapt quickly |
-| User churn | Medium | Continuous feature updates, excellent support |
+| Risk               | Impact | Mitigation                                    |
+| ------------------ | ------ | --------------------------------------------- |
+| Competition        | Medium | Focus on intelligence layer, unique features  |
+| Regulatory changes | Low    | Monitor regulations, adapt quickly            |
+| User churn         | Medium | Continuous feature updates, excellent support |
 
 ---
 
@@ -625,16 +627,16 @@ GET /api/v1/whale-activity/:tokenAddress
 ### User Support
 
 - **Telegram:** @TokenSniperSupport
-- **Email:** support@tokensniper.bot
-- **Documentation:** docs.tokensniper.bot
-- **Status Page:** status.tokensniper.bot
+- **Email:** [support@tokensniper.bot](mailto:support@tokensniper.bot)
+- **Documentation:** <https://docs.tokensniper.bot>
+- **Status Page:** <https://status.tokensniper.bot>
 
 ### Developer Support
 
-- **GitHub Issues:** github.com/solana-ideas-lab/token-sniper-bot
+- **GitHub Issues:** <https://github.com/solana-ideas-lab/token-sniper-bot>
 - **Discord:** Discord server for developers
-- **API Docs:** api.tokensniper.bot
+- **API Docs:** <https://api.tokensniper.bot>
 
 ---
 
-**Ready to build?** Start with `npm run dev` and join our Discord for developer support!
+**Current role in repo:** use this project as the sibling reference scaffold while stabilizing the safety stack and cleaning the remaining config gaps.

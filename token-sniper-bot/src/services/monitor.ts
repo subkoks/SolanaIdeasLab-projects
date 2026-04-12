@@ -1,198 +1,207 @@
-import { logger } from '../utils/logger'
-import { DatabaseService } from './database'
-import { HeliusService } from './helius'
-import { RiskScoringService } from './risk-scoring'
+import { logger } from "../utils/logger";
+import { DatabaseService } from "./database";
+import { HeliusService } from "./helius";
+import { RiskScoringService } from "./risk-scoring";
 
 export interface MonitoringAlert {
-  id: string
-  type: 'launch' | 'risk_change' | 'whale_activity' | 'bundle_detected' | 'price_movement'
-  tokenAddress: string
-  severity: 'low' | 'medium' | 'high' | 'critical'
-  message: string
-  data: any
-  timestamp: number
-  userId?: string
+  id: string;
+  type:
+    | "launch"
+    | "risk_change"
+    | "whale_activity"
+    | "bundle_detected"
+    | "price_movement";
+  tokenAddress: string;
+  severity: "low" | "medium" | "high" | "critical";
+  message: string;
+  data: any;
+  timestamp: number;
+  userId?: string;
 }
 
 export interface WhaleActivity {
-  walletAddress: string
-  action: 'buy' | 'sell' | 'transfer'
-  tokenAddress: string
-  amount: number
-  usdValue: number
-  timestamp: number
-  transactionSignature: string
+  walletAddress: string;
+  action: "buy" | "sell" | "transfer";
+  tokenAddress: string;
+  amount: number;
+  usdValue: number;
+  timestamp: number;
+  transactionSignature: string;
 }
 
 export interface TokenLaunch {
-  tokenAddress: string
-  name: string
-  symbol: string
-  creator: string
-  timestamp: number
-  initialLiquidity: number
-  metadata: any
+  tokenAddress: string;
+  name: string;
+  symbol: string;
+  creator: string;
+  timestamp: number;
+  initialLiquidity: number;
+  metadata: any;
 }
 
 export interface BundleDetection {
-  tokenAddress: string
-  wallets: string[]
+  tokenAddress: string;
+  wallets: string[];
   activity: {
-    buys: number
-    sells: number
-    totalVolume: number
-    avgBuyPrice: number
-    avgSellPrice: number
-  }
-  confidence: number
-  riskLevel: 'low' | 'medium' | 'high'
+    buys: number;
+    sells: number;
+    totalVolume: number;
+    avgBuyPrice: number;
+    avgSellPrice: number;
+  };
+  confidence: number;
+  riskLevel: "low" | "medium" | "high";
 }
 
 export class MonitorService {
-  private db: DatabaseService
-  private helius: HeliusService
-  private riskScoring: RiskScoringService
-  private monitoringIntervals: Map<string, NodeJS.Timeout> = new Map()
-  private isRunning: boolean = false
-  private activeMonitors: Set<string> = new Set()
+  private db: DatabaseService;
+  private helius: HeliusService;
+  private riskScoring: RiskScoringService;
+  private monitoringIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private isRunning: boolean = false;
+  private activeMonitors: Set<string> = new Set();
 
-  constructor(db: DatabaseService, helius: HeliusService, riskScoring: RiskScoringService) {
-    this.db = db
-    this.helius = helius
-    this.riskScoring = riskScoring
+  constructor(
+    db: DatabaseService,
+    helius: HeliusService,
+    riskScoring: RiskScoringService,
+  ) {
+    this.db = db;
+    this.helius = helius;
+    this.riskScoring = riskScoring;
   }
 
   async start(): Promise<void> {
     if (this.isRunning) {
-      logger.warn('Monitor service is already running')
-      return
+      logger.warn("Monitor service is already running");
+      return;
     }
 
     try {
-      this.isRunning = true
-      logger.info('Monitor service started')
+      this.isRunning = true;
+      logger.info("Monitor service started");
 
       // Start monitoring tasks
-      this.startTokenLaunchMonitoring()
-      this.startRiskMonitoring()
-      this.startWhaleMonitoring()
-      this.startBundleMonitoring()
-      this.startPriceMonitoring()
-      this.startCleanupTask()
+      this.startTokenLaunchMonitoring();
+      this.startRiskMonitoring();
+      this.startWhaleMonitoring();
+      this.startBundleMonitoring();
+      this.startPriceMonitoring();
+      this.startCleanupTask();
 
-      logger.info('All monitoring tasks started')
+      logger.info("All monitoring tasks started");
     } catch (error) {
-      logger.error('Failed to start monitor service:', error)
-      this.isRunning = false
-      throw error
+      logger.error("Failed to start monitor service:", error);
+      this.isRunning = false;
+      throw error;
     }
   }
 
   async stop(): Promise<void> {
     if (!this.isRunning) {
-      logger.warn('Monitor service is not running')
-      return
+      logger.warn("Monitor service is not running");
+      return;
     }
 
     try {
-      this.isRunning = false
+      this.isRunning = false;
 
       // Clear all monitoring intervals
       for (const [name, interval] of this.monitoringIntervals) {
-        clearInterval(interval)
-        logger.info(`Stopped monitoring: ${name}`)
+        clearInterval(interval);
+        logger.info(`Stopped monitoring: ${name}`);
       }
-      this.monitoringIntervals.clear()
+      this.monitoringIntervals.clear();
 
-      logger.info('Monitor service stopped')
+      logger.info("Monitor service stopped");
     } catch (error) {
-      logger.error('Error stopping monitor service:', error)
+      logger.error("Error stopping monitor service:", error);
     }
   }
 
   private startTokenLaunchMonitoring(): void {
     const interval = setInterval(async () => {
       try {
-        await this.checkForNewTokenLaunches()
+        await this.checkForNewTokenLaunches();
       } catch (error) {
-        logger.error('Token launch monitoring error:', error)
+        logger.error("Token launch monitoring error:", error);
       }
-    }, 30000) // Check every 30 seconds
+    }, 30000); // Check every 30 seconds
 
-    this.monitoringIntervals.set('token-launch', interval)
-    logger.info('Token launch monitoring started')
+    this.monitoringIntervals.set("token-launch", interval);
+    logger.info("Token launch monitoring started");
   }
 
   private startRiskMonitoring(): void {
     const interval = setInterval(async () => {
       try {
-        await this.checkForRiskChanges()
+        await this.checkForRiskChanges();
       } catch (error) {
-        logger.error('Risk monitoring error:', error)
+        logger.error("Risk monitoring error:", error);
       }
-    }, 60000) // Check every minute
+    }, 60000); // Check every minute
 
-    this.monitoringIntervals.set('risk-monitoring', interval)
-    logger.info('Risk monitoring started')
+    this.monitoringIntervals.set("risk-monitoring", interval);
+    logger.info("Risk monitoring started");
   }
 
   private startWhaleMonitoring(): void {
     const interval = setInterval(async () => {
       try {
-        await this.checkForWhaleActivity()
+        await this.checkForWhaleActivity();
       } catch (error) {
-        logger.error('Whale monitoring error:', error)
+        logger.error("Whale monitoring error:", error);
       }
-    }, 15000) // Check every 15 seconds
+    }, 15000); // Check every 15 seconds
 
-    this.monitoringIntervals.set('whale-monitoring', interval)
-    logger.info('Whale monitoring started')
+    this.monitoringIntervals.set("whale-monitoring", interval);
+    logger.info("Whale monitoring started");
   }
 
   private startBundleMonitoring(): void {
     const interval = setInterval(async () => {
       try {
-        await this.checkForBundles()
+        await this.checkForBundles();
       } catch (error) {
-        logger.error('Bundle monitoring error:', error)
+        logger.error("Bundle monitoring error:", error);
       }
-    }, 45000) // Check every 45 seconds
+    }, 45000); // Check every 45 seconds
 
-    this.monitoringIntervals.set('bundle-monitoring', interval)
-    logger.info('Bundle monitoring started')
+    this.monitoringIntervals.set("bundle-monitoring", interval);
+    logger.info("Bundle monitoring started");
   }
 
   private startPriceMonitoring(): void {
     const interval = setInterval(async () => {
       try {
-        await this.checkForPriceMovements()
+        await this.checkForPriceMovements();
       } catch (error) {
-        logger.error('Price monitoring error:', error)
+        logger.error("Price monitoring error:", error);
       }
-    }, 30000) // Check every 30 seconds
+    }, 30000); // Check every 30 seconds
 
-    this.monitoringIntervals.set('price-monitoring', interval)
-    logger.info('Price monitoring started')
+    this.monitoringIntervals.set("price-monitoring", interval);
+    logger.info("Price monitoring started");
   }
 
   private startCleanupTask(): void {
     const interval = setInterval(async () => {
       try {
-        await this.cleanupOldData()
+        await this.cleanupOldData();
       } catch (error) {
-        logger.error('Cleanup task error:', error)
+        logger.error("Cleanup task error:", error);
       }
-    }, 3600000) // Run every hour
+    }, 3600000); // Run every hour
 
-    this.monitoringIntervals.set('cleanup', interval)
-    logger.info('Cleanup task started')
+    this.monitoringIntervals.set("cleanup", interval);
+    logger.info("Cleanup task started");
   }
 
   private async checkForNewTokenLaunches(): Promise<void> {
     // This would check for new token launches
     // For now, we'll simulate the check
-    logger.debug('Checking for new token launches...')
-    
+    logger.debug("Checking for new token launches...");
+
     // In production, this would:
     // 1. Query new token mints from Solana
     // 2. Filter for tokens with initial liquidity
@@ -202,8 +211,8 @@ export class MonitorService {
 
   private async checkForRiskChanges(): Promise<void> {
     // This would check for risk level changes in monitored tokens
-    logger.debug('Checking for risk changes...')
-    
+    logger.debug("Checking for risk changes...");
+
     // In production, this would:
     // 1. Re-analyze risk scores for monitored tokens
     // 2. Compare with previous scores
@@ -213,8 +222,8 @@ export class MonitorService {
 
   private async checkForWhaleActivity(): Promise<void> {
     // This would check for whale activity
-    logger.debug('Checking for whale activity...')
-    
+    logger.debug("Checking for whale activity...");
+
     // In production, this would:
     // 1. Monitor known whale addresses
     // 2. Track large transactions
@@ -224,8 +233,8 @@ export class MonitorService {
 
   private async checkForBundles(): Promise<void> {
     // This would check for bundle activity
-    logger.debug('Checking for bundles...')
-    
+    logger.debug("Checking for bundles...");
+
     // In production, this would:
     // 1. Analyze transaction patterns
     // 2. Identify coordinated buying
@@ -235,8 +244,8 @@ export class MonitorService {
 
   private async checkForPriceMovements(): Promise<void> {
     // This would check for significant price movements
-    logger.debug('Checking for price movements...')
-    
+    logger.debug("Checking for price movements...");
+
     // In production, this would:
     // 1. Monitor price feeds
     // 2. Calculate percentage changes
@@ -246,153 +255,165 @@ export class MonitorService {
 
   private async cleanupOldData(): Promise<void> {
     try {
-      logger.debug('Cleaning up old monitoring data...')
-      
+      logger.debug("Cleaning up old monitoring data...");
+
       // This would clean up old monitoring data
       // In production, this would:
       // 1. Remove old alerts from database
       // 2. Clean up cache entries
       // 3. Archive historical data
       // 4. Update statistics
-      
-      logger.debug('Cleanup completed')
+
+      logger.debug("Cleanup completed");
     } catch (error) {
-      logger.error('Cleanup error:', error)
+      logger.error("Cleanup error:", error);
     }
   }
 
   async startMonitoring(tokenAddress: string, userId: string): Promise<void> {
     try {
       if (this.activeMonitors.has(tokenAddress)) {
-        logger.warn(`Token ${tokenAddress} is already being monitored`)
-        return
+        logger.warn(`Token ${tokenAddress} is already being monitored`);
+        return;
       }
 
       // Add to active monitors
-      this.activeMonitors.add(tokenAddress)
+      this.activeMonitors.add(tokenAddress);
 
       // Create monitoring record in database
       await this.db.createAlert(userId, {
         tokenAddress,
-        alertType: 'monitoring',
+        alertType: "monitoring",
         criteria: {
           riskChanges: true,
           priceMovements: true,
           whaleActivity: true,
-          bundleDetection: true
-        }
-      })
+          bundleDetection: true,
+        },
+      });
 
       // Start specific monitoring for this token
       const interval = setInterval(async () => {
         try {
-          await this.monitorSpecificToken(tokenAddress, userId)
+          await this.monitorSpecificToken(tokenAddress, userId);
         } catch (error) {
-          logger.error(`Error monitoring token ${tokenAddress}:`, error)
+          logger.error(`Error monitoring token ${tokenAddress}:`, error);
         }
-      }, 30000) // Check every 30 seconds
+      }, 30000); // Check every 30 seconds
 
-      this.monitoringIntervals.set(`token-${tokenAddress}`, interval)
-      
-      logger.info(`Started monitoring token: ${tokenAddress} for user: ${userId}`)
+      this.monitoringIntervals.set(`token-${tokenAddress}`, interval);
+
+      logger.info(
+        `Started monitoring token: ${tokenAddress} for user: ${userId}`,
+      );
     } catch (error) {
-      logger.error(`Failed to start monitoring token ${tokenAddress}:`, error)
-      throw error
+      logger.error(`Failed to start monitoring token ${tokenAddress}:`, error);
+      throw error;
     }
   }
 
   async stopMonitoring(tokenAddress: string, userId: string): Promise<void> {
     try {
       if (!this.activeMonitors.has(tokenAddress)) {
-        logger.warn(`Token ${tokenAddress} is not being monitored`)
-        return
+        logger.warn(`Token ${tokenAddress} is not being monitored`);
+        return;
       }
 
       // Remove from active monitors
-      this.activeMonitors.delete(tokenAddress)
+      this.activeMonitors.delete(tokenAddress);
 
       // Clear monitoring interval
-      const interval = this.monitoringIntervals.get(`token-${tokenAddress}`)
+      const interval = this.monitoringIntervals.get(`token-${tokenAddress}`);
       if (interval) {
-        clearInterval(interval)
-        this.monitoringIntervals.delete(`token-${tokenAddress}`)
+        clearInterval(interval);
+        this.monitoringIntervals.delete(`token-${tokenAddress}`);
       }
 
       // Update database
-      await this.db.deleteAlert(userId, `monitoring-${tokenAddress}`)
+      await this.db.deleteAlert(userId, `monitoring-${tokenAddress}`);
 
-      logger.info(`Stopped monitoring token: ${tokenAddress} for user: ${userId}`)
+      logger.info(
+        `Stopped monitoring token: ${tokenAddress} for user: ${userId}`,
+      );
     } catch (error) {
-      logger.error(`Failed to stop monitoring token ${tokenAddress}:`, error)
-      throw error
+      logger.error(`Failed to stop monitoring token ${tokenAddress}:`, error);
+      throw error;
     }
   }
 
-  private async monitorSpecificToken(tokenAddress: string, userId: string): Promise<void> {
+  private async monitorSpecificToken(
+    tokenAddress: string,
+    userId: string,
+  ): Promise<void> {
     try {
       // Get current risk score
-      const currentRisk = await this.riskScoring.getRiskScore(tokenAddress)
-      
+      const currentRisk = await this.riskScoring.getRiskScore(tokenAddress);
+
       // Check for significant changes (would compare with previous score)
-      if (currentRisk.total < 30) { // High risk
+      if (currentRisk.total < 30) {
+        // High risk
         await this.createAlert({
           id: `risk-${tokenAddress}-${Date.now()}`,
-          type: 'risk_change',
+          type: "risk_change",
           tokenAddress,
-          severity: 'high',
+          severity: "high",
           message: `High risk detected for token: ${currentRisk.total}/100`,
           data: currentRisk,
           timestamp: Date.now(),
-          userId
-        })
+          userId,
+        });
       }
 
       // Check for whale activity (would use actual whale tracking)
-      const whaleActivity = await this.checkWhaleActivityForToken(tokenAddress)
+      const whaleActivity = await this.checkWhaleActivityForToken(tokenAddress);
       if (whaleActivity.length > 0) {
         for (const activity of whaleActivity) {
           await this.createAlert({
             id: `whale-${tokenAddress}-${Date.now()}`,
-            type: 'whale_activity',
+            type: "whale_activity",
             tokenAddress,
-            severity: 'medium',
+            severity: "medium",
             message: `Whale activity detected: ${activity.action} ${activity.amount} tokens`,
             data: activity,
             timestamp: Date.now(),
-            userId
-          })
+            userId,
+          });
         }
       }
 
       // Check for bundles (would use actual bundle detection)
-      const bundle = await this.riskScoring.detectBundles(tokenAddress)
+      const bundle = await this.riskScoring.detectBundles(tokenAddress);
       if (bundle.detected && bundle.confidence > 0.7) {
         await this.createAlert({
           id: `bundle-${tokenAddress}-${Date.now()}`,
-          type: 'bundle_detected',
+          type: "bundle_detected",
           tokenAddress,
-          severity: 'high',
+          severity: "high",
           message: `Bundle detected with ${bundle.confidence}% confidence`,
           data: bundle,
           timestamp: Date.now(),
-          userId
-        })
+          userId,
+        });
       }
     } catch (error) {
-      logger.error(`Error monitoring specific token ${tokenAddress}:`, error)
+      logger.error(`Error monitoring specific token ${tokenAddress}:`, error);
     }
   }
 
-  private async checkWhaleActivityForToken(tokenAddress: string): Promise<WhaleActivity[]> {
+  private async checkWhaleActivityForToken(
+    _tokenAddress: string,
+  ): Promise<WhaleActivity[]> {
     // This would check for whale activity for a specific token
     // For now, return empty array
-    return []
+    return [];
   }
 
   private async createAlert(alert: MonitoringAlert): Promise<void> {
     try {
-      logger.info(`Creating alert: ${alert.type} for token ${alert.tokenAddress}`)
-      
+      logger.info(
+        `Creating alert: ${alert.type} for token ${alert.tokenAddress}`,
+      );
+
       // In production, this would:
       // 1. Save alert to database
       // 2. Send notifications to relevant users
@@ -401,10 +422,10 @@ export class MonitorService {
 
       // Send notification if user is specified
       if (alert.userId) {
-        await this.sendNotification(alert)
+        await this.sendNotification(alert);
       }
     } catch (error) {
-      logger.error('Failed to create alert:', error)
+      logger.error("Failed to create alert:", error);
     }
   }
 
@@ -412,32 +433,37 @@ export class MonitorService {
     try {
       // This would send notification via appropriate channels
       // For now, we'll just log it
-      logger.info(`Notification sent: ${alert.message}`)
+      logger.info(`Notification sent: ${alert.message}`);
     } catch (error) {
-      logger.error('Failed to send notification:', error)
+      logger.error("Failed to send notification:", error);
     }
   }
 
   async getMonitoringStatus(tokenAddress: string): Promise<any> {
     try {
-      const isMonitoring = this.activeMonitors.has(tokenAddress)
-      
+      const isMonitoring = this.activeMonitors.has(tokenAddress);
+
       return {
         tokenAddress,
         isMonitoring,
         monitoringStarted: isMonitoring ? Date.now() : null,
         alertsCount: 0, // Would get from database
         lastAlert: null, // Would get from database
-        riskScore: isMonitoring ? await this.riskScoring.getRiskScore(tokenAddress) : null
-      }
+        riskScore: isMonitoring
+          ? await this.riskScoring.getRiskScore(tokenAddress)
+          : null,
+      };
     } catch (error) {
-      logger.error(`Failed to get monitoring status for ${tokenAddress}:`, error)
-      throw error
+      logger.error(
+        `Failed to get monitoring status for ${tokenAddress}:`,
+        error,
+      );
+      throw error;
     }
   }
 
   async getActiveMonitoringCount(): Promise<number> {
-    return this.activeMonitors.size
+    return this.activeMonitors.size;
   }
 
   async getMonitoringStats(): Promise<any> {
@@ -451,79 +477,95 @@ export class MonitorService {
           risk_change: 0,
           whale_activity: 0,
           bundle_detected: 0,
-          price_movement: 0
+          price_movement: 0,
         },
         alertsBySeverity: {
           low: 0,
           medium: 0,
           high: 0,
-          critical: 0
+          critical: 0,
         },
         lastAlertTime: null, // Would get from database
-        uptime: this.isRunning ? Date.now() : null
-      }
+        uptime: this.isRunning ? Date.now() : null,
+      };
     } catch (error) {
-      logger.error('Failed to get monitoring stats:', error)
-      throw error
+      logger.error("Failed to get monitoring stats:", error);
+      throw error;
     }
   }
 
-  async addCustomMonitor(tokenAddress: string, criteria: any, userId: string): Promise<void> {
+  async addCustomMonitor(
+    tokenAddress: string,
+    criteria: any,
+    userId: string,
+  ): Promise<void> {
     try {
-      await this.startMonitoring(tokenAddress, userId)
-      
+      await this.startMonitoring(tokenAddress, userId);
+
       // Update monitoring criteria
-      logger.info(`Custom monitoring criteria added for token: ${tokenAddress}`, criteria)
+      logger.info(
+        `Custom monitoring criteria added for token: ${tokenAddress}`,
+        criteria,
+      );
     } catch (error) {
-      logger.error(`Failed to add custom monitor for ${tokenAddress}:`, error)
-      throw error
+      logger.error(`Failed to add custom monitor for ${tokenAddress}:`, error);
+      throw error;
     }
   }
 
   async removeMonitor(tokenAddress: string, userId: string): Promise<void> {
     try {
-      await this.stopMonitoring(tokenAddress, userId)
-      logger.info(`Monitor removed for token: ${tokenAddress}`)
+      await this.stopMonitoring(tokenAddress, userId);
+      logger.info(`Monitor removed for token: ${tokenAddress}`);
     } catch (error) {
-      logger.error(`Failed to remove monitor for ${tokenAddress}:`, error)
-      throw error
+      logger.error(`Failed to remove monitor for ${tokenAddress}:`, error);
+      throw error;
     }
   }
 
   async getMonitoredTokens(): Promise<string[]> {
-    return Array.from(this.activeMonitors)
+    return Array.from(this.activeMonitors);
   }
 
-  async getAlertHistory(tokenAddress: string, limit: number = 50): Promise<MonitoringAlert[]> {
+  async getAlertHistory(
+    tokenAddress: string,
+    _limit: number = 50,
+  ): Promise<MonitoringAlert[]> {
     try {
       // This would get alert history from database
       // For now, return empty array
-      return []
+      return [];
     } catch (error) {
-      logger.error(`Failed to get alert history for ${tokenAddress}:`, error)
-      return []
+      logger.error(`Failed to get alert history for ${tokenAddress}:`, error);
+      return [];
     }
   }
 
-  async getWhaleHistory(walletAddress: string, limit: number = 50): Promise<WhaleActivity[]> {
+  async getWhaleHistory(
+    walletAddress: string,
+    _limit: number = 50,
+  ): Promise<WhaleActivity[]> {
     try {
       // This would get whale history from database
       // For now, return empty array
-      return []
+      return [];
     } catch (error) {
-      logger.error(`Failed to get whale history for ${walletAddress}:`, error)
-      return []
+      logger.error(`Failed to get whale history for ${walletAddress}:`, error);
+      return [];
     }
   }
 
-  async getBundleHistory(tokenAddress: string, limit: number = 50): Promise<BundleDetection[]> {
+  async getBundleHistory(
+    tokenAddress: string,
+    _limit: number = 50,
+  ): Promise<BundleDetection[]> {
     try {
       // This would get bundle history from database
       // For now, return empty array
-      return []
+      return [];
     } catch (error) {
-      logger.error(`Failed to get bundle history for ${tokenAddress}:`, error)
-      return []
+      logger.error(`Failed to get bundle history for ${tokenAddress}:`, error);
+      return [];
     }
   }
 }
