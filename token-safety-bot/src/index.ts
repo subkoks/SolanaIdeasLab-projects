@@ -1,480 +1,651 @@
-import express from 'express'
-import { Telegraf, session } from 'telegraf'
-import { config } from './config/environment'
-import { logger } from './utils/logger'
-import { DatabaseService } from './services/database'
-import { SolanaService } from './services/solana'
-import { SafetyScannerService } from './services/safety-scanner'
-import { TelegramBotService } from './services/telegram-bot'
-import { QueueService } from './services/queue'
-import { MonitorService } from './services/monitor'
-import { authMiddleware } from './middleware/auth'
-import { errorHandler } from './middleware/error-handler'
-import { rateLimitMiddleware } from './middleware/rate-limit'
+import compression from "compression";
+import cors from "cors";
+import express from "express";
+import helmet from "helmet";
+import type { Server } from "node:http";
+import { Context, Telegraf, session } from "telegraf";
+import { z } from "zod";
+import { config } from "./config/environment";
+import { authMiddleware } from "./middleware/auth";
+import { errorHandler } from "./middleware/error-handler";
+import { rateLimitMiddleware } from "./middleware/rate-limit";
+import { DatabaseService } from "./services/database";
+import { MonitorService } from "./services/monitor";
+import { QueueService } from "./services/queue";
+import { SafetyScannerService } from "./services/safety-scanner";
+import { SolanaService } from "./services/solana";
+import { TelegramBotService } from "./services/telegram-bot";
+import type { SubscriptionTier } from "./types/auth";
+import { logger } from "./utils/logger";
+
+const walletConnectSchema = z.object({
+  signature: z.string().min(1),
+  walletAddress: z.string().min(32),
+});
+
+const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+
+const scanSchema = z.object({
+  analysisDepth: z.enum(["quick", "deep", "full"]).optional(),
+  tokenAddress: z.string().min(32),
+});
+
+const contractAnalysisSchema = z.object({
+  analysisType: z.string().min(1).default("security"),
+  programId: z.string().min(32),
+});
+
+const rugPullSchema = z.object({
+  timeWindow: z.number().int().positive().default(3600),
+  tokenAddress: z.string().min(32),
+});
+
+const alertSchema = z.object({
+  alertType: z.string().min(1),
+  criteria: z.record(z.unknown()).optional(),
+  tokenAddress: z.string().min(32),
+});
+
+const profileSchema = z.object({
+  preferences: z.record(z.unknown()).optional(),
+});
+
+const upgradeSchema = z.object({
+  tier: z.enum(["free", "basic", "pro", "enterprise"]),
+});
+
+const blacklistSchema = z.object({
+  evidence: z.unknown().optional(),
+  reason: z.string().min(1),
+  tokenAddress: z.string().min(32),
+});
+
+const broadcastSchema = z.object({
+  message: z.string().min(1),
+  targetTier: z.string().min(1).default("all"),
+});
 
 class TokenSafetyBot {
-  private app: express.Application
-  private bot: Telegraf
-  private db: DatabaseService
-  private solana: SolanaService
-  private safetyScanner: SafetyScannerService
-  private telegramBot: TelegramBotService
-  private queue: QueueService
-  private monitor: MonitorService
+  private readonly app = express();
+  private readonly databaseService = new DatabaseService();
+  private readonly monitorService: MonitorService;
+  private readonly queueService = new QueueService();
+  private readonly safetyScannerService: SafetyScannerService;
+  private server: Server | null = null;
+  private readonly solanaService = new SolanaService();
+  private readonly telegramBot: TelegramBotService | null;
+  private readonly telegramClient: Telegraf<Context> | null;
 
   constructor() {
-    this.app = express()
-    this.bot = new Telegraf(config.telegram.botToken)
-    this.db = new DatabaseService()
-    this.solana = new SolanaService()
-    this.safetyScanner = new SafetyScannerService()
-    this.telegramBot = new TelegramBotService(this.bot)
-    this.queue = new QueueService()
-    this.monitor = new MonitorService()
-    
-    this.setupMiddleware()
-    this.setupRoutes()
-    this.setupTelegramBot()
-    this.setupErrorHandling()
+    this.safetyScannerService = new SafetyScannerService(
+      this.databaseService,
+      this.solanaService,
+    );
+    this.monitorService = new MonitorService(this.safetyScannerService);
+
+    if (config.telegram.botToken.trim()) {
+      this.telegramClient = new Telegraf<Context>(config.telegram.botToken);
+      this.telegramClient.use(session());
+      this.telegramBot = new TelegramBotService(
+        this.telegramClient,
+        this.safetyScannerService,
+        this.monitorService,
+        this.databaseService,
+        config.telegram.adminChatIds,
+      );
+      this.telegramBot.registerCommands();
+    } else {
+      this.telegramClient = null;
+      this.telegramBot = null;
+    }
+
+    this.setupMiddleware();
+    this.setupRoutes();
+    this.app.use(errorHandler);
   }
 
   private setupMiddleware(): void {
-    this.app.use(express.json())
-    this.app.use(express.urlencoded({ extended: true }))
-    this.app.use(rateLimitMiddleware())
-    this.app.use(cors())
-    this.app.use(helmet())
-    this.app.use(compression())
+    this.app.use(
+      cors({
+        origin:
+          config.server.corsOrigin === "*" ? true : config.server.corsOrigin,
+      }),
+    );
+    this.app.use(helmet());
+    this.app.use(compression());
+    this.app.use(express.json());
+    this.app.use(express.urlencoded({ extended: true }));
+    this.app.use(rateLimitMiddleware());
   }
 
   private setupRoutes(): void {
-    // Health check
-    this.app.get('/health', async (req, res) => {
+    this.app.get("/health", async (_req, res) => {
+      res.json(await this.getHealthStatus());
+    });
+
+    this.app.post("/api/v1/auth/wallet/connect", async (req, res, next) => {
       try {
-        const health = await this.getHealthStatus()
-        res.json(health)
+        const { signature, walletAddress } = walletConnectSchema.parse(
+          req.body,
+        );
+        res.json(
+          await this.databaseService.authenticateWallet(
+            walletAddress,
+            signature,
+          ),
+        );
       } catch (error) {
-        res.status(500).json({ status: 'error', message: 'Health check failed' })
+        next(error);
       }
-    })
+    });
 
-    // API routes
-    this.app.use('/api/v1/auth', this.authRoutes())
-    this.app.use('/api/v1/scan', this.scanRoutes())
-    this.app.use('/api/v1/safety', this.safetyRoutes())
-    this.app.use('/api/v1/monitor', this.monitorRoutes())
-    this.app.use('/api/v1/users', authMiddleware, this.userRoutes())
+    this.app.post("/api/v1/auth/refresh", async (req, res, next) => {
+      try {
+        const { refreshToken } = refreshTokenSchema.parse(req.body);
+        res.json(await this.databaseService.refreshToken(refreshToken));
+      } catch (error) {
+        next(error);
+      }
+    });
 
-    // Webhook for Telegram
-    this.app.post('/webhook/telegram', (req, res) => {
-      this.bot.handleUpdate(req.body)
-      res.sendStatus(200)
-    })
+    this.app.post("/api/v1/scan", authMiddleware, async (req, res, next) => {
+      try {
+        const { analysisDepth = "quick", tokenAddress } = scanSchema.parse(
+          req.body,
+        );
+        res.json(
+          await this.safetyScannerService.scanToken(
+            tokenAddress,
+            analysisDepth,
+            req.user?.id,
+          ),
+        );
+      } catch (error) {
+        next(error);
+      }
+    });
 
-    // Admin routes (protected)
-    this.app.use('/api/v1/admin', authMiddleware, this.adminRoutes())
+    this.app.get("/api/v1/scan/:tokenAddress", async (req, res, next) => {
+      try {
+        const tokenAddress = z.string().min(32).parse(req.params.tokenAddress);
+        res.json(await this.safetyScannerService.getLatestScan(tokenAddress));
+      } catch (error) {
+        next(error);
+      }
+    });
+
+    this.app.get(
+      "/api/v1/safety/score/:tokenAddress",
+      async (req, res, next) => {
+        try {
+          const tokenAddress = z
+            .string()
+            .min(32)
+            .parse(req.params.tokenAddress);
+          res.json(
+            await this.safetyScannerService.getSafetyScore(tokenAddress),
+          );
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.get(
+      "/api/v1/safety/report/:tokenAddress",
+      async (req, res, next) => {
+        try {
+          const tokenAddress = z
+            .string()
+            .min(32)
+            .parse(req.params.tokenAddress);
+          res.json(
+            await this.safetyScannerService.generateReport(tokenAddress),
+          );
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.post("/api/v1/safety/contract/analyze", async (req, res, next) => {
+      try {
+        const { analysisType, programId } = contractAnalysisSchema.parse(
+          req.body,
+        );
+        res.json(
+          await this.safetyScannerService.analyzeContract(
+            programId,
+            analysisType,
+          ),
+        );
+      } catch (error) {
+        next(error);
+      }
+    });
+
+    this.app.post("/api/v1/safety/rug-pull/detect", async (req, res, next) => {
+      try {
+        const { timeWindow, tokenAddress } = rugPullSchema.parse(req.body);
+        res.json(
+          await this.safetyScannerService.detectRugPullRisk(
+            tokenAddress,
+            timeWindow,
+          ),
+        );
+      } catch (error) {
+        next(error);
+      }
+    });
+
+    this.app.post(
+      "/api/v1/monitor/:tokenAddress",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          const tokenAddress = z
+            .string()
+            .min(32)
+            .parse(req.params.tokenAddress);
+          res.json(
+            await this.monitorService.startMonitoring(
+              tokenAddress,
+              req.user!.id,
+            ),
+          );
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.get(
+      "/api/v1/monitor/:tokenAddress",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          const tokenAddress = z
+            .string()
+            .min(32)
+            .parse(req.params.tokenAddress);
+          res.json(await this.monitorService.getMonitoringStatus(tokenAddress));
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.delete(
+      "/api/v1/monitor/:tokenAddress",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          const tokenAddress = z
+            .string()
+            .min(32)
+            .parse(req.params.tokenAddress);
+          await this.monitorService.stopMonitoring(tokenAddress, req.user!.id);
+          res.json({ success: true });
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.get(
+      "/api/v1/users/profile",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          res.json(await this.databaseService.getUserProfile(req.user!.id));
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.put(
+      "/api/v1/users/profile",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          const body = profileSchema.parse(req.body);
+          res.json(
+            await this.databaseService.updateUserProfile(req.user!.id, body),
+          );
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.get(
+      "/api/v1/users/scans",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          res.json(await this.databaseService.getUserScans(req.user!.id));
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.get(
+      "/api/v1/users/alerts",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          res.json(await this.databaseService.getUserAlerts(req.user!.id));
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.post(
+      "/api/v1/users/alerts",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          const body = alertSchema.parse(req.body);
+          res.json(await this.databaseService.createAlert(req.user!.id, body));
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.delete(
+      "/api/v1/users/alerts/:alertId",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          const alertId = z.string().min(1).parse(req.params.alertId);
+          await this.databaseService.deleteAlert(req.user!.id, alertId);
+          res.json({ success: true });
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.post(
+      "/api/v1/users/upgrade",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          const { tier } = upgradeSchema.parse(req.body);
+          res.json(
+            await this.databaseService.upgradeSubscription(
+              req.user!.id,
+              tier as SubscriptionTier,
+            ),
+          );
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.get(
+      "/api/v1/admin/stats",
+      authMiddleware,
+      async (_req, res, next) => {
+        try {
+          res.json(await this.getAdminStats());
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.post(
+      "/api/v1/admin/broadcast",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          const { message, targetTier } = broadcastSchema.parse(req.body);
+
+          if (!this.telegramBot) {
+            res.json({ configured: false, sent: 0, targetTier });
+            return;
+          }
+
+          res.json(
+            await this.telegramBot.broadcastSafetyAlert(message, targetTier),
+          );
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.get(
+      "/api/v1/admin/scans",
+      authMiddleware,
+      async (_req, res, next) => {
+        try {
+          res.json(await this.databaseService.getAllScans());
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.post(
+      "/api/v1/admin/blacklist",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          const { evidence, reason, tokenAddress } = blacklistSchema.parse(
+            req.body,
+          );
+          res.json(
+            await this.databaseService.blacklistToken(
+              tokenAddress,
+              reason,
+              evidence,
+            ),
+          );
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.get(
+      "/api/v1/admin/blacklist",
+      authMiddleware,
+      async (_req, res, next) => {
+        try {
+          res.json(await this.databaseService.getBlacklistedTokens());
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.post("/webhook/telegram", async (req, res, next) => {
+      try {
+        if (!this.telegramClient) {
+          res.status(503).json({ error: "Telegram bot is not configured" });
+          return;
+        }
+
+        await this.telegramClient.handleUpdate(req.body);
+        res.sendStatus(200);
+      } catch (error) {
+        next(error);
+      }
+    });
   }
 
-  private setupTelegramBot(): void {
-    // Session middleware for bot
-    this.bot.use(session())
-
-    // Register bot commands
-    this.telegramBot.registerCommands()
-
-    // Start bot
-    this.bot.launch().catch((error) => {
-      logger.error('Failed to start Telegram bot:', error)
-      process.exit(1)
-    })
-  }
-
-  private setupErrorHandling(): void {
-    this.app.use(errorHandler)
-
-    // Handle unhandled promise rejections
-    process.on('unhandledRejection', (reason, promise) => {
-      logger.error('Unhandled Rejection at:', promise, 'reason:', reason)
-    })
-
-    // Handle uncaught exceptions
-    process.on('uncaughtException', (error) => {
-      logger.error('Uncaught Exception:', error)
-      process.exit(1)
-    })
-  }
-
-  private authRoutes(): express.Router {
-    const router = express.Router()
-    
-    router.post('/wallet/connect', async (req, res) => {
-      try {
-        const { walletAddress, signature } = req.body
-        const auth = await this.db.authenticateWallet(walletAddress, signature)
-        res.json(auth)
-      } catch (error) {
-        res.status(401).json({ error: 'Authentication failed' })
-      }
-    })
-
-    router.post('/refresh', async (req, res) => {
-      try {
-        const { refreshToken } = req.body
-        const auth = await this.db.refreshToken(refreshToken)
-        res.json(auth)
-      } catch (error) {
-        res.status(401).json({ error: 'Token refresh failed' })
-      }
-    })
-
-    return router
-  }
-
-  private scanRoutes(): express.Router {
-    const router = express.Router()
-    
-    router.post('/', authMiddleware, async (req, res) => {
-      try {
-        const { tokenAddress, analysisDepth = 'quick' } = req.body
-        const scan = await this.safetyScanner.scanToken(tokenAddress, analysisDepth)
-        res.json(scan)
-      } catch (error) {
-        res.status(500).json({ error: 'Token scan failed' })
-      }
-    })
-
-    router.get('/:tokenAddress', async (req, res) => {
-      try {
-        const { tokenAddress } = req.params
-        const scan = await this.safetyScanner.getLatestScan(tokenAddress)
-        res.json(scan)
-      } catch (error) {
-        res.status(404).json({ error: 'Scan not found' })
-      }
-    })
-
-    return router
-  }
-
-  private safetyRoutes(): express.Router {
-    const router = express.Router()
-    
-    router.get('/score/:tokenAddress', async (req, res) => {
-      try {
-        const { tokenAddress } = req.params
-        const score = await this.safetyScanner.getSafetyScore(tokenAddress)
-        res.json(score)
-      } catch (error) {
-        res.status(404).json({ error: 'Safety score not found' })
-      }
-    })
-
-    router.get('/report/:tokenAddress', async (req, res) => {
-      try {
-        const { tokenAddress } = req.params
-        const report = await this.safetyScanner.generateReport(tokenAddress)
-        res.json(report)
-      } catch (error) {
-        res.status(500).json({ error: 'Report generation failed' })
-      }
-    })
-
-    router.post('/contract/analyze', async (req, res) => {
-      try {
-        const { programId, analysisType = 'security' } = req.body
-        const analysis = await this.safetyScanner.analyzeContract(programId, analysisType)
-        res.json(analysis)
-      } catch (error) {
-        res.status(500).json({ error: 'Contract analysis failed' })
-      }
-    })
-
-    router.post('/rug-pull/detect', async (req, res) => {
-      try {
-        const { tokenAddress, timeWindow = 3600 } = req.body
-        const detection = await this.safetyScanner.detectRugPullRisk(tokenAddress, timeWindow)
-        res.json(detection)
-      } catch (error) {
-        res.status(500).json({ error: 'Rug pull detection failed' })
-      }
-    })
-
-    return router
-  }
-
-  private monitorRoutes(): express.Router {
-    const router = express.Router()
-    
-    router.post('/:tokenAddress', authMiddleware, async (req, res) => {
-      try {
-        const { tokenAddress } = req.params
-        const userId = req.user!.id
-        const monitoring = await this.monitor.startMonitoring(tokenAddress, userId)
-        res.json(monitoring)
-      } catch (error) {
-        res.status(400).json({ error: 'Failed to start monitoring' })
-      }
-    })
-
-    router.get('/:tokenAddress', authMiddleware, async (req, res) => {
-      try {
-        const { tokenAddress } = req.params
-        const status = await this.monitor.getMonitoringStatus(tokenAddress)
-        res.json(status)
-      } catch (error) {
-        res.status(404).json({ error: 'Monitoring not found' })
-      }
-    })
-
-    router.delete('/:tokenAddress', authMiddleware, async (req, res) => {
-      try {
-        const { tokenAddress } = req.params
-        const userId = req.user!.id
-        await this.monitor.stopMonitoring(tokenAddress, userId)
-        res.json({ success: true })
-      } catch (error) {
-        res.status(400).json({ error: 'Failed to stop monitoring' })
-      }
-    })
-
-    return router
-  }
-
-  private userRoutes(): express.Router {
-    const router = express.Router()
-    
-    router.get('/profile', async (req, res) => {
-      try {
-        const userId = req.user!.id
-        const profile = await this.db.getUserProfile(userId)
-        res.json(profile)
-      } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch profile' })
-      }
-    })
-
-    router.put('/profile', async (req, res) => {
-      try {
-        const userId = req.user!.id
-        const profile = await this.db.updateUserProfile(userId, req.body)
-        res.json(profile)
-      } catch (error) {
-        res.status(400).json({ error: 'Failed to update profile' })
-      }
-    })
-
-    router.get('/scans', async (req, res) => {
-      try {
-        const userId = req.user!.id
-        const scans = await this.db.getUserScans(userId)
-        res.json(scans)
-      } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch scans' })
-      }
-    })
-
-    router.get('/alerts', async (req, res) => {
-      try {
-        const userId = req.user!.id
-        const alerts = await this.db.getUserAlerts(userId)
-        res.json(alerts)
-      } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch alerts' })
-      }
-    })
-
-    router.post('/upgrade', async (req, res) => {
-      try {
-        const userId = req.user!.id
-        const { tier } = req.body
-        const subscription = await this.db.upgradeSubscription(userId, tier)
-        res.json(subscription)
-      } catch (error) {
-        res.status(400).json({ error: 'Failed to upgrade subscription' })
-      }
-    })
-
-    return router
-  }
-
-  private adminRoutes(): express.Router {
-    const router = express.Router()
-    
-    router.get('/stats', async (req, res) => {
-      try {
-        const stats = await this.getAdminStats()
-        res.json(stats)
-      } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch stats' })
-      }
-    })
-
-    router.post('/broadcast', async (req, res) => {
-      try {
-        const { message, targetTier = 'all' } = req.body
-        const result = await this.telegramBot.broadcastSafetyAlert(message, targetTier)
-        res.json(result)
-      } catch (error) {
-        res.status(400).json({ error: 'Broadcast failed' })
-      }
-    })
-
-    router.get('/scans', async (req, res) => {
-      try {
-        const scans = await this.db.getAllScans()
-        res.json(scans)
-      } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch scans' })
-      }
-    })
-
-    router.post('/blacklist', async (req, res) => {
-      try {
-        const { tokenAddress, reason, evidence } = req.body
-        const blacklist = await this.db.blacklistToken(tokenAddress, reason, evidence)
-        res.json(blacklist)
-      } catch (error) {
-        res.status(400).json({ error: 'Failed to blacklist token' })
-      }
-    })
-
-    router.get('/blacklist', async (req, res) => {
-      try {
-        const blacklist = await this.db.getBlacklistedTokens()
-        res.json(blacklist)
-      } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch blacklist' })
-      }
-    })
-
-    return router
-  }
-
-  private async getHealthStatus(): Promise<any> {
-    const [dbStatus, redisStatus, solanaStatus] = await Promise.allSettled([
-      this.db.healthCheck(),
-      this.queue.healthCheck(),
-      this.solana.healthCheck()
-    ])
+  private async getHealthStatus(): Promise<{
+    metrics: {
+      activeConnections: number;
+      monitoringTokens: number;
+      queueSize: number;
+      uptimeSeconds: number;
+    };
+    services: {
+      database: string;
+      queue: string;
+      solana: string;
+      telegram: string;
+    };
+    status: string;
+    timestamp: string;
+  }> {
+    const [databaseHealthy, queueHealthy, solanaHealthy] = await Promise.all([
+      this.databaseService.healthCheck(),
+      this.queueService.healthCheck(),
+      this.solanaService.healthCheck(),
+    ]);
 
     return {
-      status: 'ok',
+      status:
+        databaseHealthy && queueHealthy && solanaHealthy ? "ok" : "degraded",
       timestamp: new Date().toISOString(),
       services: {
-        database: dbStatus.status === 'fulfilled' ? 'healthy' : 'unhealthy',
-        redis: redisStatus.status === 'fulfilled' ? 'healthy' : 'unhealthy',
-        solana: solanaStatus.status === 'fulfilled' ? 'healthy' : 'unhealthy',
-        telegram: 'healthy'
+        database: databaseHealthy ? "healthy" : "unhealthy",
+        queue: queueHealthy ? "healthy" : "unhealthy",
+        solana: solanaHealthy ? "healthy" : "unhealthy",
+        telegram: this.telegramBot ? "configured" : "disabled",
       },
-      metrics: await this.getBotMetrics()
-    }
+      metrics: {
+        uptimeSeconds: Math.round(process.uptime()),
+        activeConnections: await this.queueService.getActiveConnections(),
+        queueSize: await this.queueService.getQueueSize(),
+        monitoringTokens: await this.monitorService.getActiveMonitoringCount(),
+      },
+    };
   }
 
-  private async getAdminStats(): Promise<any> {
-    const [userStats, scanStats, alertStats, detectionStats] = await Promise.all([
-      this.db.getUserStats(),
-      this.db.getScanStats(),
-      this.db.getAlertStats(),
-      this.db.getDetectionStats()
-    ])
+  private async getAdminStats(): Promise<{
+    alerts: { active: number; total: number };
+    detections: { dangerous: number; risky: number; total: number };
+    performance: {
+      averageScanTime: number;
+      detectionRate: number;
+      falsePositiveRate: number;
+      scanAccuracy: number;
+    };
+    scans: { averageScore: number; total: number };
+    users: { active: number; premium: number; total: number };
+  }> {
+    const [
+      users,
+      scans,
+      alerts,
+      detections,
+      scanAccuracy,
+      averageScanTime,
+      detectionRate,
+      falsePositiveRate,
+    ] = await Promise.all([
+      this.databaseService.getUserStats(),
+      this.databaseService.getScanStats(),
+      this.databaseService.getAlertStats(),
+      this.databaseService.getDetectionStats(),
+      this.databaseService.getScanAccuracy(),
+      this.databaseService.getAverageScanTime(),
+      this.databaseService.getDetectionRate(),
+      this.databaseService.getFalsePositiveRate(),
+    ]);
 
     return {
-      users: userStats,
-      scans: scanStats,
-      alerts: alertStats,
-      detections: detectionStats,
-      performance: await this.getPerformanceMetrics()
-    }
-  }
-
-  private async getBotMetrics(): Promise<any> {
-    return {
-      uptime: process.uptime(),
-      memory: process.memoryUsage(),
-      activeConnections: this.queue.getActiveConnections(),
-      queueSize: await this.queue.getQueueSize(),
-      monitoringTokens: await this.monitor.getActiveMonitoringCount()
-    }
-  }
-
-  private async getPerformanceMetrics(): Promise<any> {
-    return {
-      scanAccuracy: await this.db.getScanAccuracy(),
-      avgScanTime: await this.db.getAverageScanTime(),
-      detectionRate: await this.db.getDetectionRate(),
-      falsePositiveRate: await this.db.getFalsePositiveRate()
-    }
+      users,
+      scans,
+      alerts,
+      detections,
+      performance: {
+        scanAccuracy,
+        averageScanTime,
+        detectionRate,
+        falsePositiveRate,
+      },
+    };
   }
 
   public async start(): Promise<void> {
-    try {
-      // Initialize database
-      await this.db.connect()
-      logger.info('Database connected')
+    await this.databaseService.connect();
+    await this.queueService.connect();
+    await this.solanaService.connect();
+    this.queueService.startProcessors();
+    await this.monitorService.start();
 
-      // Initialize queue
-      await this.queue.connect()
-      logger.info('Queue service connected')
-
-      // Initialize Solana connection
-      await this.solana.connect()
-      logger.info('Solana RPC connected')
-
-      // Start queue processors
-      this.queue.startProcessors()
-      logger.info('Queue processors started')
-
-      // Start monitoring service
-      await this.monitor.start()
-      logger.info('Monitoring service started')
-
-      // Start HTTP server
-      const port = config.server.port || 8000
-      this.app.listen(port, () => {
-        logger.info(`Token Safety Bot server started on port ${port}`)
-        logger.info(`Telegram bot: @${config.telegram.botUsername}`)
-      })
-    } catch (error) {
-      logger.error('Failed to start server:', error)
-      process.exit(1)
+    if (this.telegramClient) {
+      await this.telegramClient.launch();
+      logger.info("Telegram bot launched", {
+        username: config.telegram.botUsername,
+      });
+    } else {
+      logger.warn(
+        "Telegram bot disabled because TELEGRAM_BOT_TOKEN is not set",
+      );
     }
+
+    await new Promise<void>((resolve) => {
+      this.server = this.app.listen(
+        config.server.port,
+        config.server.host,
+        () => {
+          logger.info("Token Safety Bot server started", {
+            host: config.server.host,
+            port: config.server.port,
+          });
+          resolve();
+        },
+      );
+    });
   }
 
   public async stop(): Promise<void> {
-    logger.info('Shutting down Token Safety Bot...')
-    
-    try {
-      await this.monitor.stop()
-      await this.queue.disconnect()
-      await this.solana.disconnect()
-      await this.db.disconnect()
-      this.bot.stop()
-      logger.info('Token Safety Bot stopped gracefully')
-    } catch (error) {
-      logger.error('Error during shutdown:', error)
-      process.exit(1)
+    await this.monitorService.stop();
+    await this.queueService.disconnect();
+    await this.solanaService.disconnect();
+    await this.databaseService.disconnect();
+
+    if (this.telegramClient) {
+      this.telegramClient.stop("shutdown");
+    }
+
+    if (this.server) {
+      await new Promise<void>((resolve, reject) => {
+        this.server?.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      this.server = null;
     }
   }
 }
 
-// Start the bot
-const bot = new TokenSafetyBot()
+const app = new TokenSafetyBot();
 
-// Handle graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, shutting down gracefully')
-  await bot.stop()
-  process.exit(0)
-})
+const shutdown = async (signal: string): Promise<void> => {
+  logger.info("Shutdown signal received", { signal });
+  await app.stop();
+  process.exit(0);
+};
 
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received, shutting down gracefully')
-  await bot.stop()
-  process.exit(0)
-})
+process.on("SIGINT", () => {
+  void shutdown("SIGINT");
+});
 
-// Start the bot
-bot.start().catch((error) => {
-  logger.error('Failed to start bot:', error)
-  process.exit(1)
-})
+process.on("SIGTERM", () => {
+  void shutdown("SIGTERM");
+});
+
+void app.start().catch((error) => {
+  logger.error("Failed to start Token Safety Bot", { error });
+  process.exit(1);
+});
