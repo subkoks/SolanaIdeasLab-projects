@@ -84,6 +84,32 @@ export class TelegramBotService {
     return text.split(/\s+/).slice(1).filter(Boolean);
   }
 
+  private async resolveAlertIdForDeletion(
+    userId: string,
+    alertIdOrPrefix: string,
+  ): Promise<string> {
+    const alerts = await this.databaseService.getUserAlerts(userId);
+    const exact = alerts.find((alert) => alert.id === alertIdOrPrefix);
+
+    if (exact) {
+      return exact.id;
+    }
+
+    const prefixMatches = alerts.filter((alert) =>
+      alert.id.startsWith(alertIdOrPrefix),
+    );
+
+    if (prefixMatches.length === 1) {
+      return prefixMatches[0].id;
+    }
+
+    if (prefixMatches.length > 1) {
+      throw new Error("Ambiguous alert id prefix");
+    }
+
+    throw new Error("Alert not found");
+  }
+
   public registerCommands(): void {
     this.bot.use(async (context, next) => {
       if (!this.maintenanceMode) {
@@ -231,7 +257,7 @@ export class TelegramBotService {
 
       const state = await this.monitorService.startMonitoring(
         tokenAddress,
-        String(context.chat.id),
+        this.telegramUserId(context.chat.id),
       );
       await context.reply(
         `Monitoring started for ${state.tokenAddress}. Subscribers: ${state.userIds.size}`,
@@ -272,7 +298,7 @@ export class TelegramBotService {
         }
         const lines = alerts.map(
           (a) =>
-            `• ${a.id.slice(0, 8)}… ${a.tokenAddress.slice(0, 8)}… (${a.alertType})`,
+            `• ${a.id} ${a.tokenAddress.slice(0, 8)}… (${a.alertType})`,
         );
         await context.reply(["Active alerts:", ...lines].join("\n"));
         return;
@@ -304,7 +330,11 @@ export class TelegramBotService {
           return;
         }
         try {
-          await this.databaseService.deleteAlert(userId, alertId);
+          const resolvedAlertId = await this.resolveAlertIdForDeletion(
+            userId,
+            alertId,
+          );
+          await this.databaseService.deleteAlert(userId, resolvedAlertId);
           await context.reply("Alert removed.");
         } catch {
           await context.reply(
