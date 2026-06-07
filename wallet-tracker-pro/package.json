@@ -135,5 +135,9 @@
   "bugs": {
     "url": "https://github.com/solana-ideas-lab/wallet-tracker-pro/issues"
   },
-  "homepage": "https://github.com/solana-ideas-lab/wallet-tracker-pro#readme"
+  "homepage": "https://github.com/solana-ideas-lab/wallet-tracker-pro#readme",
+  "overrides": {
+    "uuid": "$uuid",
+    "postcss": "$postcss"
+  }
 }

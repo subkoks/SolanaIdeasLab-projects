@@ -94,5 +94,8 @@
   "bugs": {
     "url": "https://github.com/solana-ideas-lab/token-sniper-bot/issues"
   },
-  "homepage": "https://github.com/solana-ideas-lab/token-sniper-bot#readme"
+  "homepage": "https://github.com/solana-ideas-lab/token-sniper-bot#readme",
+  "overrides": {
+    "uuid": "$uuid"
+  }
 }
