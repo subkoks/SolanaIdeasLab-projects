@@ -44,12 +44,12 @@ const rugPullSchema = z.object({
 
 const alertSchema = z.object({
   alertType: z.string().min(1),
-  criteria: z.record(z.unknown()).optional(),
+  criteria: z.record(z.string(), z.unknown()).optional(),
   tokenAddress: z.string().min(32),
 });
 
 const profileSchema = z.object({
-  preferences: z.record(z.unknown()).optional(),
+  preferences: z.record(z.string(), z.unknown()).optional(),
 });
 
 const upgradeSchema = z.object({
