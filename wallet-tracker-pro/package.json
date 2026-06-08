@@ -70,7 +70,7 @@
     "prisma": "^5.7.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-hook-form": "^7.77.0",
+    "react-hook-form": "^7.78.0",
     "react-hot-toast": "^2.4.1",
     "react-query": "^3.39.3",
     "react-virtualized-auto-sizer": "^1.0.20",
