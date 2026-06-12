@@ -34,7 +34,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^5.2.1",
-    "express-rate-limit": "^7.1.5",
+    "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
     "telegraf": "^4.16.3",
