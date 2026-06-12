@@ -20,7 +20,7 @@ git clone git@github.com:subkoks/SolanaIdeasLab-projects.git SolanaIdeasLab/proj
 
 ## Planned (not yet built)
 
-Listed in [`../ideas/`](../ideas) tier docs. To start any of these, scaffold a subdir here with `src/`, `tests/`, `docs/`, `config/`, `deploy/`.
+Listed in [`ideas/`](https://github.com/subkoks/SolanaIdeasLab/tree/main/ideas) tier docs. To start any of these, scaffold a subdir here with `src/`, `tests/`, `docs/`, `config/`, `deploy/`.
 
 - ai-agent-platform
 - airdrop-tracker
@@ -30,4 +30,4 @@ Listed in [`../ideas/`](../ideas) tier docs. To start any of these, scaffold a s
 - on-chain-casino
 - token-safety-suite
 
-See [`../MASTER-PLAN.md`](../MASTER-PLAN.md) and [`../ARCHITECTURE.md`](../ARCHITECTURE.md) for context.
+See [`MASTER-PLAN.md`](https://github.com/subkoks/SolanaIdeasLab/blob/main/MASTER-PLAN.md) and [`ARCHITECTURE.md`](https://github.com/subkoks/SolanaIdeasLab/blob/main/ARCHITECTURE.md) for context.
