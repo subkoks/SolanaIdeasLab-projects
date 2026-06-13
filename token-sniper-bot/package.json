@@ -32,7 +32,8 @@
   "author": "SolanaIdeasLab",
   "license": "MIT",
   "dependencies": {
-    "@prisma/client": "^5.7.1",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
     "@solana/web3.js": "^1.95.0",
     "axios": "^1.17.0",
     "bcryptjs": "^2.4.3",
