@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { createClient } from "redis";
 import { config } from "../config/environment";
 import { logger } from "../utils/logger";
@@ -8,12 +9,9 @@ export class DatabaseService {
   private redis: ReturnType<typeof createClient>;
 
   constructor() {
+    const adapter = new PrismaPg({ connectionString: config.database.url });
     this.prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: config.database.url,
-        },
-      },
+      adapter,
       log: [
         {
           emit: "event",

@@ -1,0 +1,73 @@
+// Prisma schema for token-sniper-bot.
+// Models mirror the access patterns in src/services/database.ts. The DB layer
+// is scaffolding (no migrations run yet); this schema exists so `prisma generate`
+// produces a typed client and `tsc --noEmit` passes under Prisma 7.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String         @id @default(cuid())
+  walletAddress    String         @unique
+  subscriptionTier String         @default("free")
+  isActive         Boolean        @default(true)
+  preferences      Json?
+  lastLogin        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  subscriptions    Subscription[]
+  tokenAlerts      TokenAlert[]
+}
+
+model TokenAlert {
+  id           String   @id @default(cuid())
+  userId       String
+  tokenAddress String
+  alertType    String
+  criteria     Json
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([alertType])
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String
+  tier                 String
+  status               String
+  stripeSubscriptionId String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelledAt          DateTime?
+  createdAt            DateTime  @default(now())
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model TokenAnalysis {
+  id           String   @id @default(cuid())
+  tokenAddress String
+  result       Json?
+  createdAt    DateTime @default(now())
+
+  @@index([tokenAddress])
+}
+
+model BlacklistedToken {
+  id            String   @id @default(cuid())
+  tokenAddress  String   @unique
+  reason        String
+  evidence      Json?
+  blacklistedBy String
+  createdAt     DateTime @default(now())
+}

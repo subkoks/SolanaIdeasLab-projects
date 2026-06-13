@@ -35,5 +35,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma client
+        run: |
+          if [ -f prisma/schema.prisma ]; then
+            npm run db:generate
+          else
+            echo "No prisma/schema.prisma in ${{ matrix.project }} — skipping Prisma generate"
+          fi
+
       - name: Type-check
         run: npm run type-check
