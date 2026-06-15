@@ -83,7 +83,7 @@
     "tailwind-merge": "^2.2.0",
     "uuid": "^14.0.0",
     "winston": "^3.11.0",
-    "winston-daily-rotate-file": "^4.7.1",
+    "winston-daily-rotate-file": "^5.0.0",
     "ws": "^8.21.0",
     "zod": "^4.4.3",
     "zustand": "^4.4.7"
