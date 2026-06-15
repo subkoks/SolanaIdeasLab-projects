@@ -52,7 +52,7 @@
     "cors": "^2.8.5",
     "csv-parser": "^3.2.1",
     "date-fns": "^2.30.0",
-    "date-fns-tz": "^2.0.0",
+    "date-fns-tz": "^3.2.0",
     "dotenv": "^17.4.2",
     "express-rate-limit": "^7.1.5",
     "framer-motion": "^12.40.0",
