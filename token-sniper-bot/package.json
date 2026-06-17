@@ -17,7 +17,7 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
-    "security-check": "npm audit",
+    "security-check": "npm audit --omit=dev --audit-level=high",
     "deploy": "docker build -t token-sniper-bot . && docker push token-sniper-bot"
   },
   "keywords": [
