@@ -26,7 +26,7 @@
     "db:analyze-performance": "tsx src/scripts/analyze-performance.ts",
     "analytics-worker": "tsx src/workers/analytics-worker.ts",
     "cache:stats": "tsx src/scripts/cache-stats.ts",
-    "security-check": "npm audit",
+    "security-check": "npm audit --omit=dev --audit-level=high",
     "deploy": "docker build -t wallet-tracker-pro . && docker push wallet-tracker-pro",
     "export": "next export"
   },

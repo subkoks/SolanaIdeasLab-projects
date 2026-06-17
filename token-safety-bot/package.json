@@ -14,7 +14,7 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write src/**/*.ts",
     "type-check": "tsc --noEmit",
-    "security-check": "npm audit"
+    "security-check": "npm audit --omit=dev --audit-level=high"
   },
   "keywords": [
     "solana",
