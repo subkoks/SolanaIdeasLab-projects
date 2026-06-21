@@ -39,6 +39,7 @@ npm run security-check
 - Solana: prefer `@solana/kit` for new RPC/tx code; isolate legacy `@solana/web3.js` behind a compat layer; simulate user-facing txns before send.
 - **Trading safety:** keep research / simulation / live execution separated; enforce slippage limits, position caps, cooldowns, circuit breakers. Never frame speculative logic as guaranteed profit.
 - **Secrets:** RPC URLs, keypairs, API keys live in per-package `.env*` — never commit. Treat wallet keys and signing as maximally sensitive; no key material in VCS or logs.
+- **Pre-ship:** run the `solana-reviewer` subagent before shipping any code that signs or submits Solana transactions, or handles on-chain programs/keypairs.
 - Tests: jest, colocated `tests/` / `*.test.ts`; prioritize failure modes.
 - One logical change per commit; `type(scope): description`; feature branches only.
 
