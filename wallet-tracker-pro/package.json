@@ -73,7 +73,7 @@
     "react-hook-form": "^7.80.0",
     "react-hot-toast": "^2.4.1",
     "react-query": "^3.39.3",
-    "react-virtualized-auto-sizer": "^1.0.20",
+    "react-virtualized-auto-sizer": "^2.0.3",
     "react-window": "^2.2.7",
     "react-window-infinite-loader": "^1.0.9",
     "recharts": "^3.8.1",
