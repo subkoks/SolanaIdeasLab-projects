@@ -86,7 +86,7 @@
     "winston-daily-rotate-file": "^5.0.0",
     "ws": "^8.21.0",
     "zod": "^4.4.3",
-    "zustand": "^4.4.7"
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
