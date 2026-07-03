@@ -31,3 +31,7 @@ Listed in [`ideas/`](https://github.com/subkoks/SolanaIdeasLab/tree/main/ideas) 
 - token-safety-suite
 
 See [`MASTER-PLAN.md`](https://github.com/subkoks/SolanaIdeasLab/blob/main/MASTER-PLAN.md) and [`ARCHITECTURE.md`](https://github.com/subkoks/SolanaIdeasLab/blob/main/ARCHITECTURE.md) for context.
+
+## Codex CLI
+
+Codex CLI can use the repo root `AGENTS.md` and the tracked `.codex/config.toml` defaults in this workspace.
