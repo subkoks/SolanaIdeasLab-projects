@@ -8,6 +8,7 @@ import { z } from "zod";
 import { config } from "./config/environment";
 import { authMiddleware } from "./middleware/auth";
 import { adminAuthMiddleware } from "./middleware/admin";
+import { createScanLimitMiddleware } from "./middleware/scan-limit";
 import { errorHandler } from "./middleware/error-handler";
 import { rateLimitMiddleware } from "./middleware/rate-limit";
 import { DatabaseService } from "./services/database";
@@ -98,6 +99,18 @@ class TokenSafetyBot {
         config.telegram.adminChatIds,
       );
       this.telegramBot.registerCommands();
+      this.monitorService.setOnSafetyLevelChange(async (event) => {
+        if (!this.telegramBot) {
+          return;
+        }
+
+        await this.telegramBot.notifyMonitoringChange(
+          event.subscriberUserIds,
+          event.scan,
+          event.previousLevel,
+          event.nextLevel,
+        );
+      });
     } else {
       this.telegramClient = null;
       this.telegramBot = null;
@@ -153,7 +166,11 @@ class TokenSafetyBot {
       }
     });
 
-    this.app.post("/api/v1/scan", authMiddleware, async (req, res, next) => {
+    this.app.post(
+      "/api/v1/scan",
+      authMiddleware,
+      createScanLimitMiddleware(this.databaseService),
+      async (req, res, next) => {
       try {
         const { analysisDepth = "quick", tokenAddress } = scanSchema.parse(
           req.body,

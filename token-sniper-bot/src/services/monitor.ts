@@ -1,7 +1,13 @@
+import { config } from "../config/environment";
 import { logger } from "../utils/logger";
 import { DatabaseService } from "./database";
 import { HeliusService } from "./helius";
+import {
+  DetectedLaunch,
+  LaunchDetectionService,
+} from "./launch-detection";
 import { RiskScoringService } from "./risk-scoring";
+import type { TelegramBotService } from "./telegram-bot";
 
 export interface MonitoringAlert {
   id: string;
@@ -57,6 +63,8 @@ export class MonitorService {
   private db: DatabaseService;
   private helius: HeliusService;
   private riskScoring: RiskScoringService;
+  private launchDetection: LaunchDetectionService;
+  private telegramBot: TelegramBotService | null = null;
   private monitoringIntervals: Map<string, NodeJS.Timeout> = new Map();
   private isRunning: boolean = false;
   private activeMonitors: Set<string> = new Set();
@@ -65,10 +73,17 @@ export class MonitorService {
     db: DatabaseService,
     helius: HeliusService,
     riskScoring: RiskScoringService,
+    launchDetection?: LaunchDetectionService,
   ) {
     this.db = db;
     this.helius = helius;
     this.riskScoring = riskScoring;
+    this.launchDetection =
+      launchDetection ?? new LaunchDetectionService(helius.getConnection());
+  }
+
+  public setTelegramBot(telegramBot: TelegramBotService | null): void {
+    this.telegramBot = telegramBot;
   }
 
   async start(): Promise<void> {
@@ -198,15 +213,75 @@ export class MonitorService {
   }
 
   private async checkForNewTokenLaunches(): Promise<void> {
-    // This would check for new token launches
-    // For now, we'll simulate the check
-    logger.debug("Checking for new token launches...");
+    if (!config.features.riskScoring) {
+      return;
+    }
 
-    // In production, this would:
-    // 1. Query new token mints from Solana
-    // 2. Filter for tokens with initial liquidity
-    // 3. Analyze metadata for legitimacy
-    // 4. Create alerts for promising launches
+    try {
+      const launches = await this.launchDetection.pollPumpFunLaunches();
+
+      for (const launch of launches) {
+        await this.processLaunch(launch);
+      }
+    } catch (error) {
+      logger.error("Token launch monitoring error:", error);
+    }
+  }
+
+  private async processLaunch(launch: DetectedLaunch): Promise<void> {
+    let riskScore = await this.safeAnalyzeLaunch(launch.mint);
+
+    await this.createAlert({
+      id: `launch-${launch.mint}-${launch.timestampMs}`,
+      type: "launch",
+      tokenAddress: launch.mint,
+      severity:
+        riskScore.total >= 70
+          ? "low"
+          : riskScore.total >= 40
+            ? "medium"
+            : "high",
+      message: `New pump.fun launch detected. Risk score ${riskScore.total}/100 (${riskScore.riskLevel}).`,
+      data: {
+        launch,
+        riskScore,
+      },
+      timestamp: launch.timestampMs,
+    });
+
+    if (this.telegramBot) {
+      await this.telegramBot.broadcastLaunchAlert(launch, riskScore);
+    }
+  }
+
+  private async safeAnalyzeLaunch(tokenAddress: string) {
+    try {
+      return await this.riskScoring.analyzeToken(tokenAddress, "quick");
+    } catch (error) {
+      logger.warn("Launch risk analysis fallback", { tokenAddress, error });
+      return {
+        total: 50,
+        riskLevel: "medium" as const,
+        categories: {
+          contract: 50,
+          liquidity: 50,
+          distribution: 50,
+          social: 50,
+          developer: 50,
+        },
+        factors: {
+          renouncedMint: false,
+          liquidityLocked: false,
+          top10Holding: 50,
+          socialSentiment: 0.5,
+          developerReputation: 50,
+          suspiciousFunctions: false,
+        },
+        recommendations: [
+          "New launch with limited metadata — verify manually before trading.",
+        ],
+      };
+    }
   }
 
   private async checkForRiskChanges(): Promise<void> {
@@ -431,9 +506,11 @@ export class MonitorService {
 
   private async sendNotification(alert: MonitoringAlert): Promise<void> {
     try {
-      // This would send notification via appropriate channels
-      // For now, we'll just log it
-      logger.info(`Notification sent: ${alert.message}`);
+      logger.info(`Notification: ${alert.message}`);
+
+      if (alert.type === "launch" && this.telegramBot) {
+        return;
+      }
     } catch (error) {
       logger.error("Failed to send notification:", error);
     }

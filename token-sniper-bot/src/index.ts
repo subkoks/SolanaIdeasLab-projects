@@ -37,6 +37,7 @@ class TokenSniperBot {
     if (isTelegramEnabled()) {
       this.bot = new Telegraf(config.telegram.botToken);
       this.telegramBot = new TelegramBotService(this.bot);
+      this.monitor.setTelegramBot(this.telegramBot);
     }
 
     this.setupMiddleware();
