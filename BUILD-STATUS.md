@@ -1,21 +1,25 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-05 (phase 4)
+Last updated: 2026-07-05 (phase 5)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | Heuristics + Prisma schema | Wire Postgres runtime + Stripe |
+| **token-safety-bot** | Postgres runtime wired | Stripe billing |
 | **token-sniper-bot** | Launch pipeline + DB persist | Helius LaserStream |
 | **wallet-tracker-pro** | Telegram + dashboard API | Analytics depth |
 
 ## token-safety-bot
 
+**Done (phase 5)**
+- `createDatabaseService()` uses Prisma when `DATABASE_URL` is set; JSON file store remains default for tests/dev without Postgres
+- `PrismaDatabaseService` mirrors JSON persistence API (users, scans, alerts, blacklist, cache)
+
 **Done (phase 4)**
 - Bundle burst heuristic (8+ txs in 120s window via signature block times)
 - LP/freeze risk flag when freeze authority active + concentrated supply
-- Prisma schema + init migration (`token_safety` DB); JSON store remains default until `DATABASE_URL` wiring
+- Prisma schema + init migration (`token_safety` DB)
 
 **Done (phase 2)**
 - Telegram push when monitored token safety level changes on rescan
@@ -25,7 +29,6 @@ Last updated: 2026-07-05 (phase 4)
 - HTTP admin guard, wallet signature verification, monitor rescans, holder count, `.env.example`
 
 **Still needed**
-- Switch `DatabaseService` to Prisma when `DATABASE_URL` set
 - Stripe tier enforcement beyond scan counts
 
 ## token-sniper-bot
