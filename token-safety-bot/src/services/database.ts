@@ -87,7 +87,7 @@ const createTokenPair = (
   return { refreshToken, token }
 }
 
-export class DatabaseService {
+export class JsonDatabaseService {
   private readonly alerts = new Map<string, AlertRecord>()
   private readonly blacklistedTokens = new Map<string, BlacklistedTokenRecord>()
   private readonly cache = new Map<string, CacheEntry>()
@@ -620,4 +620,20 @@ export class DatabaseService {
 
     await this.persistQueue
   }
+}
+
+import { PrismaDatabaseService } from './database-prisma'
+
+export type DatabaseService = JsonDatabaseService | PrismaDatabaseService
+
+export const createDatabaseService = (
+  storageFilePath?: string,
+): DatabaseService => {
+  if (storageFilePath || !config.database.url.trim()) {
+    return new JsonDatabaseService(
+      storageFilePath ?? config.database.storageFilePath,
+    )
+  }
+
+  return new PrismaDatabaseService()
 }

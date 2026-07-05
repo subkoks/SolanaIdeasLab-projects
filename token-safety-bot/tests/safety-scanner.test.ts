@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import type { SolanaService } from '../src/services/solana'
-import { DatabaseService } from '../src/services/database'
+import { JsonDatabaseService } from '../src/services/database'
 import { SafetyScannerService } from '../src/services/safety-scanner'
 
 const TEST_TOKEN = 'So11111111111111111111111111111111111111112'
@@ -46,7 +46,7 @@ describe('SafetyScannerService', () => {
   it('applies blacklist override before RPC scanning', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'token-safety-scan-'))
     const storePath = path.join(tempDir, 'store.json')
-    const databaseService = new DatabaseService(storePath)
+    const databaseService = new JsonDatabaseService(storePath)
     const solanaStub = createSolanaStub()
     const scanner = new SafetyScannerService(
       databaseService,
@@ -74,7 +74,7 @@ describe('SafetyScannerService', () => {
   it('uses raw token amounts for top-holder concentration scoring', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'token-safety-scan-'))
     const storePath = path.join(tempDir, 'store.json')
-    const databaseService = new DatabaseService(storePath)
+    const databaseService = new JsonDatabaseService(storePath)
     const solanaStub = createSolanaStub()
     const scanner = new SafetyScannerService(
       databaseService,

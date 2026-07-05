@@ -11,7 +11,7 @@ import { adminAuthMiddleware } from "./middleware/admin";
 import { createScanLimitMiddleware } from "./middleware/scan-limit";
 import { errorHandler } from "./middleware/error-handler";
 import { rateLimitMiddleware } from "./middleware/rate-limit";
-import { DatabaseService } from "./services/database";
+import { createDatabaseService } from "./services/database";
 import { MonitorService } from "./services/monitor";
 import { QueueService } from "./services/queue";
 import { SafetyScannerService } from "./services/safety-scanner";
@@ -72,7 +72,7 @@ const broadcastSchema = z.object({
 
 class TokenSafetyBot {
   private readonly app = express();
-  private readonly databaseService = new DatabaseService();
+  private readonly databaseService = createDatabaseService();
   private readonly monitorService: MonitorService;
   private readonly queueService = new QueueService();
   private readonly safetyScannerService: SafetyScannerService;

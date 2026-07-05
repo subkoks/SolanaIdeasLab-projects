@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { DatabaseService } from '../src/services/database'
+import { JsonDatabaseService } from '../src/services/database'
 import type { SafetyScanResult } from '../src/services/safety-scanner'
 
 const TEST_TOKEN = 'So11111111111111111111111111111111111111112'
@@ -32,7 +32,7 @@ describe('DatabaseService persistence', () => {
     const storePath = path.join(tempDir, 'store.json')
 
     try {
-      const firstInstance = new DatabaseService(storePath)
+      const firstInstance = new JsonDatabaseService(storePath)
       await firstInstance.connect()
 
       const auth = await firstInstance.authenticateWallet('wallet-A', 'sig-A')
@@ -46,7 +46,7 @@ describe('DatabaseService persistence', () => {
       await firstInstance.saveScan(TEST_TOKEN, buildScanResult(TEST_TOKEN), auth.user.id)
       await firstInstance.disconnect()
 
-      const secondInstance = new DatabaseService(storePath)
+      const secondInstance = new JsonDatabaseService(storePath)
       await secondInstance.connect()
 
       const users = await secondInstance.getUserStats()
