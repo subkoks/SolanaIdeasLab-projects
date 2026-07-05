@@ -97,6 +97,57 @@ export class HeliusService {
     }
   }
 
+  async getAssetMetadata(
+    mint: string,
+  ): Promise<{ image?: string; name?: string; symbol?: string } | null> {
+    if (!config.externalApis.helius) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(
+        `https://mainnet.helius-rpc.com/?api-key=${config.externalApis.helius}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "token-sniper-bot",
+            method: "getAsset",
+            params: { id: mint },
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const payload = (await response.json()) as {
+        result?: {
+          content?: {
+            metadata?: { name?: string; symbol?: string };
+            links?: { image?: string };
+          };
+        };
+      };
+
+      const content = payload.result?.content;
+      if (!content?.metadata) {
+        return null;
+      }
+
+      return {
+        name: content.metadata.name,
+        symbol: content.metadata.symbol,
+        image: content.links?.image,
+      };
+    } catch (error) {
+      logger.debug("Helius getAsset metadata failed", { mint, error });
+      return null;
+    }
+  }
+
   private async setupWebSocket(): Promise<void> {
     try {
       // This would be implemented with actual Helius WebSocket API
@@ -216,7 +267,7 @@ export class HeliusService {
               transaction: tx.transaction,
             });
           }
-        } catch (error) {
+        } catch {
           // Skip failed transaction parsing
           continue;
         }

@@ -1,6 +1,3 @@
-// Scaffold schema so `npm run db:generate` works locally.
-// Expand models when the wallet-tracker DB layer is wired into src/.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,7 +6,41 @@ datasource db {
   provider = "postgresql"
 }
 
-model WalletTrackSession {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
+model TelegramSubscriber {
+  id        String        @id @default(cuid())
+  chatId    String        @unique
+  username  String?
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  watches   WalletWatch[]
+}
+
+model WalletWatch {
+  id             String             @id @default(cuid())
+  subscriberId   String
+  walletAddress  String
+  label          String?
+  lastSignature  String?
+  active         Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  subscriber     TelegramSubscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriberId, walletAddress])
+  @@index([walletAddress])
+  @@index([active])
+}
+
+model WalletActivityEvent {
+  id            String   @id @default(cuid())
+  walletAddress String
+  signature     String   @unique
+  direction     String
+  lamports      BigInt?
+  tokenMint     String?
+  summary       String?
+  observedAt    DateTime @default(now())
+
+  @@index([walletAddress, observedAt])
 }

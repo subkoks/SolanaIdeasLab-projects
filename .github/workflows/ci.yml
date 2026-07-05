@@ -46,5 +46,9 @@ jobs:
       - name: Type-check
         run: npm run type-check
 
+      - name: Lint
+        if: matrix.project != 'wallet-tracker-pro'
+        run: npm run lint
+
       - name: Test
         run: npm test

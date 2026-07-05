@@ -1,14 +1,14 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-05 (phase 2)
+Last updated: 2026-07-05 (phase 3)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
 | **token-safety-bot** | Runnable baseline | Stripe billing + Postgres |
-| **token-sniper-bot** | Launch pipeline MVP | Helius LaserStream + DB migrations |
-| **wallet-tracker-pro** | Spec / UI shell | Telegram-first MVP |
+| **token-sniper-bot** | Launch pipeline + DB persist | Helius LaserStream |
+| **wallet-tracker-pro** | Telegram MVP | Dashboard + analytics |
 
 ## token-safety-bot
 
@@ -26,6 +26,11 @@ Last updated: 2026-07-05 (phase 2)
 
 ## token-sniper-bot
 
+**Done (phase 3)**
+- Prisma init migration + `DetectedLaunch` persistence on new pump.fun launches
+- Helius `getAsset` metadata enrichment on launch Telegram alerts (when `HELIUS_API_KEY` set)
+- ESLint flat config (`eslint.config.mjs`) — lint re-enabled in CI
+
 **Done (phase 2)**
 - pump.fun launch polling (`LaunchDetectionService`) wired into `MonitorService`
 - Risk score on new launches + Telegram broadcast to `/launches subscribe` chats
@@ -35,14 +40,22 @@ Last updated: 2026-07-05 (phase 2)
 - JWT auth, optional Telegram, monitor wired, RPC top-10 scoring, admin middleware
 
 **Still needed**
-- Helius LaserStream / richer metadata on launches
-- Prisma migrations + persist launch alerts
+- Helius LaserStream (real-time vs poll)
 - Remove duplicate dead services (`safety-scanner.ts` copy)
 - Stripe subscriptions
 
 ## wallet-tracker-pro
 
-**Phase 3 target:** Telegram bot MVP before dashboard depth.
+**Done (phase 3)**
+- Telegram bot MVP: `/watch`, `/unwatch`, `/list`, `/activity`
+- Solana watcher polls watchlist and pushes SOL in/out alerts
+- Prisma schema + init migration (`TelegramSubscriber`, `WalletWatch`, `WalletActivityEvent`)
+- `npm run bot:dev` / `bot:start`
+
+**Still needed**
+- Next.js dashboard depth (currently placeholder)
+- SPL token transfer parsing in watcher
+- Stripe / tier limits
 
 ## Commands
 
@@ -54,3 +67,5 @@ Last updated: 2026-07-05 (phase 2)
 **Sniper launch alerts:** start bot → `/launches subscribe`
 
 **Safety monitor alerts:** `/monitor <mint>` in Telegram (requires bot token)
+
+**Wallet tracker bot:** set `TELEGRAM_BOT_TOKEN` → `cd wallet-tracker-pro && npm run bot:dev`

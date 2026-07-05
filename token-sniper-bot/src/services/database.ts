@@ -485,4 +485,36 @@ export class DatabaseService {
       throw error;
     }
   }
+
+  async recordDetectedLaunch(input: {
+    mint: string;
+    signature: string;
+    creator?: string;
+    riskScore?: number;
+    riskLevel?: string;
+    metadata?: unknown;
+  }): Promise<void> {
+    try {
+      await this.prisma.detectedLaunch.upsert({
+        where: { mint: input.mint },
+        update: {
+          signature: input.signature,
+          creator: input.creator,
+          riskScore: input.riskScore,
+          riskLevel: input.riskLevel,
+          metadata: input.metadata as object | undefined,
+        },
+        create: {
+          mint: input.mint,
+          signature: input.signature,
+          creator: input.creator,
+          riskScore: input.riskScore,
+          riskLevel: input.riskLevel,
+          metadata: input.metadata as object | undefined,
+        },
+      });
+    } catch (error) {
+      logger.error("Failed to record detected launch:", error);
+    }
+  }
 }
