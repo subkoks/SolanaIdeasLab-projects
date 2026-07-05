@@ -5,5 +5,7 @@ module.exports = {
   roots: ['<rootDir>/tests'],
   setupFiles: ['<rootDir>/tests/setup.ts'],
   testMatch: ['**/*.test.ts'],
-  clearMocks: true,
+  transformIgnorePatterns: [
+    'node_modules/(?!(uuid|@solana/web3.js|@solana/buffer-layout|@solana/codecs-core|@solana/codecs-numbers|@solana/errors)/)',
+  ],
 }

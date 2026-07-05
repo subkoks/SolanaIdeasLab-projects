@@ -2,6 +2,7 @@ import { Context, Markup, Telegraf } from "telegraf";
 import { logger } from "../utils/logger";
 import { DatabaseService } from "./database";
 import { HeliusService } from "./helius";
+import type { DetectedLaunch } from "./launch-detection";
 import type { RiskScore } from "./risk-scoring";
 import { RiskScoringService } from "./risk-scoring";
 
@@ -28,6 +29,7 @@ export class TelegramBotService {
   private db: DatabaseService;
   private helius: HeliusService;
   private riskScoring: RiskScoringService;
+  private readonly launchAlertChatIds = new Set<number>();
 
   constructor(bot: Telegraf) {
     this.bot = bot;
@@ -50,6 +52,7 @@ export class TelegramBotService {
     // Alert commands
     this.bot.command("alert", (ctx) => this.handleAlert(ctx));
     this.bot.command("alerts", (ctx) => this.handleAlerts(ctx));
+    this.bot.command("launches", (ctx) => this.handleLaunches(ctx));
     this.bot.command("stop", (ctx) => this.handleStopAlert(ctx));
 
     // Premium commands
@@ -87,7 +90,7 @@ Welcome! I help you discover and analyze new Solana tokens with real-time alerts
 • Use /alert <address> to set alerts
 
 **📊 Features:**
-• Real-time token launches
+• Real-time token launches (\`/launches subscribe\`)
 • Risk scoring & analysis
 • Bundle detection
 • Whale activity tracking
@@ -394,6 +397,33 @@ Use /stop <alert_id> to cancel specific alerts.
     await ctx.reply(`✅ Alert ${alertId} cancelled`);
   }
 
+  private async handleLaunches(ctx: Context): Promise<void> {
+    const chatId = ctx.chat?.id;
+    if (!chatId) {
+      return;
+    }
+
+    const arg = getMessageText(ctx).split(/\s+/)[1]?.toLowerCase();
+
+    if (arg === "subscribe" || arg === "on") {
+      this.launchAlertChatIds.add(chatId);
+      await ctx.reply(
+        "✅ Subscribed to pump.fun launch alerts. Use `/launches unsubscribe` to stop.",
+      );
+      return;
+    }
+
+    if (arg === "unsubscribe" || arg === "off") {
+      this.launchAlertChatIds.delete(chatId);
+      await ctx.reply("✅ Unsubscribed from launch alerts.");
+      return;
+    }
+
+    await ctx.reply(
+      "Usage: `/launches subscribe` or `/launches unsubscribe`",
+    );
+  }
+
   private async handlePremium(ctx: Context): Promise<void> {
     const message = `
 ⚡ **Premium Features**
@@ -657,6 +687,40 @@ ${riskScore.recommendations.join("\n")}
       logger.error("Broadcast failed:", error);
       throw error;
     }
+  }
+
+  async broadcastLaunchAlert(
+    launch: DetectedLaunch,
+    riskScore: RiskScore,
+  ): Promise<number> {
+    if (this.launchAlertChatIds.size === 0) {
+      return 0;
+    }
+
+    const message = [
+      "🚀 New pump.fun launch",
+      `Mint: \`${launch.mint}\``,
+      `Risk: ${riskScore.total}/100 (${riskScore.riskLevel})`,
+      `Creator: \`${launch.creator}\``,
+      `Tx: \`${launch.signature.slice(0, 16)}...\``,
+      "",
+      "Reply with the mint or use /analyze for a full report.",
+    ].join("\n");
+
+    let sent = 0;
+
+    for (const chatId of this.launchAlertChatIds) {
+      try {
+        await this.bot.telegram.sendMessage(chatId, message, {
+          parse_mode: "Markdown",
+        });
+        sent += 1;
+      } catch (error) {
+        logger.error("Failed to send launch alert", { chatId, error });
+      }
+    }
+
+    return sent;
   }
 
   async sendAlert(alert: TelegramAlert): Promise<void> {

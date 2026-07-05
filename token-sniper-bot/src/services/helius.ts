@@ -53,6 +53,10 @@ export class HeliusService {
     });
   }
 
+  getConnection(): Connection {
+    return this.connection;
+  }
+
   async connect(): Promise<void> {
     try {
       // Test connection

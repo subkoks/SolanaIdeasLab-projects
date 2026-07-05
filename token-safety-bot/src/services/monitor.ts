@@ -1,5 +1,6 @@
 import { config } from '../config/environment'
 import { logger } from '../utils/logger'
+import type { MonitoringChangeHandler } from '../types/monitoring'
 import type { AnalysisDepth, SafetyScanResult } from './safety-scanner'
 import { SafetyScannerService } from './safety-scanner'
 
@@ -16,8 +17,13 @@ export class MonitorService {
   private readonly activeMonitoring = new Map<string, MonitoringState>()
   private rescanTimer: NodeJS.Timeout | null = null
   private running = false
+  private onChangeHandler: MonitoringChangeHandler | null = null
 
   constructor(private readonly safetyScannerService: SafetyScannerService) {}
+
+  public setOnSafetyLevelChange(handler: MonitoringChangeHandler | null): void {
+    this.onChangeHandler = handler
+  }
 
   public async start(): Promise<void> {
     this.running = true
@@ -132,6 +138,16 @@ export class MonitorService {
             nextLevel: state.lastScanResult.safetyLevel,
             subscribers: state.userIds.size,
           })
+
+          if (this.onChangeHandler) {
+            await this.onChangeHandler({
+              tokenAddress,
+              previousLevel,
+              nextLevel: state.lastScanResult.safetyLevel,
+              scan: state.lastScanResult,
+              subscriberUserIds: Array.from(state.userIds),
+            })
+          }
         }
       } catch (error) {
         logger.error('Monitoring rescan failed', { tokenAddress, error })

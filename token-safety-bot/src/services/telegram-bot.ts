@@ -466,4 +466,37 @@ export class TelegramBotService {
 
     return { sent, targetTier };
   }
+
+  public async notifyMonitoringChange(
+    subscriberUserIds: ReadonlyArray<string>,
+    scan: SafetyScanResult,
+    previousLevel: string,
+    nextLevel: string,
+  ): Promise<number> {
+    const message = formatScanForTelegram(
+      scan,
+      `Monitoring alert: safety level changed ${previousLevel} → ${nextLevel}`,
+    )
+
+    let sent = 0
+
+    for (const userId of subscriberUserIds) {
+      const match = /^telegram:(\d+)$/.exec(userId)
+      if (!match) {
+        continue
+      }
+
+      const chatId = Number(match[1])
+      for (const chunk of splitTelegramMessage(message)) {
+        try {
+          await this.bot.telegram.sendMessage(chatId, chunk)
+          sent += 1
+        } catch {
+          break
+        }
+      }
+    }
+
+    return sent
+  }
 }
