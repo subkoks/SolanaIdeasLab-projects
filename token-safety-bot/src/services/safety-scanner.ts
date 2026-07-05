@@ -207,6 +207,32 @@ export class SafetyScannerService {
       recommendations.push('Treat early activity as potentially bot-coordinated until holders diversify')
     }
 
+    const bundleWindow = this.detectBundleActivity(recentSignatures)
+    if (bundleWindow.detected) {
+      score -= 15
+      redFlags.push(
+        `Possible coordinated buying detected (${bundleWindow.count} txs in ${bundleWindow.windowSeconds}s)`,
+      )
+      recommendations.push(
+        'Wait for organic holder growth before sizing in — activity may be bundled',
+      )
+    }
+
+    if (
+      tokenInfo?.freezeAuthority &&
+      topHolderOwnershipRatio > 0.15
+    ) {
+      score -= 12
+      redFlags.push(
+        'Active freeze authority with concentrated supply — liquidity can be frozen',
+      )
+      recommendations.push(
+        'Confirm LP lock / renounced freeze authority before trading size',
+      )
+    } else if (!tokenInfo?.freezeAuthority && holderCount >= 10) {
+      greenFlags.push('Freeze authority renounced with growing holder base')
+    }
+
     if (analysisDepth !== 'quick' && recentSignatures.length < 3) {
       score -= 5
       recommendations.push('Wait for more trading history before increasing position size')
@@ -309,6 +335,31 @@ export class SafetyScannerService {
       score: latestScan.overallScore,
       safetyLevel: latestScan.safetyLevel,
       riskSignals,
+    }
+  }
+
+  private detectBundleActivity(
+    signatures: Array<{ blockTime: number | null; signature: string }>,
+  ): { count: number; detected: boolean; windowSeconds: number } {
+    const windowSeconds = 120
+    const blockTimes = signatures
+      .map((entry) => entry.blockTime)
+      .filter((value): value is number => value !== null)
+      .sort((left, right) => right - left)
+
+    if (blockTimes.length < 8) {
+      return { detected: false, count: blockTimes.length, windowSeconds }
+    }
+
+    const newest = blockTimes[0]!
+    const burstCount = blockTimes.filter(
+      (blockTime) => newest - blockTime <= windowSeconds,
+    ).length
+
+    return {
+      detected: burstCount >= 8,
+      count: burstCount,
+      windowSeconds,
     }
   }
 }

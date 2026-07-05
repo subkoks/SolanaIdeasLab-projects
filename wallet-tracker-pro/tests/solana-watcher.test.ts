@@ -46,4 +46,43 @@ describe('SolanaWatcherService', () => {
     expect(watcher.isValidAddress('not-a-wallet')).toBe(false)
     expect(watcher.isValidAddress('')).toBe(false)
   })
+
+  it('parses SPL token balance changes for the watched wallet', () => {
+    const movements = watcher.parseMovements(
+      'Wallet1111111111111111111111111111111',
+      'sig123',
+      {
+        meta: {
+          preBalances: [],
+          postBalances: [],
+          preTokenBalances: [
+            {
+              mint: 'Mint1111111111111111111111111111111111',
+              owner: 'Wallet1111111111111111111111111111111',
+              uiTokenAmount: { amount: '1000000', decimals: 6, uiAmount: 1 },
+            },
+          ],
+          postTokenBalances: [
+            {
+              mint: 'Mint1111111111111111111111111111111111',
+              owner: 'Wallet1111111111111111111111111111111',
+              uiTokenAmount: { amount: '2500000', decimals: 6, uiAmount: 2.5 },
+            },
+          ],
+        },
+        transaction: {
+          message: {
+            accountKeys: [],
+          },
+        },
+      } as never,
+    )
+
+    expect(movements).toHaveLength(1)
+    expect(movements[0]?.tokenMint).toBe(
+      'Mint1111111111111111111111111111111111',
+    )
+    expect(movements[0]?.direction).toBe('in')
+    expect(movements[0]?.summary).toContain('SPL in')
+  })
 })

@@ -21,7 +21,8 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 if command -v createdb >/dev/null 2>&1; then
   createdb token_sniper 2>/dev/null || true
   createdb wallet_tracker 2>/dev/null || true
-  log "postgres: token_sniper + wallet_tracker (create if missing)"
+  createdb token_safety 2>/dev/null || true
+  log "postgres: token_sniper + wallet_tracker + token_safety (create if missing)"
 fi
 
 for proj in token-safety-bot token-sniper-bot wallet-tracker-pro; do

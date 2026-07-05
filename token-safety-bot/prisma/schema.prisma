@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String         @id @default(cuid())
+  walletAddress    String         @unique
+  subscriptionTier String         @default("free")
+  isActive         Boolean        @default(true)
+  preferences      Json?
+  lastLogin        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  tokenAlerts      TokenAlert[]
+  subscriptions    Subscription[]
+}
+
+model TokenAlert {
+  id           String   @id @default(cuid())
+  userId       String
+  tokenAddress String
+  alertType    String
+  criteria     Json
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([alertType])
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String
+  tier                 String
+  status               String
+  stripeSubscriptionId String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelledAt          DateTime?
+  createdAt            DateTime  @default(now())
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model TokenAnalysis {
+  id           String   @id @default(cuid())
+  tokenAddress String
+  userId       String?
+  result       Json
+  createdAt    DateTime @default(now())
+
+  @@index([tokenAddress, createdAt])
+  @@index([userId])
+}
+
+model BlacklistedToken {
+  id            String   @id @default(cuid())
+  tokenAddress  String   @unique
+  reason        String
+  evidence      Json?
+  blacklistedBy String   @default("system")
+  createdAt     DateTime @default(now())
+}
