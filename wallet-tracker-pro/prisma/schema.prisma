@@ -1,0 +1,15 @@
+// Scaffold schema so `npm run db:generate` works locally.
+// Expand models when the wallet-tracker DB layer is wired into src/.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model WalletTrackSession {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+}
