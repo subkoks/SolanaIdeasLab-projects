@@ -4,6 +4,8 @@ import { config } from '../config/environment'
 
 const LEGACY_TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
 const TOKEN_2022_PROGRAM = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
+const TOKEN_PROGRAM_ID = new PublicKey(LEGACY_TOKEN_PROGRAM)
+const TOKEN_ACCOUNT_SIZE = 165
 
 export type TokenProgramType = 'spl-token' | 'token-2022' | 'unknown'
 
@@ -132,8 +134,27 @@ export class SolanaService {
   }
 
   public async getTokenHolderCount(tokenAddress: string): Promise<number> {
-    const largestAccounts = await this.getTokenLargestAccounts(tokenAddress, 20)
-    return largestAccounts.filter((account) => account.uiAmount > 0).length
+    try {
+      const mint = new PublicKey(tokenAddress)
+      const accounts = await this.connection.getParsedProgramAccounts(
+        TOKEN_PROGRAM_ID,
+        {
+          filters: [
+            { dataSize: TOKEN_ACCOUNT_SIZE },
+            { memcmp: { offset: 0, bytes: mint.toBase58() } },
+          ],
+        },
+      )
+
+      return accounts.filter((account) => {
+        const parsed = account.account.data as ParsedAccountData
+        const uiAmount = parsed.parsed?.info?.tokenAmount?.uiAmount ?? 0
+        return uiAmount > 0
+      }).length
+    } catch {
+      const largestAccounts = await this.getTokenLargestAccounts(tokenAddress, 20)
+      return largestAccounts.filter((account) => account.uiAmount > 0).length
+    }
   }
 
   public normalizeTokenAmount(amount: TokenAmount | null | undefined): number {

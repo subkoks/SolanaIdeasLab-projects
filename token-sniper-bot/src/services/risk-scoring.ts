@@ -352,13 +352,26 @@ export class RiskScoringService {
 
   private async getTop10Holding(tokenAddress: string): Promise<number> {
     try {
-      const holders = await this.helius.getTokenHolders(tokenAddress, 10);
+      const accounts = await this.helius.getTokenLargestAccounts(
+        tokenAddress,
+        10,
+      );
 
-      if (holders.length === 0) return 0;
+      if (accounts.length === 0) {
+        return 50;
+      }
 
-      // This would calculate actual top 10 holding percentage
-      // For now, return a mock value
-      return Math.random() * 100;
+      const top10UiAmount = accounts.reduce(
+        (total, account) => total + account.uiAmount,
+        0,
+      );
+      const supplyUi = await this.helius.getTokenSupplyUi(tokenAddress);
+
+      if (supplyUi <= 0) {
+        return Math.min(100, top10UiAmount);
+      }
+
+      return Math.min(100, (top10UiAmount / supplyUi) * 100);
     } catch (error) {
       logger.error("Failed to get top 10 holding:", error);
       return 50;

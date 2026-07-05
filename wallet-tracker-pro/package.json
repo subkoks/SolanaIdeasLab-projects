@@ -20,12 +20,6 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
-    "db:setup": "tsx src/scripts/setup-database.ts",
-    "db:seed": "tsx src/scripts/seed.ts",
-    "db:seed-analytics": "tsx src/scripts/seed-analytics.ts",
-    "db:analyze-performance": "tsx src/scripts/analyze-performance.ts",
-    "analytics-worker": "tsx src/workers/analytics-worker.ts",
-    "cache:stats": "tsx src/scripts/cache-stats.ts",
     "security-check": "npm audit --omit=dev --audit-level=high",
     "deploy": "docker build -t wallet-tracker-pro . && docker push wallet-tracker-pro",
     "export": "next export"

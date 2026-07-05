@@ -7,6 +7,7 @@ import { Context, Telegraf, session } from "telegraf";
 import { z } from "zod";
 import { config } from "./config/environment";
 import { authMiddleware } from "./middleware/auth";
+import { adminAuthMiddleware } from "./middleware/admin";
 import { errorHandler } from "./middleware/error-handler";
 import { rateLimitMiddleware } from "./middleware/rate-limit";
 import { DatabaseService } from "./services/database";
@@ -19,6 +20,7 @@ import type { SubscriptionTier } from "./types/auth";
 import { logger } from "./utils/logger";
 
 const walletConnectSchema = z.object({
+  message: z.string().min(1),
   signature: z.string().min(1),
   walletAddress: z.string().min(32),
 });
@@ -127,13 +129,14 @@ class TokenSafetyBot {
 
     this.app.post("/api/v1/auth/wallet/connect", async (req, res, next) => {
       try {
-        const { signature, walletAddress } = walletConnectSchema.parse(
+        const { message, signature, walletAddress } = walletConnectSchema.parse(
           req.body,
         );
         res.json(
           await this.databaseService.authenticateWallet(
             walletAddress,
             signature,
+            message,
           ),
         );
       } catch (error) {
@@ -393,6 +396,7 @@ class TokenSafetyBot {
     this.app.get(
       "/api/v1/admin/stats",
       authMiddleware,
+      adminAuthMiddleware,
       async (_req, res, next) => {
         try {
           res.json(await this.getAdminStats());
@@ -405,6 +409,7 @@ class TokenSafetyBot {
     this.app.post(
       "/api/v1/admin/broadcast",
       authMiddleware,
+      adminAuthMiddleware,
       async (req, res, next) => {
         try {
           const { message, targetTier } = broadcastSchema.parse(req.body);
@@ -426,6 +431,7 @@ class TokenSafetyBot {
     this.app.get(
       "/api/v1/admin/scans",
       authMiddleware,
+      adminAuthMiddleware,
       async (_req, res, next) => {
         try {
           res.json(await this.databaseService.getAllScans());
@@ -438,6 +444,7 @@ class TokenSafetyBot {
     this.app.post(
       "/api/v1/admin/blacklist",
       authMiddleware,
+      adminAuthMiddleware,
       async (req, res, next) => {
         try {
           const { evidence, reason, tokenAddress } = blacklistSchema.parse(
@@ -459,6 +466,7 @@ class TokenSafetyBot {
     this.app.get(
       "/api/v1/admin/blacklist",
       authMiddleware,
+      adminAuthMiddleware,
       async (_req, res, next) => {
         try {
           res.json(await this.databaseService.getBlacklistedTokens());

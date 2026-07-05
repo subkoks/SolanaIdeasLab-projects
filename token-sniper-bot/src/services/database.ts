@@ -2,6 +2,11 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { createClient } from "redis";
 import { config } from "../config/environment";
+import {
+  generateRefreshToken,
+  generateToken,
+  verifyRefreshToken,
+} from "../middleware/auth";
 import { logger } from "../utils/logger";
 
 export class DatabaseService {
@@ -95,8 +100,12 @@ export class DatabaseService {
         },
       });
 
-      const token = this.generateJWT(user.id);
-      const refreshToken = this.generateRefreshToken(user.id);
+      const token = generateToken({
+        id: user.id,
+        walletAddress: user.walletAddress,
+        subscriptionTier: user.subscriptionTier,
+      });
+      const refreshToken = generateRefreshToken(user.id);
 
       return {
         user: {
@@ -115,7 +124,7 @@ export class DatabaseService {
 
   async refreshToken(refreshToken: string): Promise<any> {
     try {
-      const payload = this.verifyRefreshToken(refreshToken);
+      const payload = verifyRefreshToken(refreshToken);
       const user = await this.prisma.user.findUnique({
         where: { id: payload.userId },
       });
@@ -124,8 +133,12 @@ export class DatabaseService {
         throw new Error("Invalid refresh token");
       }
 
-      const newToken = this.generateJWT(user.id);
-      const newRefreshToken = this.generateRefreshToken(user.id);
+      const newToken = generateToken({
+        id: user.id,
+        walletAddress: user.walletAddress,
+        subscriptionTier: user.subscriptionTier,
+      });
+      const newRefreshToken = generateRefreshToken(user.id);
 
       return {
         token: newToken,
@@ -404,22 +417,6 @@ export class DatabaseService {
   }
 
   // Helper methods
-  private generateJWT(userId: string): string {
-    // This would use a real JWT library in production
-    return `jwt_token_${userId}_${Date.now()}`;
-  }
-
-  private generateRefreshToken(userId: string): string {
-    // This would use a real JWT library in production
-    return `refresh_token_${userId}_${Date.now()}`;
-  }
-
-  private verifyRefreshToken(token: string): any {
-    // This would use a real JWT library in production
-    const parts = token.split("_");
-    return { userId: parts[2] };
-  }
-
   private getPriceByTier(tier: string): number {
     const prices = {
       free: 0,

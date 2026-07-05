@@ -23,6 +23,21 @@ const parseCommitment = (value: string | undefined): Commitment => {
   return "confirmed";
 };
 
+const parseWalletAddresses = (
+  value: string | undefined,
+): ReadonlySet<string> => {
+  const addresses = new Set<string>();
+  if (!value?.trim()) {
+    return addresses;
+  }
+  for (const part of value.split(/[\s,]+/)) {
+    if (part.trim()) {
+      addresses.add(part.trim());
+    }
+  }
+  return addresses;
+};
+
 const parseTelegramAdminChatIds = (
   value: string | undefined,
 ): ReadonlySet<number> => {
@@ -60,6 +75,11 @@ export const config = {
     jwtSecret: process.env.JWT_SECRET ?? "token-safety-bot-dev-secret",
     accessTokenTtl: process.env.JWT_ACCESS_TTL ?? "1h",
     refreshTokenTtl: process.env.JWT_REFRESH_TTL ?? "7d",
+    adminWalletAddresses: parseWalletAddresses(
+      process.env.ADMIN_WALLET_ADDRESSES,
+    ),
+    skipWalletSignatureVerify:
+      process.env.SKIP_WALLET_SIGNATURE_VERIFY === "true",
   },
   telegram: {
     adminChatIds: parseTelegramAdminChatIds(
@@ -95,6 +115,10 @@ export const config = {
     scanCacheTtlMs: parseNumber(
       process.env.SCAN_CACHE_TTL_MS,
       DEFAULT_SCAN_CACHE_TTL_MS,
+    ),
+    rescanIntervalMs: parseNumber(
+      process.env.MONITOR_RESCAN_INTERVAL_MS,
+      300_000,
     ),
   },
 } as const;
