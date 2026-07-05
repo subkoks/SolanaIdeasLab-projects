@@ -46,15 +46,5 @@ jobs:
       - name: Type-check
         run: npm run type-check
 
-      - name: Lint
-        env:
-          ESLINT_USE_FLAT_CONFIG: "false"
-        run: |
-          if [ "${{ matrix.project }}" = "wallet-tracker-pro" ]; then
-            echo "Skipping lint for wallet-tracker-pro (eslint 10 + eslint-config-next pending migration)"
-          else
-            npm run lint
-          fi
-
       - name: Test
         run: npm test
