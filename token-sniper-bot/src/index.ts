@@ -3,13 +3,14 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import { Telegraf, session } from "telegraf";
-import { config } from "./config/environment";
+import { config, isTelegramEnabled } from "./config/environment";
 import type { AuthenticatedRequest } from "./middleware/auth";
-import { authMiddleware } from "./middleware/auth";
+import { adminAuthMiddleware, authMiddleware } from "./middleware/auth";
 import { errorHandler } from "./middleware/error-handler";
 import { globalRateLimiter } from "./middleware/rate-limit";
 import { DatabaseService } from "./services/database";
 import { HeliusService } from "./services/helius";
+import { MonitorService } from "./services/monitor";
 import { QueueService } from "./services/queue";
 import { RiskScoringService } from "./services/risk-scoring";
 import { TelegramBotService } from "./services/telegram-bot";
@@ -17,21 +18,26 @@ import { logger } from "./utils/logger";
 
 class TokenSniperBot {
   private app: express.Application;
-  private bot: Telegraf;
+  private bot: Telegraf | null = null;
   private db: DatabaseService;
   private helius: HeliusService;
   private riskScorer: RiskScoringService;
-  private telegramBot: TelegramBotService;
+  private telegramBot: TelegramBotService | null = null;
   private queue: QueueService;
+  private monitor: MonitorService;
 
   constructor() {
     this.app = express();
-    this.bot = new Telegraf(config.telegram.botToken);
     this.db = new DatabaseService();
     this.helius = new HeliusService();
     this.riskScorer = new RiskScoringService(this.helius, this.db);
-    this.telegramBot = new TelegramBotService(this.bot);
     this.queue = new QueueService();
+    this.monitor = new MonitorService(this.db, this.helius, this.riskScorer);
+
+    if (isTelegramEnabled()) {
+      this.bot = new Telegraf(config.telegram.botToken);
+      this.telegramBot = new TelegramBotService(this.bot);
+    }
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -69,15 +75,27 @@ class TokenSniperBot {
 
     // Webhook for Telegram
     this.app.post("/webhook/telegram", (req, res) => {
+      if (!this.bot) {
+        res.status(503).json({ error: "Telegram bot is not configured" });
+        return;
+      }
+
       this.bot.handleUpdate(req.body);
       res.sendStatus(200);
     });
 
     // Admin routes (protected)
-    this.app.use("/api/v1/admin", authMiddleware, this.adminRoutes());
+    this.app.use("/api/v1/admin", authMiddleware, adminAuthMiddleware, this.adminRoutes());
   }
 
   private setupTelegramBot(): void {
+    if (!this.bot || !this.telegramBot) {
+      logger.warn(
+        "Telegram bot disabled because TELEGRAM_BOT_TOKEN is not set",
+      );
+      return;
+    }
+
     // Session middleware for bot
     this.bot.use(session());
 
@@ -87,7 +105,6 @@ class TokenSniperBot {
     // Start bot
     this.bot.launch().catch((error) => {
       logger.error("Failed to start Telegram bot:", error);
-      process.exit(1);
     });
   }
 
@@ -263,6 +280,11 @@ class TokenSniperBot {
 
     router.post("/broadcast", async (req, res) => {
       try {
+        if (!this.telegramBot) {
+          res.status(503).json({ error: "Telegram bot is not configured" });
+          return;
+        }
+
         const { message, targetTier = "all" } = req.body;
         const result = await this.telegramBot.broadcastSafetyAlert(
           message,
@@ -356,6 +378,11 @@ class TokenSniperBot {
       this.queue.startProcessors();
       logger.info("Queue processors started");
 
+      if (config.features.riskScoring) {
+        await this.monitor.start();
+        logger.info("Monitor service started");
+      }
+
       // Start HTTP server
       const port = config.server.port || 8000;
       this.app.listen(port, () => {
@@ -374,8 +401,11 @@ class TokenSniperBot {
     try {
       await this.queue.disconnect();
       await this.helius.disconnect();
+      await this.monitor.stop();
       await this.db.disconnect();
-      this.bot.stop();
+      if (this.bot) {
+        this.bot.stop();
+      }
       logger.info("Token Sniper Bot stopped gracefully");
     } catch (error) {
       logger.error("Error during shutdown:", error);

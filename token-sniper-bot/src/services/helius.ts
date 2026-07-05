@@ -1,7 +1,13 @@
-import type { Commitment } from "@solana/web3.js";
-import { AccountInfo, Connection, PublicKey } from "@solana/web3.js";
+import type { AccountInfo, Commitment } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { config } from "../config/environment";
 import { logger } from "../utils/logger";
+
+export interface TokenLargestAccount {
+  address: string;
+  amount: string;
+  uiAmount: number;
+}
 
 export interface HeliusWebhookEvent {
   signature: string;
@@ -10,9 +16,9 @@ export interface HeliusWebhookEvent {
   account: string;
   slot: number;
   parsed: {
-    info: AccountInfo<Buffer>;
+    info: unknown;
     type: string;
-    data: any;
+    data: unknown;
   };
 }
 
@@ -123,24 +129,48 @@ export class HeliusService {
 
   async getTokenSupply(tokenAddress: string): Promise<string | null> {
     try {
-      const mintInfo = await this.connection.getParsedAccountInfo(
+      const supply = await this.connection.getTokenSupply(
         new PublicKey(tokenAddress),
       );
-
-      if (!mintInfo || !mintInfo.value) {
-        return null;
-      }
-
-      // For SPL tokens, supply is in data.parsed.info.supply
-      const parsed = mintInfo.value as any;
-      if (parsed.data?.parsed?.info?.supply) {
-        return parsed.data.parsed.info.supply.toString();
-      }
-
-      return null;
+      return supply.value.amount;
     } catch (error) {
       logger.error(`Failed to get token supply for ${tokenAddress}:`, error);
       return null;
+    }
+  }
+
+  async getTokenSupplyUi(tokenAddress: string): Promise<number> {
+    try {
+      const supply = await this.connection.getTokenSupply(
+        new PublicKey(tokenAddress),
+      );
+      return supply.value.uiAmount ?? 0;
+    } catch (error) {
+      logger.error(`Failed to get token supply UI for ${tokenAddress}:`, error);
+      return 0;
+    }
+  }
+
+  async getTokenLargestAccounts(
+    tokenAddress: string,
+    limit: number = 10,
+  ): Promise<TokenLargestAccount[]> {
+    try {
+      const largestAccounts = await this.connection.getTokenLargestAccounts(
+        new PublicKey(tokenAddress),
+      );
+
+      return largestAccounts.value.slice(0, limit).map((account) => ({
+        address: account.address.toBase58(),
+        amount: account.amount,
+        uiAmount: account.uiAmount ?? 0,
+      }));
+    } catch (error) {
+      logger.error(
+        `Failed to get largest accounts for ${tokenAddress}:`,
+        error,
+      );
+      return [];
     }
   }
 
@@ -149,12 +179,10 @@ export class HeliusService {
     limit: number = 100,
   ): Promise<string[]> {
     try {
-      // This would use Helius API to get token holders
-      // For now, return empty array as placeholder
-      logger.info(
-        `Getting token holders for ${tokenAddress} (limit: ${limit})`,
-      );
-      return [];
+      const accounts = await this.getTokenLargestAccounts(tokenAddress, limit);
+      return accounts
+        .filter((account) => account.uiAmount > 0)
+        .map((account) => account.address);
     } catch (error) {
       logger.error(`Failed to get token holders for ${tokenAddress}:`, error);
       return [];

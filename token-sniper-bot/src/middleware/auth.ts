@@ -111,11 +111,13 @@ export const adminAuthMiddleware = async (req: AuthenticatedRequest, res: Respon
       return
     }
 
-    // Check if user is admin (would use actual database check in production)
-    const adminWallets = [
-      'admin_wallet_address_1',
-      'admin_wallet_address_2'
-    ]
+    // Check if user is admin via configured wallet allowlist
+    const adminWallets = config.auth.adminWalletAddresses
+
+    if (adminWallets.length === 0) {
+      res.status(503).json({ error: 'Admin wallets are not configured' })
+      return
+    }
 
     if (!adminWallets.includes(req.user.walletAddress)) {
       res.status(403).json({ error: 'Admin access required' })

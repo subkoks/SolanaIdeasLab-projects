@@ -117,12 +117,25 @@ export class DatabaseService {
 
   public async authenticateWallet(
     walletAddress: string,
-    _signature: string,
+    signature: string,
+    message?: string,
   ): Promise<{ refreshToken: string; token: string; user: AuthenticatedUser }> {
     const normalizedWalletAddress = walletAddress.trim()
 
     if (!normalizedWalletAddress) {
       throw new Error('Wallet address is required')
+    }
+
+    if (!config.auth.skipWalletSignatureVerify) {
+      if (!message?.trim()) {
+        throw new Error('Signed message is required')
+      }
+
+      const { verifyWalletSignature } = await import('../utils/wallet-signature')
+
+      if (!verifyWalletSignature(normalizedWalletAddress, message, signature)) {
+        throw new Error('Invalid wallet signature')
+      }
     }
 
     const existingUser = Array.from(this.users.values()).find(
