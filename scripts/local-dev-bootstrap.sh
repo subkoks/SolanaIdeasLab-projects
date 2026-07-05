@@ -37,6 +37,9 @@ for proj in token-safety-bot token-sniper-bot wallet-tracker-pro; do
   fi
   if [ -f "$dir/prisma/schema.prisma" ] || [ -f "$dir/prisma.config.ts" ]; then
     (cd "$dir" && npm run db:generate)
+    if [ -d "$dir/prisma/migrations" ] && [ "$(ls -A "$dir/prisma/migrations" 2>/dev/null | grep -v migration_lock.toml || true)" ]; then
+      (cd "$dir" && npm run db:migrate:deploy 2>/dev/null) || log "  prisma migrate deploy skipped (DB unavailable)"
+    fi
   fi
   (cd "$dir" && npm run type-check)
 done

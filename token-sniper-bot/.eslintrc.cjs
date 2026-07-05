@@ -24,8 +24,11 @@ module.exports = {
       {
         argsIgnorePattern: "^_",
         varsIgnorePattern: "^_",
+        caughtErrors: "none",
         ignoreRestSiblings: true,
       },
     ],
+    "preserve-caught-error": "off",
+    "no-useless-assignment": "off",
   },
 };

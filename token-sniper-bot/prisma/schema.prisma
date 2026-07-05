@@ -71,3 +71,16 @@ model BlacklistedToken {
   blacklistedBy String
   createdAt     DateTime @default(now())
 }
+
+model DetectedLaunch {
+  id         String   @id @default(cuid())
+  mint       String   @unique
+  signature  String
+  creator    String?
+  riskScore  Int?
+  riskLevel  String?
+  metadata   Json?
+  detectedAt DateTime @default(now())
+
+  @@index([detectedAt])
+}

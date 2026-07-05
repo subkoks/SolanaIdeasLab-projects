@@ -10,8 +10,8 @@
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch --passWithNoTests",
     "test:coverage": "jest --coverage --passWithNoTests",
-    "lint": "eslint src --ext .ts",
-    "lint:fix": "eslint src --ext .ts --fix",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "format": "prettier --write src/**/*.ts",
     "type-check": "tsc --noEmit",
     "security-check": "npm audit --omit=dev --audit-level=high"
@@ -45,6 +45,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "@eslint/js": "^10.0.1",
     "@types/compression": "^1.7.5",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",

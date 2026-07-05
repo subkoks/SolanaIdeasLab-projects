@@ -692,13 +692,20 @@ ${riskScore.recommendations.join("\n")}
   async broadcastLaunchAlert(
     launch: DetectedLaunch,
     riskScore: RiskScore,
+    metadata?: { name?: string; symbol?: string; image?: string } | null,
   ): Promise<number> {
     if (this.launchAlertChatIds.size === 0) {
       return 0;
     }
 
+    const title =
+      metadata?.name && metadata?.symbol
+        ? `${metadata.name} (${metadata.symbol})`
+        : launch.mint;
+
     const message = [
       "🚀 New pump.fun launch",
+      `Token: ${title}`,
       `Mint: \`${launch.mint}\``,
       `Risk: ${riskScore.total}/100 (${riskScore.riskLevel})`,
       `Creator: \`${launch.creator}\``,

@@ -229,7 +229,17 @@ export class MonitorService {
   }
 
   private async processLaunch(launch: DetectedLaunch): Promise<void> {
-    let riskScore = await this.safeAnalyzeLaunch(launch.mint);
+    const riskScore = await this.safeAnalyzeLaunch(launch.mint);
+    const assetMetadata = await this.helius.getAssetMetadata(launch.mint);
+
+    await this.db.recordDetectedLaunch({
+      mint: launch.mint,
+      signature: launch.signature,
+      creator: launch.creator,
+      riskScore: riskScore.total,
+      riskLevel: riskScore.riskLevel,
+      metadata: assetMetadata,
+    });
 
     await this.createAlert({
       id: `launch-${launch.mint}-${launch.timestampMs}`,
@@ -250,7 +260,11 @@ export class MonitorService {
     });
 
     if (this.telegramBot) {
-      await this.telegramBot.broadcastLaunchAlert(launch, riskScore);
+      await this.telegramBot.broadcastLaunchAlert(
+        launch,
+        riskScore,
+        assetMetadata,
+      );
     }
   }
 
