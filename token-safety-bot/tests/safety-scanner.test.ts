@@ -33,9 +33,12 @@ const createSolanaStub = (): jest.Mocked<
       uiAmount: 300,
     },
   ]),
-  getRecentSignatures: jest
-    .fn()
-    .mockResolvedValue(Array.from({ length: 12 }, (_, index) => `sig-${index}`)),
+  getRecentSignatures: jest.fn().mockResolvedValue(
+    Array.from({ length: 12 }, (_, index) => ({
+      signature: `sig-${index}`,
+      blockTime: 1_700_000_000 - index,
+    })),
+  ),
   getTokenHolderCount: jest.fn().mockResolvedValue(8),
 })
 

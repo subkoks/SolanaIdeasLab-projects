@@ -137,6 +137,16 @@ export class DatabaseService {
     })
   }
 
+  public async getDashboardStats() {
+    const [subscribers, watches, events] = await Promise.all([
+      this.prisma.telegramSubscriber.count({ where: { active: true } }),
+      this.prisma.walletWatch.count({ where: { active: true } }),
+      this.prisma.walletActivityEvent.count(),
+    ])
+
+    return { subscribers, watches, events }
+  }
+
   public async healthCheck(): Promise<boolean> {
     try {
       await this.prisma.$queryRaw`SELECT 1`

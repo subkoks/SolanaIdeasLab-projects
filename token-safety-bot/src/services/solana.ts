@@ -24,6 +24,11 @@ export interface TokenInfo {
   tokenProgram: TokenProgramType
 }
 
+export interface SignatureActivity {
+  blockTime: number | null
+  signature: string
+}
+
 const getTokenProgramType = (programAddress: string): TokenProgramType => {
   if (programAddress === LEGACY_TOKEN_PROGRAM) {
     return 'spl-token'
@@ -124,10 +129,19 @@ export class SolanaService {
     }
   }
 
-  public async getRecentSignatures(address: string, limit: number = 20): Promise<Array<string>> {
+  public async getRecentSignatures(
+    address: string,
+    limit: number = 20,
+  ): Promise<Array<SignatureActivity>> {
     try {
-      const signatures = await this.connection.getSignaturesForAddress(new PublicKey(address), { limit })
-      return signatures.map((signature) => signature.signature)
+      const signatures = await this.connection.getSignaturesForAddress(
+        new PublicKey(address),
+        { limit },
+      )
+      return signatures.map((entry) => ({
+        signature: entry.signature,
+        blockTime: entry.blockTime ?? null,
+      }))
     } catch {
       return []
     }

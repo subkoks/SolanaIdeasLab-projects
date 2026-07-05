@@ -424,11 +424,20 @@ export class RiskScoringService {
     }
   }
 
-  private async hasLiquidityPools(_tokenAddress: string): Promise<boolean> {
+  private async hasLiquidityPools(tokenAddress: string): Promise<boolean> {
     try {
-      // This would check DEX APIs for liquidity pools
-      // For now, return false
-      return false;
+      const holders = await this.helius.getTokenHolders(tokenAddress, 20);
+      const supply = await this.helius.getTokenSupplyUi(tokenAddress);
+
+      if (holders.length >= 15 && supply > 0) {
+        return true;
+      }
+
+      const largest = await this.helius.getTokenLargestAccounts(
+        tokenAddress,
+        5,
+      );
+      return largest.length >= 3;
     } catch (error) {
       logger.error("Failed to check liquidity pools:", error);
       return false;
