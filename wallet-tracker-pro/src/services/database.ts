@@ -137,6 +137,30 @@ export class DatabaseService {
     })
   }
 
+  public async getActivityBreakdown(walletAddress: string) {
+    const events = await this.prisma.walletActivityEvent.findMany({
+      where: { walletAddress },
+      select: { direction: true },
+    })
+
+    const breakdown = { in: 0, out: 0, unknown: 0 }
+
+    for (const event of events) {
+      if (event.direction === 'in') {
+        breakdown.in += 1
+      } else if (event.direction === 'out') {
+        breakdown.out += 1
+      } else {
+        breakdown.unknown += 1
+      }
+    }
+
+    return {
+      total: events.length,
+      ...breakdown,
+    }
+  }
+
   public async getDashboardStats() {
     const [subscribers, watches, events] = await Promise.all([
       this.prisma.telegramSubscriber.count({ where: { active: true } }),

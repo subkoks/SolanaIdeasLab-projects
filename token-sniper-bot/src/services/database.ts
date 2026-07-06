@@ -517,4 +517,35 @@ export class DatabaseService {
       logger.error("Failed to record detected launch:", error);
     }
   }
+
+  async getRecentDetectedLaunches(limit = 20): Promise<
+    Array<{
+      creator: string | null;
+      detectedAt: Date;
+      metadata: unknown;
+      mint: string;
+      riskLevel: string | null;
+      riskScore: number | null;
+      signature: string;
+    }>
+  > {
+    try {
+      return await this.prisma.detectedLaunch.findMany({
+        orderBy: { detectedAt: "desc" },
+        take: Math.min(Math.max(limit, 1), 100),
+        select: {
+          mint: true,
+          signature: true,
+          creator: true,
+          riskScore: true,
+          riskLevel: true,
+          metadata: true,
+          detectedAt: true,
+        },
+      });
+    } catch (error) {
+      logger.error("Failed to get recent detected launches:", error);
+      throw error;
+    }
+  }
 }

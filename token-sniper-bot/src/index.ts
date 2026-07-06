@@ -36,7 +36,12 @@ class TokenSniperBot {
 
     if (isTelegramEnabled()) {
       this.bot = new Telegraf(config.telegram.botToken);
-      this.telegramBot = new TelegramBotService(this.bot);
+      this.telegramBot = new TelegramBotService(
+        this.bot,
+        this.db,
+        this.helius,
+        this.riskScorer,
+      );
       this.monitor.setTelegramBot(this.telegramBot);
     }
 
@@ -72,6 +77,7 @@ class TokenSniperBot {
     this.app.use("/api/v1/auth", this.authRoutes());
     this.app.use("/api/v1/tokens", this.tokenRoutes());
     this.app.use("/api/v1/alerts", this.alertRoutes());
+    this.app.use("/api/v1/launches", this.launchRoutes());
     this.app.use("/api/v1/users", authMiddleware, this.userRoutes());
 
     // Webhook for Telegram
@@ -183,6 +189,32 @@ class TokenSniperBot {
         res.json(bundles);
       } catch (error) {
         res.status(500).json({ error: "Bundle detection failed" });
+      }
+    });
+
+    return router;
+  }
+
+  private launchRoutes(): express.Router {
+    const router = express.Router();
+
+    router.get("/recent", async (req, res) => {
+      try {
+        const limit = Number(req.query.limit ?? 20);
+        const launches = await this.db.getRecentDetectedLaunches(limit);
+        res.json({
+          launches: launches.map((launch) => ({
+            mint: launch.mint,
+            signature: launch.signature,
+            creator: launch.creator,
+            riskScore: launch.riskScore,
+            riskLevel: launch.riskLevel,
+            metadata: launch.metadata,
+            detectedAt: launch.detectedAt.toISOString(),
+          })),
+        });
+      } catch {
+        res.status(500).json({ error: "Failed to fetch recent launches" });
       }
     });
 

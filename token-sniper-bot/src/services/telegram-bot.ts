@@ -31,11 +31,16 @@ export class TelegramBotService {
   private riskScoring: RiskScoringService;
   private readonly launchAlertChatIds = new Set<number>();
 
-  constructor(bot: Telegraf) {
+  constructor(
+    bot: Telegraf,
+    db: DatabaseService,
+    helius: HeliusService,
+    riskScoring: RiskScoringService,
+  ) {
     this.bot = bot;
-    this.db = new DatabaseService();
-    this.helius = new HeliusService();
-    this.riskScoring = new RiskScoringService(this.helius, this.db);
+    this.db = db;
+    this.helius = helius;
+    this.riskScoring = riskScoring;
   }
 
   registerCommands(): void {
@@ -419,8 +424,40 @@ Use /stop <alert_id> to cancel specific alerts.
       return;
     }
 
+    if (arg === "recent" || arg === "list") {
+      const launches = await this.db.getRecentDetectedLaunches(10);
+
+      if (launches.length === 0) {
+        await ctx.reply("No launches recorded yet.");
+        return;
+      }
+
+      const lines = launches.map((launch, index) => {
+        const metadata = launch.metadata as
+          | { name?: string; symbol?: string }
+          | null
+          | undefined;
+        const title =
+          metadata?.name && metadata?.symbol
+            ? `${metadata.name} (${metadata.symbol})`
+            : launch.mint.slice(0, 12) + "…";
+        const risk =
+          launch.riskScore !== null && launch.riskScore !== undefined
+            ? `${launch.riskScore}/100 ${launch.riskLevel ?? ""}`.trim()
+            : "unscored";
+
+        return `${index + 1}. ${title}\n   mint: \`${launch.mint}\`\n   risk: ${risk}`;
+      });
+
+      await ctx.reply(
+        ["Recent pump.fun launches:", ...lines].join("\n\n"),
+        { parse_mode: "Markdown" },
+      );
+      return;
+    }
+
     await ctx.reply(
-      "Usage: `/launches subscribe` or `/launches unsubscribe`",
+      "Usage: `/launches subscribe`, `/launches recent`, or `/launches unsubscribe`",
     );
   }
 
