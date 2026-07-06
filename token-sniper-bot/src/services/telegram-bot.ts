@@ -83,8 +83,12 @@ export class TelegramBotService {
 
   private async handleStart(ctx: Context): Promise<void> {
     try {
-      const userId = ctx.from?.id;
-      if (!userId) return;
+      const chatId = ctx.chat?.id;
+      if (!chatId) {
+        return;
+      }
+
+      await this.db.ensureTelegramUser(chatId);
 
       const message = `
 🚀 **Token Sniper Bot** - Your Solana Token Intelligence Assistant
@@ -167,7 +171,10 @@ Let's find some gems! 🎯
 
   private async handleStatus(ctx: Context): Promise<void> {
     try {
-      const health = await this.helius.healthCheck();
+      const [health, launchStats] = await Promise.all([
+        this.helius.healthCheck(),
+        this.db.getLaunchStats(),
+      ]);
       const status = health ? "🟢 Online" : "🔴 Offline";
 
       const message = `
@@ -175,8 +182,7 @@ Let's find some gems! 🎯
 
 **Service Status:** ${status}
 **RPC Connection:** ${health ? "Connected" : "Disconnected"}
-**Active Alerts:** Loading...
-**Users Today:** Loading...
+**Launches tracked:** ${launchStats.total} (${launchStats.last24h} in 24h)
 
 **Last Update:** ${new Date().toLocaleString()}
       `;
@@ -606,34 +612,38 @@ Payment via Stripe - secure and instant.
   }
 
   private async handleStats(ctx: Context): Promise<void> {
-    const userId = ctx.from?.id;
-    if (!userId) return;
+    const chatId = ctx.chat?.id;
+    if (!chatId) {
+      return;
+    }
 
-    // Get user stats (would use actual database in production)
-    const message = `
-📊 **Your Statistics**
+    try {
+      const [userStats, launchStats] = await Promise.all([
+        this.db.getTelegramUserStats(chatId),
+        this.db.getLaunchStats(),
+      ]);
 
-**Usage:**
-• Tokens Analyzed: 47
-• Alerts Created: 12
-• Alerts Triggered: 23
-• Success Rate: 68%
+      const launchAlerts = this.launchAlertChatIds.has(chatId)
+        ? "subscribed"
+        : "not subscribed";
 
-**Performance:**
-• Best Pick: +340% ROI
-• Average ROI: +45%
-• Risk Avoided: 8 tokens
-• Money Saved: $2,340
-
-**This Month:**
-• Analysis Count: 15
-• Alert Hits: 7
-• Top Find: TokenXYZ (+180%)
-
-Keep up the great work! 🎯
-    `;
-
-    await ctx.replyWithMarkdownV2(message);
+      await ctx.reply(
+        [
+          "Your statistics",
+          "",
+          `Tier: ${userStats.subscriptionTier}`,
+          `Active alerts: ${userStats.activeAlerts}`,
+          `Total alerts: ${userStats.totalAlerts}`,
+          `Launch alerts: ${launchAlerts}`,
+          "",
+          `Global launches tracked: ${launchStats.total}`,
+          `Launches (24h): ${launchStats.last24h}`,
+        ].join("\n"),
+      );
+    } catch (error) {
+      logger.error("Stats command error:", error);
+      await ctx.reply("Failed to load stats.");
+    }
   }
 
   private async handleText(ctx: Context): Promise<void> {

@@ -8,6 +8,7 @@ import {
   verifyRefreshToken,
 } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import { telegramUserId } from "../utils/telegram-user";
 
 export class DatabaseService {
   private prisma: PrismaClient;
@@ -148,6 +149,46 @@ export class DatabaseService {
       logger.error("Token refresh failed:", error);
       throw new Error("Token refresh failed");
     }
+  }
+
+  async ensureTelegramUser(
+    chatId: number,
+  ): Promise<{ id: string; subscriptionTier: string }> {
+    const walletAddress = telegramUserId(chatId);
+
+    const user = await this.prisma.user.upsert({
+      where: { walletAddress },
+      update: { lastLogin: new Date() },
+      create: {
+        walletAddress,
+        subscriptionTier: "free",
+        isActive: true,
+      },
+    });
+
+    return { id: user.id, subscriptionTier: user.subscriptionTier };
+  }
+
+  async getTelegramUserStats(chatId: number): Promise<{
+    activeAlerts: number;
+    subscriptionTier: string;
+    totalAlerts: number;
+    userId: string;
+  }> {
+    const user = await this.ensureTelegramUser(chatId);
+    const [activeAlerts, totalAlerts] = await Promise.all([
+      this.prisma.tokenAlert.count({
+        where: { userId: user.id, active: true },
+      }),
+      this.prisma.tokenAlert.count({ where: { userId: user.id } }),
+    ]);
+
+    return {
+      userId: user.id,
+      subscriptionTier: user.subscriptionTier,
+      activeAlerts,
+      totalAlerts,
+    };
   }
 
   // Alert management

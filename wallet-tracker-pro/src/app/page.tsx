@@ -67,6 +67,21 @@ interface PortfolioSummary {
   solUsdPrice: number
 }
 
+interface BillingStatus {
+  mode: string
+  message: string
+  tiers: string[]
+  pricesUsd: Record<string, number>
+  watchLimits: Record<string, number>
+}
+
+interface MockUpgradeResult {
+  tier: string
+  limits?: { tier: string; limit: number; used: number; remaining: number }
+  message?: string
+  error?: string
+}
+
 export default function HomePage(): ReactNode {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
@@ -78,6 +93,10 @@ export default function HomePage(): ReactNode {
   const [behavior, setBehavior] = useState<WalletBehavior | null>(null)
   const [tokenMints, setTokenMints] = useState<TokenMintBreakdown[]>([])
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null)
+  const [billing, setBilling] = useState<BillingStatus | null>(null)
+  const [chatIdInput, setChatIdInput] = useState('')
+  const [upgradeTier, setUpgradeTier] = useState('pro')
+  const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -102,6 +121,41 @@ export default function HomePage(): ReactNode {
     setOverview((await overviewRes.json()) as AnalyticsOverview)
     const topPayload = (await topRes.json()) as { wallets: TopWallet[] }
     setTopWallets(topPayload.wallets ?? [])
+  }
+
+  const loadBilling = async (): Promise<void> => {
+    const response = await fetch('/api/billing/status')
+    if (!response.ok) {
+      throw new Error('Failed to load billing')
+    }
+    setBilling((await response.json()) as BillingStatus)
+  }
+
+  const mockUpgrade = async (): Promise<void> => {
+    setUpgradeMessage(null)
+    const chatId = chatIdInput.trim()
+    if (!chatId) {
+      setUpgradeMessage('Enter your Telegram chat ID')
+      return
+    }
+
+    const response = await fetch('/api/billing/mock-upgrade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatId, tier: upgradeTier }),
+    })
+
+    const payload = (await response.json()) as MockUpgradeResult
+    if (!response.ok) {
+      setUpgradeMessage(payload.error ?? 'Upgrade failed')
+      return
+    }
+
+    setUpgradeMessage(
+      payload.limits
+        ? `Upgraded to ${payload.tier}: ${payload.limits.used}/${payload.limits.limit} watches`
+        : (payload.message ?? 'Upgraded'),
+    )
   }
 
   const lookupActivity = async (): Promise<void> => {
@@ -261,6 +315,99 @@ export default function HomePage(): ReactNode {
                 </li>
               ))}
             </ul>
+          </>
+        ) : null}
+      </section>
+
+      <section style={{ marginTop: '2rem' }}>
+        <h2 style={{ fontSize: '1.25rem' }}>Plans & billing</h2>
+        <button
+          type="button"
+          onClick={() => void loadBilling()}
+          style={{
+            marginTop: '0.75rem',
+            padding: '0.5rem 1rem',
+            borderRadius: '0.5rem',
+            border: '1px solid #334155',
+            background: '#1e293b',
+            color: '#e2e8f0',
+            cursor: 'pointer',
+          }}
+        >
+          Load plans
+        </button>
+        {billing ? (
+          <>
+            <p style={{ color: '#94a3b8', marginTop: '0.75rem' }}>
+              Mode: <strong>{billing.mode}</strong> — {billing.message}
+            </p>
+            <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8, marginTop: '0.5rem' }}>
+              {billing.tiers
+                .filter((tier) => tier !== 'free')
+                .map((tier) => (
+                  <li key={tier}>
+                    {tier}: ${billing.pricesUsd[tier]}/mo —{' '}
+                    {billing.watchLimits[tier]} watches
+                  </li>
+                ))}
+            </ul>
+            {billing.mode === 'mock' ? (
+              <div style={{ marginTop: '1rem' }}>
+                <p style={{ color: '#cbd5e1', fontSize: '0.9rem' }}>
+                  Mock upgrade: enter Telegram chat ID or use bot{' '}
+                  <code>/upgrade pro</code>
+                </p>
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                  <input
+                    value={chatIdInput}
+                    onChange={(event) => setChatIdInput(event.target.value)}
+                    placeholder="Telegram chat ID"
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem 0.75rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #334155',
+                      background: '#111827',
+                      color: '#f8fafc',
+                    }}
+                  />
+                  <select
+                    value={upgradeTier}
+                    onChange={(event) => setUpgradeTier(event.target.value)}
+                    style={{
+                      padding: '0.5rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #334155',
+                      background: '#111827',
+                      color: '#f8fafc',
+                    }}
+                  >
+                    <option value="basic">basic</option>
+                    <option value="pro">pro</option>
+                    <option value="enterprise">enterprise</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => void mockUpgrade()}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #334155',
+                      background: '#2563eb',
+                      color: '#fff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Mock upgrade
+                  </button>
+                </div>
+                {upgradeMessage ? (
+                  <p style={{ marginTop: '0.5rem', color: '#86efac' }}>
+                    {upgradeMessage}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </>
         ) : null}
       </section>
