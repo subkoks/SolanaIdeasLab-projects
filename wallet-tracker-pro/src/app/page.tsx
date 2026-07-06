@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { ActivityChart } from '@/components/activity-chart'
 
 interface DashboardStats {
   subscribers: number
@@ -16,10 +17,18 @@ interface ActivityEvent {
   observedAt: string
 }
 
+interface ActivityBreakdown {
+  in: number
+  out: number
+  total: number
+  unknown: number
+}
+
 export default function HomePage(): ReactNode {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [walletInput, setWalletInput] = useState('')
   const [activity, setActivity] = useState<ActivityEvent[]>([])
+  const [breakdown, setBreakdown] = useState<ActivityBreakdown | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -35,6 +44,7 @@ export default function HomePage(): ReactNode {
     setLoading(true)
     setError(null)
     setActivity([])
+    setBreakdown(null)
 
     try {
       const wallet = walletInput.trim()
@@ -48,6 +58,7 @@ export default function HomePage(): ReactNode {
       )
       const payload = (await response.json()) as {
         activity?: ActivityEvent[]
+        breakdown?: ActivityBreakdown
         error?: string
       }
 
@@ -57,6 +68,7 @@ export default function HomePage(): ReactNode {
       }
 
       setActivity(payload.activity ?? [])
+      setBreakdown(payload.breakdown ?? null)
     } catch {
       setError('Failed to fetch activity')
     } finally {
@@ -160,6 +172,7 @@ export default function HomePage(): ReactNode {
         {error ? (
           <p style={{ color: '#f87171', marginTop: '0.75rem' }}>{error}</p>
         ) : null}
+        {breakdown ? <ActivityChart breakdown={breakdown} /> : null}
         {activity.length > 0 ? (
           <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8, marginTop: '1rem' }}>
             {activity.map((event) => (

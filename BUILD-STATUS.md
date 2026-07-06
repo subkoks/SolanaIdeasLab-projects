@@ -1,14 +1,14 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-05 (phase 5)
+Last updated: 2026-07-06 (phase 6)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
 | **token-safety-bot** | Postgres runtime wired | Stripe billing |
-| **token-sniper-bot** | Launch pipeline + DB persist | Helius LaserStream |
-| **wallet-tracker-pro** | Telegram + dashboard API | Analytics depth |
+| **token-sniper-bot** | Launch history API + Telegram | Helius LaserStream |
+| **wallet-tracker-pro** | Activity analytics chart | Portfolio depth |
 
 ## token-safety-bot
 
@@ -16,35 +16,18 @@ Last updated: 2026-07-05 (phase 5)
 - `createDatabaseService()` uses Prisma when `DATABASE_URL` is set; JSON file store remains default for tests/dev without Postgres
 - `PrismaDatabaseService` mirrors JSON persistence API (users, scans, alerts, blacklist, cache)
 
-**Done (phase 4)**
-- Bundle burst heuristic (8+ txs in 120s window via signature block times)
-- LP/freeze risk flag when freeze authority active + concentrated supply
-- Prisma schema + init migration (`token_safety` DB)
-
-**Done (phase 2)**
-- Telegram push when monitored token safety level changes on rescan
-- Daily scan limits by subscription tier on `POST /api/v1/scan` (free: 10/day)
-
-**Done (phase 1)**
-- HTTP admin guard, wallet signature verification, monitor rescans, holder count, `.env.example`
-
 **Still needed**
 - Stripe tier enforcement beyond scan counts
 
 ## token-sniper-bot
 
+**Done (phase 6)**
+- `GET /api/v1/launches/recent` — persisted launch history from `DetectedLaunch`
+- Telegram `/launches recent` lists last 10 launches with risk scores
+- `TelegramBotService` shares main `DatabaseService` instance (no duplicate DB client)
+
 **Done (phase 4)**
-- Removed dead duplicate services (`safety-scanner.ts`, `solana.ts`)
-- Improved liquidity pool proxy in `RiskScoringService.hasLiquidityPools`
-
-**Done (phase 3)**
-- Prisma init migration + `DetectedLaunch` persistence on new pump.fun launches
-- Helius `getAsset` metadata enrichment on launch Telegram alerts (when `HELIUS_API_KEY` set)
-- ESLint flat config (`eslint.config.mjs`) — lint re-enabled in CI
-
-**Done (phase 2)**
-- pump.fun launch polling (`LaunchDetectionService`) wired into `MonitorService`
-- Risk score on new launches + Telegram broadcast to `/launches subscribe` chats
+- Removed dead duplicate services; improved liquidity pool proxy in risk scoring
 
 **Still needed**
 - Helius LaserStream (real-time vs poll)
@@ -52,18 +35,15 @@ Last updated: 2026-07-05 (phase 5)
 
 ## wallet-tracker-pro
 
-**Done (phase 4)**
-- SPL token transfer parsing in Solana watcher (`preTokenBalances` / `postTokenBalances`)
-- Dashboard API: `GET /api/stats`, `GET /api/activity/[wallet]`
-- Next.js dashboard page wired to stats + activity lookup
+**Done (phase 6)**
+- Activity direction breakdown API field on `GET /api/activity/[wallet]`
+- Recharts bar chart on dashboard for in/out/unknown counts
 
-**Done (phase 3)**
-- Telegram bot MVP: `/watch`, `/unwatch`, `/list`, `/activity`
-- Solana watcher polls watchlist and pushes SOL in/out alerts
-- Prisma schema + init migration
+**Done (phase 4)**
+- SPL parsing, dashboard API, Telegram MVP
 
 **Still needed**
-- Portfolio charts / behavioral analytics
+- Portfolio charts / behavioral analytics depth
 - Stripe / tier limits
 
 ## Commands
@@ -73,10 +53,6 @@ Last updated: 2026-07-05 (phase 5)
 ./scripts/local-dev-bootstrap.sh --check
 ```
 
-**Sniper launch alerts:** start bot → `/launches subscribe`
+**Sniper launch history:** `GET /api/v1/launches/recent` or Telegram `/launches recent`
 
-**Safety monitor alerts:** `/monitor <mint>` in Telegram (requires bot token)
-
-**Wallet tracker bot:** set `TELEGRAM_BOT_TOKEN` → `cd wallet-tracker-pro && npm run bot:dev`
-
-**Wallet tracker dashboard:** `cd wallet-tracker-pro && npm run dev` → open `/`
+**Wallet tracker dashboard:** `cd wallet-tracker-pro && npm run dev`

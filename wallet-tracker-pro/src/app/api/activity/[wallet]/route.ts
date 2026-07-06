@@ -25,9 +25,11 @@ export async function GET(
       wallet,
       Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 50) : DEFAULT_LIMIT,
     )
+    const breakdown = await database.getActivityBreakdown(wallet)
 
     return NextResponse.json({
       wallet,
+      breakdown,
       activity: activity.map((event) => ({
         direction: event.direction,
         summary: event.summary,
