@@ -19,7 +19,11 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     return NextResponse.json({
       chatId,
-      billingMode: getBillingStatus(config.stripe.secretKey).mode,
+      billingMode: getBillingStatus(
+        config.stripe.secretKey,
+        config.stripe.webhookSecret,
+        config.stripe.prices,
+      ).mode,
       tier: limits?.tier ?? 'free',
       limits,
     })

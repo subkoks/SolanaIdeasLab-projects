@@ -18,6 +18,13 @@ if [[ -z "${sniper_payload}" ]] || ! echo "${sniper_payload}" | grep -q '"status
 fi
 echo "OK: token-sniper-bot /health"
 
+dashboard_code="$(curl -s -o /dev/null -w '%{http_code}' "${SNIPER_URL}/dashboard/alerts" || true)"
+if [[ "${dashboard_code}" == "200" ]]; then
+  echo "OK: token-sniper-bot /dashboard/alerts"
+else
+  echo "WARN: token-sniper-bot /dashboard/alerts returned ${dashboard_code:-unreachable}"
+fi
+
 wallet_payload="$(curl -sf "${WALLET_URL}/api/health" || true)"
 if [[ -z "${wallet_payload}" ]] || ! echo "${wallet_payload}" | grep -q '"status"'; then
   echo "FAIL: wallet-tracker-pro /api/health" >&2
