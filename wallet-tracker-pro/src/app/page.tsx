@@ -10,6 +10,18 @@ interface DashboardStats {
   events: number
 }
 
+interface AnalyticsOverview {
+  eventsLast24h: number
+  eventsLast7d: number
+  uniqueActiveWallets: number
+  avgEventsPerWatch: number
+}
+
+interface TopWallet {
+  walletAddress: string
+  eventCount: number
+}
+
 interface ActivityEvent {
   direction: string
   summary: string | null
@@ -33,6 +45,8 @@ interface TimelinePoint {
 
 export default function HomePage(): ReactNode {
   const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
+  const [topWallets, setTopWallets] = useState<TopWallet[]>([])
   const [walletInput, setWalletInput] = useState('')
   const [activity, setActivity] = useState<ActivityEvent[]>([])
   const [breakdown, setBreakdown] = useState<ActivityBreakdown | null>(null)
@@ -46,6 +60,21 @@ export default function HomePage(): ReactNode {
       throw new Error('Failed to load stats')
     }
     setStats((await response.json()) as DashboardStats)
+  }
+
+  const loadAnalytics = async (): Promise<void> => {
+    const [overviewRes, topRes] = await Promise.all([
+      fetch('/api/analytics/overview'),
+      fetch('/api/analytics/top-wallets?limit=5'),
+    ])
+
+    if (!overviewRes.ok || !topRes.ok) {
+      throw new Error('Failed to load analytics')
+    }
+
+    setOverview((await overviewRes.json()) as AnalyticsOverview)
+    const topPayload = (await topRes.json()) as { wallets: TopWallet[] }
+    setTopWallets(topPayload.wallets ?? [])
   }
 
   const lookupActivity = async (): Promise<void> => {
@@ -145,6 +174,58 @@ export default function HomePage(): ReactNode {
               <strong>{stats.events}</strong> recorded activity events
             </li>
           </ul>
+        ) : null}
+      </section>
+
+      <section style={{ marginTop: '2rem' }}>
+        <h2 style={{ fontSize: '1.25rem' }}>Analytics (7-day)</h2>
+        <button
+          type="button"
+          onClick={() => void loadAnalytics()}
+          style={{
+            marginTop: '0.75rem',
+            padding: '0.5rem 1rem',
+            borderRadius: '0.5rem',
+            border: '1px solid #334155',
+            background: '#1e293b',
+            color: '#e2e8f0',
+            cursor: 'pointer',
+          }}
+        >
+          Load analytics
+        </button>
+        {overview ? (
+          <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8, marginTop: '1rem' }}>
+            <li>
+              <strong>{overview.eventsLast24h}</strong> events in last 24h
+            </li>
+            <li>
+              <strong>{overview.eventsLast7d}</strong> events in last 7 days
+            </li>
+            <li>
+              <strong>{overview.uniqueActiveWallets}</strong> wallets with
+              activity this week
+            </li>
+            <li>
+              <strong>{overview.avgEventsPerWatch}</strong> avg events per active
+              watch
+            </li>
+          </ul>
+        ) : null}
+        {topWallets.length > 0 ? (
+          <>
+            <h3 style={{ fontSize: '1rem', marginTop: '1rem' }}>
+              Top active wallets
+            </h3>
+            <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8 }}>
+              {topWallets.map((wallet) => (
+                <li key={wallet.walletAddress}>
+                  {wallet.walletAddress.slice(0, 8)}… —{' '}
+                  <strong>{wallet.eventCount}</strong> events
+                </li>
+              ))}
+            </ul>
+          </>
         ) : null}
       </section>
 

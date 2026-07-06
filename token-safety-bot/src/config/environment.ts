@@ -121,4 +121,13 @@ export const config = {
       300_000,
     ),
   },
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY ?? "",
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+    prices: {
+      basic: process.env.STRIPE_PRICE_BASIC ?? "",
+      pro: process.env.STRIPE_PRICE_PRO ?? "",
+      enterprise: process.env.STRIPE_PRICE_ENTERPRISE ?? "",
+    },
+  },
 } as const;

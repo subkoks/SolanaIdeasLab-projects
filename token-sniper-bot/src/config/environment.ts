@@ -117,6 +117,7 @@ export const config = {
     socialSentiment: process.env.ENABLE_SOCIAL_SENTIMENT === "true",
     riskScoring: process.env.ENABLE_RISK_SCORING !== "false",
     premiumFeatures: process.env.ENABLE_PREMIUM_FEATURES === "true",
+    laserStream: process.env.ENABLE_LASERSTREAM !== "false",
   },
 
   performance: {

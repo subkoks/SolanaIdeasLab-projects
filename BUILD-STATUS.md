@@ -1,47 +1,54 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-06 (phase 7)
+Last updated: 2026-07-06 (phase 8)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | Postgres runtime wired | Stripe billing |
-| **token-sniper-bot** | Helius webhook + configurable poll | LaserStream client |
-| **wallet-tracker-pro** | Timeline analytics + CI lint | Portfolio depth |
+| **token-safety-bot** | Mock billing API | Real Stripe checkout |
+| **token-sniper-bot** | LaserStream + mock billing | Production LaserStream hardening |
+| **wallet-tracker-pro** | 7-day analytics dashboard | Portfolio depth |
 
 ## token-sniper-bot
 
-**Done (phase 7)**
-- `POST /webhook/helius/enhanced` — ingest launch txs from Helius enhanced webhooks (optional `HELIUS_WEBHOOK_SECRET`)
-- `LaunchDetectionService.ingestSignature()` for webhook/push path alongside poll
-- Configurable `LAUNCH_POLL_INTERVAL_MS` (default 30s)
+**Done (phase 8)**
+- `HeliusLaserStreamService` — WebSocket push on pump.fun `InitializeMint2` → `monitor.ingestLaunchSignature()`
+- `ENABLE_LASERSTREAM` feature flag (default on; skips when no `HELIUS_API_KEY`)
+- `GET /api/v1/billing/status` — mock-aware tier info when `STRIPE_SECRET_KEY` unset
+- Upgrade responses include `billing` status object
 
-**Done (phase 6)**
-- `GET /api/v1/launches/recent`, Telegram `/launches recent`
+**Done (phase 7)**
+- `POST /webhook/helius/enhanced`, `LAUNCH_POLL_INTERVAL_MS`
 
 **Still needed**
-- Native Helius LaserStream WebSocket client
-- Stripe subscriptions
+- Real Stripe checkout sessions
+- LaserStream reconnect/backpressure hardening
 
 ## wallet-tracker-pro
 
-**Done (phase 7)**
-- 14-day activity timeline on `GET /api/activity/[wallet]` + Recharts line chart
-- ESLint flat config (typescript-eslint only) — lint enabled in CI for all projects
+**Done (phase 8)**
+- `GET /api/analytics/overview` — 24h/7d event counts, unique active wallets, avg events per watch
+- `GET /api/analytics/top-wallets` — top wallets by 7-day activity
+- Dashboard analytics section with top-wallet list
 
-**Done (phase 6)**
-- Direction breakdown bar chart
+**Done (phase 7)**
+- 14-day activity timeline + ESLint in CI
 
 **Still needed**
 - Portfolio / behavioral analytics depth
-- Stripe / tier limits
+- Stripe tier limits
 
 ## token-safety-bot
 
+**Done (phase 8)**
+- `GET /api/v1/billing/status` — mock mode when Stripe keys unset
+- Upgrade responses include `billing` status
+- `STRIPE_*` env vars in `.env.example`
+
 **Done (phase 5)** — Postgres via `createDatabaseService()`
 
-**Still needed** — Stripe tier enforcement
+**Still needed** — Real Stripe checkout + webhook tier sync
 
 ## Commands
 
@@ -49,6 +56,8 @@ Last updated: 2026-07-06 (phase 7)
 ./scripts/local-dev-bootstrap.sh
 ```
 
-**Helius webhook:** point enhanced webhook to `POST /webhook/helius/enhanced` with `Authorization: <HELIUS_WEBHOOK_SECRET>`
+**Helius webhook:** `POST /webhook/helius/enhanced` with `Authorization: <HELIUS_WEBHOOK_SECRET>`
+
+**LaserStream:** set `HELIUS_API_KEY` + `ENABLE_LASERSTREAM=true` (default)
 
 **Wallet tracker dashboard:** `cd wallet-tracker-pro && npm run dev`
