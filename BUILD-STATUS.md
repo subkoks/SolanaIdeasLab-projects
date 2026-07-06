@@ -1,37 +1,38 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-06 (phase 13)
+Last updated: 2026-07-06 (phase 14)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | Dependabot @hono/node-server patch | Production hardening |
-| **token-sniper-bot** | Real `/stats` from DB | Wire Telegram alerts to DB |
-| **wallet-tracker-pro** | Dashboard billing UI + mock upgrade API | Stripe checkout from dashboard |
+| **token-safety-bot** | Production config guard + body limits | Observability / deploy runbook |
+| **token-sniper-bot** | Telegram alerts wired to DB | Alert delivery from monitor |
+| **wallet-tracker-pro** | Stripe checkout API + dashboard | End-to-end Stripe with live keys |
 
 ## wallet-tracker-pro
 
-**Done (phase 13)**
-- `GET /api/billing/status` — mode, tiers, prices, watch limits
-- `POST /api/billing/mock-upgrade` — mock tier apply when Stripe unset
-- Dashboard **Plans & billing** section — load plans, mock upgrade form
+**Done (phase 14)**
+- `POST /api/billing/checkout` — Stripe or mock checkout with `metadata.chatId`
+- Dashboard **Checkout** button when Stripe configured
+- Telegram `/upgrade` returns checkout URL when Stripe configured
 
-**Done (phase 12)**
-- `POST /api/webhooks/stripe` — syncs Telegram subscriber tier via `metadata.chatId`
-- Telegram `/billing`, `/upgrade <tier>` (mock when Stripe unset)
+**Done (phase 13)**
+- `GET /api/billing/status`, `POST /api/billing/mock-upgrade`, dashboard Plans & billing
 
 ## token-sniper-bot
 
-**Done (phase 13)**
-- `ensureTelegramUser` / `getTelegramUserStats` — DB-backed Telegram users
-- `/stats` — real tier, alert counts, launch subscription status
-- `/status` — Helius health + launch stats
+**Done (phase 14)**
+- `/alert`, `/alerts`, `/stop` — DB-backed via `ensureTelegramUser` + `TokenAlert`
 
-**Done (phase 12)**
-- Telegram `/billing` — mode, tiers, launch counts + HTTP billing paths
+**Done (phase 13)**
+- Real `/stats` and `/status` from database
 
 ## token-safety-bot
+
+**Done (phase 14)**
+- `assertProductionConfig()` — rejects default JWT / dev bypass flags in production
+- Request body size limit (100kb), `trust proxy` in production
 
 **Done (phase 12)**
 - npm override `@hono/node-server` ≥ 1.19.13 (Dependabot #95)

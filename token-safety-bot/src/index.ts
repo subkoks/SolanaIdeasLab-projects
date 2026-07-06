@@ -29,6 +29,7 @@ import {
   constructStripeEvent,
 } from "./utils/stripe-webhook";
 import { logger } from "./utils/logger";
+import { assertProductionConfig, isProductionRuntime } from "./utils/production-guard";
 
 const walletConnectSchema = z.object({
   message: z.string().min(1),
@@ -195,6 +196,10 @@ class TokenSafetyBot {
   }
 
   private setupMiddleware(): void {
+    if (isProductionRuntime()) {
+      this.app.set("trust proxy", 1);
+    }
+
     this.app.use(
       cors({
         origin:
@@ -203,8 +208,8 @@ class TokenSafetyBot {
     );
     this.app.use(helmet());
     this.app.use(compression());
-    this.app.use(express.json());
-    this.app.use(express.urlencoded({ extended: true }));
+    this.app.use(express.json({ limit: "100kb" }));
+    this.app.use(express.urlencoded({ extended: true, limit: "100kb" }));
     this.app.use(rateLimitMiddleware());
   }
 
@@ -730,6 +735,8 @@ class TokenSafetyBot {
   }
 
   public async start(): Promise<void> {
+    assertProductionConfig();
+
     await this.databaseService.connect();
     await this.queueService.connect();
     await this.solanaService.connect();
