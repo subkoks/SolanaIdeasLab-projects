@@ -29,6 +29,8 @@ export const config = {
   },
   analytics: {
     mockSolUsdPrice: parseNumber(process.env.MOCK_SOL_USD_PRICE, 150),
+    coingeckoApiKey: process.env.COINGECKO_API_KEY ?? '',
+    preferMockSolPrice: process.env.PREFER_MOCK_SOL_PRICE === 'true',
   },
   logging: {
     level: process.env.LOG_LEVEL ?? 'info',

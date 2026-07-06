@@ -349,6 +349,32 @@ export class PrismaDatabaseService {
     return mapUser(user)
   }
 
+  public async syncSubscriptionFromStripe(
+    userId: string,
+    tier: SubscriptionTier,
+    _stripeSubscriptionId: string | null,
+    status: 'active' | 'cancelled',
+  ): Promise<UserRecord> {
+    const effectiveTier = status === 'active' ? tier : 'free'
+
+    const existing = await this.prisma.user.findUnique({ where: { id: userId } })
+
+    const user = existing
+      ? await this.prisma.user.update({
+          where: { id: userId },
+          data: { subscriptionTier: effectiveTier },
+        })
+      : await this.prisma.user.create({
+          data: {
+            id: userId,
+            walletAddress: userId,
+            subscriptionTier: effectiveTier,
+          },
+        })
+
+    return mapUser(user)
+  }
+
   public async getUserStats(): Promise<{
     active: number
     premium: number
