@@ -26,6 +26,7 @@ export class WalletTrackerTelegramBot {
     this.bot.command('unwatch', async (context) => this.handleUnwatch(context))
     this.bot.command('list', async (context) => this.handleList(context))
     this.bot.command('activity', async (context) => this.handleActivity(context))
+    this.bot.command('limits', async (context) => this.handleLimits(context))
 
     this.bot.catch((error) => {
       logger.error('Telegram bot error', { error })
@@ -64,6 +65,7 @@ export class WalletTrackerTelegramBot {
         '/list — your watchlist',
         '/unwatch <wallet> — remove',
         '/activity [wallet] — recent moves',
+        '/limits — your watch tier and capacity',
       ].join('\n'),
     )
   }
@@ -93,12 +95,7 @@ export class WalletTrackerTelegramBot {
     }
 
     try {
-      await this.database.addWatch(
-        String(chatId),
-        walletAddress,
-        label,
-        config.watcher.maxWatchesPerSubscriber,
-      )
+      await this.database.addWatch(String(chatId), walletAddress, label)
       await context.reply(`Watching ${walletAddress}${label ? ` (${label})` : ''}.`)
     } catch (error) {
       await context.reply(
@@ -178,6 +175,31 @@ export class WalletTrackerTelegramBot {
     )
 
     await context.reply([`Recent activity for ${target}:`, ...lines].join('\n'))
+  }
+
+  private async handleLimits(context: Context): Promise<void> {
+    const chatId = context.chat?.id
+    if (!chatId) {
+      return
+    }
+
+    await this.database.upsertSubscriber(
+      String(chatId),
+      context.from?.username,
+    )
+
+    const limits = await this.database.getSubscriberLimits(String(chatId))
+    if (!limits) {
+      await context.reply('Could not load your limits.')
+      return
+    }
+
+    await context.reply(
+      [
+        `Tier: ${limits.tier}`,
+        `Watches: ${limits.used}/${limits.limit} (${limits.remaining} remaining)`,
+      ].join('\n'),
+    )
   }
 
   public async notifyChat(chatId: string, message: string): Promise<void> {

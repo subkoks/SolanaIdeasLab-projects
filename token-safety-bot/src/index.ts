@@ -20,9 +20,10 @@ import { TelegramBotService } from "./services/telegram-bot";
 import type { SubscriptionTier } from "./types/auth";
 import {
   getBillingStatus,
-  createCheckoutSession,
   isBillingMockMode,
+  resolveCheckoutSession,
 } from "./utils/billing";
+import { getScanQuota } from "./utils/scan-quota";
 import { logger } from "./utils/logger";
 
 const walletConnectSchema = z.object({
@@ -186,21 +187,25 @@ class TokenSafetyBot {
             return;
           }
 
-          const session = createCheckoutSession(config.stripe.secretKey, {
-            tier,
-            userId: req.user!.id,
-            successUrl:
-              typeof req.body?.successUrl === "string"
-                ? req.body.successUrl
-                : undefined,
-            cancelUrl:
-              typeof req.body?.cancelUrl === "string"
-                ? req.body.cancelUrl
-                : undefined,
-          });
+          const session = await resolveCheckoutSession(
+            config.stripe.secretKey,
+            config.stripe.prices,
+            {
+              tier,
+              userId: req.user!.id,
+              successUrl:
+                typeof req.body?.successUrl === "string"
+                  ? req.body.successUrl
+                  : undefined,
+              cancelUrl:
+                typeof req.body?.cancelUrl === "string"
+                  ? req.body.cancelUrl
+                  : undefined,
+            },
+          );
 
-          if (session.mode === "stripe") {
-            res.status(501).json(session);
+          if (session.mode === "stripe" && "error" in session) {
+            res.status(session.error.includes("not configured") ? 501 : 502).json(session);
             return;
           }
 
@@ -371,6 +376,21 @@ class TokenSafetyBot {
             .parse(req.params.tokenAddress);
           await this.monitorService.stopMonitoring(tokenAddress, req.user!.id);
           res.json({ success: true });
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.get(
+      "/api/v1/users/quota",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          const scans = await this.databaseService.getUserScans(req.user!.id);
+          res.json(
+            getScanQuota(req.user!.subscriptionTier, scans, req.user!.id),
+          );
         } catch (error) {
           next(error);
         }

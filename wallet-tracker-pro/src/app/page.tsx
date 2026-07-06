@@ -57,6 +57,16 @@ interface TokenMintBreakdown {
   eventCount: number
 }
 
+interface PortfolioSummary {
+  days: number
+  uniqueTokens: number
+  netSol: number
+  estimatedNetUsd: number
+  netDirection: string
+  pricingMode: string
+  solUsdPrice: number
+}
+
 export default function HomePage(): ReactNode {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
@@ -67,6 +77,7 @@ export default function HomePage(): ReactNode {
   const [timeline, setTimeline] = useState<TimelinePoint[]>([])
   const [behavior, setBehavior] = useState<WalletBehavior | null>(null)
   const [tokenMints, setTokenMints] = useState<TokenMintBreakdown[]>([])
+  const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -101,6 +112,7 @@ export default function HomePage(): ReactNode {
     setTimeline([])
     setBehavior(null)
     setTokenMints([])
+    setPortfolio(null)
 
     try {
       const wallet = walletInput.trim()
@@ -118,6 +130,7 @@ export default function HomePage(): ReactNode {
         timeline?: TimelinePoint[]
         behavior?: WalletBehavior
         tokenMints?: TokenMintBreakdown[]
+        portfolio?: PortfolioSummary
         error?: string
       }
 
@@ -131,6 +144,7 @@ export default function HomePage(): ReactNode {
       setTimeline(payload.timeline ?? [])
       setBehavior(payload.behavior ?? null)
       setTokenMints(payload.tokenMints ?? [])
+      setPortfolio(payload.portfolio ?? null)
     } catch {
       setError('Failed to fetch activity')
     } finally {
@@ -296,6 +310,20 @@ export default function HomePage(): ReactNode {
             </li>
             <li>
               Net lamports (30d): <strong>{behavior.netLamports}</strong>
+            </li>
+          </ul>
+        ) : null}
+        {portfolio ? (
+          <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8, marginTop: '1rem' }}>
+            <li>
+              Portfolio ({portfolio.pricingMode} pricing @ ${portfolio.solUsdPrice}/SOL)
+            </li>
+            <li>
+              Net flow: <strong>{portfolio.netSol.toFixed(4)} SOL</strong> (
+              {portfolio.netDirection}) ≈ ${portfolio.estimatedNetUsd}
+            </li>
+            <li>
+              Unique tokens touched: <strong>{portfolio.uniqueTokens}</strong>
             </li>
           </ul>
         ) : null}

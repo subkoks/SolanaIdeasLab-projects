@@ -1,6 +1,8 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { config } from '../lib/config'
+import { estimateUsdFromSol, lamportsToSol } from '../lib/portfolio'
+import { getWatchLimitForTier, isValidSubscriberTier } from '../lib/watch-limits'
 import { logger } from '../lib/logger'
 
 export class DatabaseService {
@@ -31,15 +33,17 @@ export class DatabaseService {
     chatId: string,
     walletAddress: string,
     label?: string,
-    maxWatches = 10,
   ) {
     const subscriber = await this.upsertSubscriber(chatId)
+    const maxWatches = getWatchLimitForTier(subscriber.tier)
     const activeCount = await this.prisma.walletWatch.count({
       where: { subscriberId: subscriber.id, active: true },
     })
 
     if (activeCount >= maxWatches) {
-      throw new Error(`Watch limit reached (${maxWatches})`)
+      throw new Error(
+        `Watch limit reached (${maxWatches} on ${subscriber.tier} tier)`,
+      )
     }
 
     return this.prisma.walletWatch.upsert({
@@ -313,6 +317,60 @@ export class DatabaseService {
       .map(([tokenMint, eventCount]) => ({ tokenMint, eventCount }))
       .sort((a, b) => b.eventCount - a.eventCount)
       .slice(0, limit)
+  }
+
+  public async getSubscriberLimits(chatId: string) {
+    const subscriber = await this.prisma.telegramSubscriber.findUnique({
+      where: { chatId },
+      include: {
+        watches: {
+          where: { active: true },
+        },
+      },
+    })
+
+    if (!subscriber) {
+      return null
+    }
+
+    const limit = getWatchLimitForTier(subscriber.tier)
+
+    return {
+      tier: subscriber.tier,
+      limit,
+      used: subscriber.watches.length,
+      remaining: Math.max(limit - subscriber.watches.length, 0),
+    }
+  }
+
+  public async setSubscriberTier(chatId: string, tier: string) {
+    if (!isValidSubscriberTier(tier)) {
+      throw new Error(`Invalid tier: ${tier}`)
+    }
+
+    return this.prisma.telegramSubscriber.update({
+      where: { chatId },
+      data: { tier },
+    })
+  }
+
+  public async getWalletPortfolioSummary(walletAddress: string, days = 30) {
+    const behavior = await this.getWalletBehaviorSummary(walletAddress, days)
+    const tokenMints = await this.getTokenMintBreakdown(walletAddress, 20)
+    const netSol = lamportsToSol(behavior.netLamports)
+    const solUsdPrice = config.analytics.mockSolUsdPrice
+
+    return {
+      days,
+      uniqueTokens: tokenMints.length,
+      netSol,
+      estimatedNetUsd: estimateUsdFromSol(Math.abs(netSol), solUsdPrice),
+      netDirection: netSol >= 0 ? 'inflow' : 'outflow',
+      pricingMode: 'mock',
+      solUsdPrice,
+      topTokens: tokenMints.slice(0, 5),
+      behavior,
+    }
   }
 
   public async healthCheck(): Promise<boolean> {

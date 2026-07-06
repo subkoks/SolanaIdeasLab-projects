@@ -16,7 +16,7 @@ import { QueueService } from "./services/queue";
 import { RiskScoringService } from "./services/risk-scoring";
 import { TelegramBotService } from "./services/telegram-bot";
 import { logger } from "./utils/logger";
-import { getBillingStatus, createCheckoutSession, BILLING_TIERS, isBillingMockMode } from "./utils/billing";
+import { getBillingStatus, BILLING_TIERS, isBillingMockMode, resolveCheckoutSession } from "./utils/billing";
 
 class TokenSniperBot {
   private app: express.Application;
@@ -266,6 +266,14 @@ class TokenSniperBot {
   private launchRoutes(): express.Router {
     const router = express.Router();
 
+    router.get("/stats", async (_req, res) => {
+      try {
+        res.json(await this.db.getLaunchStats());
+      } catch {
+        res.status(500).json({ error: "Failed to fetch launch stats" });
+      }
+    });
+
     router.get("/recent", async (req, res) => {
       try {
         const limit = Number(req.query.limit ?? 20);
@@ -296,7 +304,7 @@ class TokenSniperBot {
       res.json(getBillingStatus(config.stripe.secretKey));
     });
 
-    router.post("/checkout", authMiddleware, (req: AuthenticatedRequest, res) => {
+    router.post("/checkout", authMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
         const tier = String(req.body?.tier ?? "");
         if (!BILLING_TIERS.includes(tier as (typeof BILLING_TIERS)[number])) {
@@ -304,15 +312,19 @@ class TokenSniperBot {
           return;
         }
 
-        const session = createCheckoutSession(config.stripe.secretKey, {
-          tier: tier as (typeof BILLING_TIERS)[number],
-          userId: req.user!.id,
-          successUrl: req.body?.successUrl,
-          cancelUrl: req.body?.cancelUrl,
-        });
+        const session = await resolveCheckoutSession(
+          config.stripe.secretKey,
+          config.stripe.prices,
+          {
+            tier: tier as (typeof BILLING_TIERS)[number],
+            userId: req.user!.id,
+            successUrl: req.body?.successUrl,
+            cancelUrl: req.body?.cancelUrl,
+          },
+        );
 
-        if (session.mode === "stripe") {
-          res.status(501).json(session);
+        if (session.mode === "stripe" && "error" in session) {
+          res.status(session.error.includes("not configured") ? 501 : 502).json(session);
           return;
         }
 

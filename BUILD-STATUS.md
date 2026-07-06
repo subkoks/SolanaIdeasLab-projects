@@ -1,55 +1,52 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-06 (phase 9)
+Last updated: 2026-07-06 (phase 10)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | Mock checkout + webhook stub | Stripe SDK integration |
-| **token-sniper-bot** | LaserStream hardening + mock checkout | Stripe SDK + production LaserStream |
-| **wallet-tracker-pro** | Behavioral + token mint analytics | Portfolio valuation |
+| **token-safety-bot** | Scan quota API + Stripe SDK checkout | Webhook tier sync |
+| **token-sniper-bot** | Launch stats + Stripe SDK checkout | Webhook tier sync |
+| **wallet-tracker-pro** | Tier watch limits + mock portfolio USD | Live SOL price feed |
 
 ## token-sniper-bot
 
-**Done (phase 9)**
-- `POST /api/v1/billing/checkout` — mock checkout URL when Stripe unset; 501 when keys set (SDK pending)
-- `POST /webhook/stripe` — stub (503 mock / 501 when configured)
-- LaserStream exponential reconnect backoff (5s → 60s cap)
-- Signature dedupe cache (5 min TTL) to reduce duplicate launch ingests
-- LaserStream stats exposed on `/health`
+**Done (phase 10)**
+- `GET /api/v1/launches/stats` — total, 24h, breakdown by risk level
+- `resolveCheckoutSession()` — Stripe SDK when keys + price IDs configured
 
-**Done (phase 8)**
-- LaserStream WebSocket client, mock billing status API
+**Done (phase 9)**
+- Mock checkout, LaserStream hardening, billing status
 
 **Still needed**
-- Stripe Checkout Session + webhook tier sync
+- Stripe webhook → subscription tier sync
 
 ## wallet-tracker-pro
 
-**Done (phase 9)**
-- `getWalletBehaviorSummary()` — 30-day in/out ratio, net lamports
-- `getTokenMintBreakdown()` — top token mints by event count
-- Activity lookup + dashboard show behavior and token breakdown
+**Done (phase 10)**
+- Subscriber `tier` column + tier-based watch limits (free 3 / basic 10 / pro 25 / enterprise 100)
+- Telegram `/limits` command
+- `getWalletPortfolioSummary()` — mock USD via `MOCK_SOL_USD_PRICE`
+- `GET /api/analytics/portfolio/[wallet]` + portfolio on activity lookup
 
-**Done (phase 8)**
-- 7-day analytics overview + top wallets
+**Done (phase 9)**
+- Behavioral analytics + token mint breakdown
 
 **Still needed**
-- Portfolio valuation / USD estimates
-- Tier-based watch limits
+- Live SOL/USD price (CoinGecko/Jupiter when keys available)
+- Stripe-linked tier upgrades for Telegram subscribers
 
 ## token-safety-bot
 
+**Done (phase 10)**
+- `GET /api/v1/users/quota` — daily scan usage / remaining / reset time
+- `resolveCheckoutSession()` — Stripe SDK when configured
+
 **Done (phase 9)**
-- `POST /api/v1/billing/checkout` — mock checkout sessions
-- `POST /webhook/stripe` — stub handler
-- Billing status includes `pricesUsd`
+- Mock checkout + webhook stub
 
-**Done (phase 8)**
-- Mock billing status API
-
-**Still needed** — Stripe SDK checkout + webhook tier sync
+**Still needed** — Stripe webhook tier sync
 
 ## Commands
 
@@ -57,6 +54,8 @@ Last updated: 2026-07-06 (phase 9)
 ./scripts/local-dev-bootstrap.sh
 ```
 
-**Mock checkout:** `POST /api/v1/billing/checkout` with `{ "tier": "pro" }` (auth required)
+**Launch stats:** `curl http://localhost:8000/api/v1/launches/stats`
 
-**Wallet tracker dashboard:** `cd wallet-tracker-pro && npm run dev`
+**Scan quota:** `GET /api/v1/users/quota` (auth required)
+
+**Portfolio:** `GET /api/analytics/portfolio/<wallet>`
