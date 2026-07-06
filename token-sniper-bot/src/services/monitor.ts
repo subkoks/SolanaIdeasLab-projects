@@ -605,6 +605,15 @@ export class MonitorService {
           severity: alert.severity,
           message: alert.message,
         });
+
+        await this.db.recordAlertNotification({
+          userId: alert.userId,
+          chatId: String(chatId),
+          tokenAddress: alert.tokenAddress,
+          alertType: alert.type,
+          severity: alert.severity,
+          message: alert.message,
+        });
       }
     } catch (error) {
       logger.error("Failed to send notification:", error);
@@ -701,12 +710,23 @@ export class MonitorService {
 
   async getAlertHistory(
     tokenAddress: string,
-    _limit: number = 50,
+    limit: number = 50,
   ): Promise<MonitoringAlert[]> {
     try {
-      // This would get alert history from database
-      // For now, return empty array
-      return [];
+      const rows = await this.db.getAlertNotificationsForToken(
+        tokenAddress,
+        limit,
+      );
+
+      return rows.map((row) => ({
+        id: `${row.alertType}-${row.tokenAddress}-${row.deliveredAt.getTime()}`,
+        type: row.alertType as MonitoringAlert["type"],
+        tokenAddress: row.tokenAddress,
+        severity: row.severity as MonitoringAlert["severity"],
+        message: row.message,
+        data: {},
+        timestamp: row.deliveredAt.getTime(),
+      }));
     } catch (error) {
       logger.error(`Failed to get alert history for ${tokenAddress}:`, error);
       return [];
