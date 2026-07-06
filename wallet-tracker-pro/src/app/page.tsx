@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { ActivityChart } from '@/components/activity-chart'
 import { ActivityTimelineChart } from '@/components/activity-timeline-chart'
 
@@ -83,6 +83,7 @@ interface MockUpgradeResult {
 }
 
 interface CheckoutSessionResult {
+  mode?: string
   checkoutUrl?: string
   message?: string
   error?: string
@@ -105,6 +106,84 @@ export default function HomePage(): ReactNode {
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    const checkout = params.get('checkout')
+    if (!checkout) {
+      return
+    }
+
+    const completeCheckoutReturn = async (): Promise<void> => {
+      if (checkout !== 'success') {
+        setUpgradeMessage('Checkout cancelled')
+        window.history.replaceState({}, '', window.location.pathname)
+        return
+      }
+
+      let chatId = ''
+      let tier = 'pro'
+      const pending = sessionStorage.getItem('billing_pending')
+      if (pending) {
+        try {
+          const parsed = JSON.parse(pending) as {
+            chatId?: string
+            tier?: string
+          }
+          chatId = parsed.chatId ?? ''
+          tier = parsed.tier ?? tier
+        } catch {
+          // ignore malformed session payload
+        }
+        sessionStorage.removeItem('billing_pending')
+      }
+
+      if (chatId) {
+        setChatIdInput(chatId)
+        setUpgradeTier(tier)
+      }
+
+      const statusRes = await fetch('/api/billing/status')
+      if (!statusRes.ok) {
+        setUpgradeMessage('Checkout returned — reload billing status to verify')
+        window.history.replaceState({}, '', window.location.pathname)
+        return
+      }
+
+      const status = (await statusRes.json()) as BillingStatus
+      setBilling(status)
+
+      if (status.mode === 'mock' && chatId) {
+        const response = await fetch('/api/billing/mock-upgrade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId, tier }),
+        })
+        const payload = (await response.json()) as MockUpgradeResult
+        setUpgradeMessage(
+          response.ok
+            ? payload.limits
+              ? `Mock checkout complete — ${payload.tier}: ${payload.limits.used}/${payload.limits.limit} watches`
+              : 'Mock checkout complete'
+            : (payload.error ?? 'Mock completion failed'),
+        )
+      } else {
+        setUpgradeMessage(
+          chatId
+            ? 'Checkout complete — tier syncs via Stripe webhook. Verify /limits in Telegram.'
+            : 'Checkout complete — verify tier in Telegram with /limits',
+        )
+      }
+
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
+    void completeCheckoutReturn()
+  }, [])
 
   const loadStats = async (): Promise<void> => {
     const response = await fetch('/api/stats')
@@ -193,8 +272,17 @@ export default function HomePage(): ReactNode {
     }
 
     if (payload.checkoutUrl) {
-      window.open(payload.checkoutUrl, '_blank', 'noopener,noreferrer')
-      setUpgradeMessage(payload.message ?? 'Checkout opened in a new tab')
+      sessionStorage.setItem(
+        'billing_pending',
+        JSON.stringify({ chatId, tier: upgradeTier }),
+      )
+      if (payload.mode === 'mock') {
+        window.location.href = payload.checkoutUrl
+      } else {
+        window.open(payload.checkoutUrl, '_blank', 'noopener,noreferrer')
+        setUpgradeMessage(payload.message ?? 'Checkout opened in a new tab')
+      }
+      return
     }
   }
 

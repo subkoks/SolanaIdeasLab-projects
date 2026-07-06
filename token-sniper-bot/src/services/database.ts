@@ -8,7 +8,7 @@ import {
   verifyRefreshToken,
 } from "../middleware/auth";
 import { logger } from "../utils/logger";
-import { telegramUserId } from "../utils/telegram-user";
+import { parseTelegramChatId, telegramUserId } from "../utils/telegram-user";
 
 export class DatabaseService {
   private prisma: PrismaClient;
@@ -189,6 +189,28 @@ export class DatabaseService {
       activeAlerts,
       totalAlerts,
     };
+  }
+
+  async getTelegramChatIdForUser(userId: string): Promise<number | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { walletAddress: true },
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    return parseTelegramChatId(user.walletAddress);
+  }
+
+  async getActiveAlertsForToken(
+    tokenAddress: string,
+  ): Promise<Array<{ alertType: string; userId: string }>> {
+    return this.prisma.tokenAlert.findMany({
+      where: { tokenAddress, active: true },
+      select: { userId: true, alertType: true },
+    });
   }
 
   // Alert management
