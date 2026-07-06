@@ -84,3 +84,18 @@ model DetectedLaunch {
 
   @@index([detectedAt])
 }
+
+model AlertNotification {
+  id           String   @id @default(cuid())
+  userId       String?
+  chatId       String?
+  tokenAddress String
+  alertType    String
+  severity     String
+  message      String
+  deliveredAt  DateTime @default(now())
+
+  @@index([tokenAddress])
+  @@index([chatId])
+  @@index([deliveredAt])
+}

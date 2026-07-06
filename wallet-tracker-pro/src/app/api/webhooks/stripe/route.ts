@@ -5,6 +5,7 @@ import {
   buildSubscriberTierSyncFromEvent,
   constructStripeEvent,
 } from '@/lib/stripe-webhook'
+import { applySubscriberTierSync } from '@/lib/subscriber-tier-sync'
 import { DatabaseService } from '@/services/database'
 import { logger } from '@/lib/logger'
 
@@ -39,7 +40,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     if (sync) {
       await database.connect()
-      await database.setSubscriberTier(sync.chatId, sync.tier)
+      await applySubscriberTierSync(
+        (chatId) => database.upsertSubscriber(chatId),
+        (chatId, tier) => database.setSubscriberTier(chatId, tier),
+        sync,
+      )
       logger.info('Stripe subscriber tier synced', {
         chatId: sync.chatId,
         tier: sync.tier,

@@ -70,6 +70,7 @@ export class TelegramBotService {
     // Admin commands
     this.bot.command("broadcast", (ctx) => this.handleBroadcast(ctx));
     this.bot.command("stats", (ctx) => this.handleStats(ctx));
+    this.bot.command("history", (ctx) => this.handleHistory(ctx));
 
     // Handle text messages (token addresses)
     this.bot.on("text", (ctx) => this.handleText(ctx));
@@ -660,6 +661,47 @@ Payment via Stripe - secure and instant.
     } catch (error) {
       logger.error("Stats command error:", error);
       await ctx.reply("Failed to load stats.");
+    }
+  }
+
+  private async handleHistory(ctx: Context): Promise<void> {
+    const chatId = ctx.chat?.id;
+    if (!chatId) {
+      return;
+    }
+
+    const tokenAddress = getMessageText(ctx).split(/\s+/)[1];
+
+    try {
+      if (tokenAddress && this.helius.isValidAddress(tokenAddress)) {
+        const rows = await this.db.getAlertNotificationsForToken(tokenAddress, 10);
+        if (rows.length === 0) {
+          await ctx.reply(`No delivery history for ${tokenAddress.slice(0, 8)}… yet.`);
+          return;
+        }
+
+        const lines = rows.map(
+          (row, index) =>
+            `${index + 1}. ${row.alertType} (${row.severity}) — ${row.deliveredAt.toISOString()}`,
+        );
+        await ctx.reply(["Alert history:", "", ...lines].join("\n"));
+        return;
+      }
+
+      const rows = await this.db.getAlertNotificationsForChat(String(chatId), 10);
+      if (rows.length === 0) {
+        await ctx.reply("No alert deliveries yet.");
+        return;
+      }
+
+      const lines = rows.map(
+        (row, index) =>
+          `${index + 1}. ${row.tokenAddress.slice(0, 8)}… ${row.alertType} — ${row.deliveredAt.toISOString()}`,
+      );
+      await ctx.reply(["Your recent alert deliveries:", "", ...lines].join("\n"));
+    } catch (error) {
+      logger.error("History command error:", error);
+      await ctx.reply("Failed to load alert history.");
     }
   }
 

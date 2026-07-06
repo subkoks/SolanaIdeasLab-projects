@@ -395,6 +395,35 @@ class TokenSniperBot {
   private alertRoutes(): express.Router {
     const router = express.Router();
 
+    router.get("/metrics", async (_req, res) => {
+      try {
+        res.json(await this.db.getAlertNotificationMetrics());
+      } catch {
+        res.status(500).json({ error: "Failed to fetch alert metrics" });
+      }
+    });
+
+    router.get("/history", async (req, res) => {
+      try {
+        const tokenAddress = String(req.query.token ?? "");
+        const limit = Number(req.query.limit ?? 20);
+
+        if (!tokenAddress) {
+          res.status(400).json({ error: "token query param required" });
+          return;
+        }
+
+        res.json({
+          notifications: await this.db.getAlertNotificationsForToken(
+            tokenAddress,
+            limit,
+          ),
+        });
+      } catch {
+        res.status(500).json({ error: "Failed to fetch alert history" });
+      }
+    });
+
     router.get("/", authMiddleware, async (req: AuthenticatedRequest, res) => {
       try {
         const userId = req.user!.id;

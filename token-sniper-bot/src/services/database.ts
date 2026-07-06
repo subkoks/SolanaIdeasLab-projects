@@ -449,6 +449,118 @@ export class DatabaseService {
     }
   }
 
+  async recordAlertNotification(payload: {
+    alertType: string;
+    chatId?: string;
+    message: string;
+    severity: string;
+    tokenAddress: string;
+    userId?: string;
+  }): Promise<void> {
+    await this.prisma.alertNotification.create({
+      data: {
+        userId: payload.userId,
+        chatId: payload.chatId,
+        tokenAddress: payload.tokenAddress,
+        alertType: payload.alertType,
+        severity: payload.severity,
+        message: payload.message,
+      },
+    });
+  }
+
+  async getAlertNotificationsForToken(
+    tokenAddress: string,
+    limit = 20,
+  ): Promise<
+    Array<{
+      alertType: string;
+      chatId: string | null;
+      deliveredAt: Date;
+      message: string;
+      severity: string;
+      tokenAddress: string;
+    }>
+  > {
+    return this.prisma.alertNotification.findMany({
+      where: { tokenAddress },
+      orderBy: { deliveredAt: "desc" },
+      take: limit,
+      select: {
+        tokenAddress: true,
+        alertType: true,
+        severity: true,
+        message: true,
+        chatId: true,
+        deliveredAt: true,
+      },
+    });
+  }
+
+  async getAlertNotificationsForChat(
+    chatId: string,
+    limit = 10,
+  ): Promise<
+    Array<{
+      alertType: string;
+      deliveredAt: Date;
+      message: string;
+      severity: string;
+      tokenAddress: string;
+    }>
+  > {
+    return this.prisma.alertNotification.findMany({
+      where: { chatId },
+      orderBy: { deliveredAt: "desc" },
+      take: limit,
+      select: {
+        tokenAddress: true,
+        alertType: true,
+        severity: true,
+        message: true,
+        deliveredAt: true,
+      },
+    });
+  }
+
+  async getAlertNotificationMetrics(): Promise<{
+    deliveredLast24h: number;
+    deliveredLast7d: number;
+    byType: Record<string, number>;
+    totalDelivered: number;
+  }> {
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const [totalDelivered, deliveredLast24h, deliveredLast7d, byTypeRows] =
+      await Promise.all([
+        this.prisma.alertNotification.count(),
+        this.prisma.alertNotification.count({
+          where: { deliveredAt: { gte: since24h } },
+        }),
+        this.prisma.alertNotification.count({
+          where: { deliveredAt: { gte: since7d } },
+        }),
+        this.prisma.alertNotification.groupBy({
+          by: ["alertType"],
+          _count: { id: true },
+        }),
+      ]);
+
+    return {
+      totalDelivered,
+      deliveredLast24h,
+      deliveredLast7d,
+      byType: byTypeRows.reduce(
+        (acc, row) => {
+          acc[row.alertType] = row._count.id;
+          return acc;
+        },
+        {} as Record<string, number>,
+      ),
+    };
+  }
+
   async getRevenueStats(): Promise<any> {
     try {
       const subscriptions = await this.prisma.subscription.findMany({
