@@ -218,6 +218,11 @@ class TokenSafetyBot {
       res.json(await this.getHealthStatus());
     });
 
+    this.app.get("/ready", async (_req, res) => {
+      const ready = await this.getReadinessStatus();
+      res.status(ready.ready ? 200 : 503).json(ready);
+    });
+
     this.app.post("/api/v1/auth/wallet/connect", async (req, res, next) => {
       try {
         const { message, signature, walletAddress } = walletConnectSchema.parse(
@@ -647,12 +652,44 @@ class TokenSafetyBot {
     });
   }
 
+  private async getReadinessStatus(): Promise<{
+    ready: boolean;
+    timestamp: string;
+    checks: {
+      database: boolean;
+      queue: boolean;
+      solana: boolean;
+    };
+  }> {
+    const [databaseHealthy, queueHealthy, solanaHealthy] = await Promise.all([
+      this.databaseService.healthCheck(),
+      this.queueService.healthCheck(),
+      this.solanaService.healthCheck(),
+    ]);
+
+    const ready = databaseHealthy && queueHealthy && solanaHealthy;
+
+    return {
+      ready,
+      timestamp: new Date().toISOString(),
+      checks: {
+        database: databaseHealthy,
+        queue: queueHealthy,
+        solana: solanaHealthy,
+      },
+    };
+  }
+
   private async getHealthStatus(): Promise<{
     metrics: {
       activeConnections: number;
       monitoringTokens: number;
       queueSize: number;
       uptimeSeconds: number;
+    };
+    runtime: {
+      nodeEnv: string;
+      productionGuard: boolean;
     };
     services: {
       database: string;
@@ -673,6 +710,10 @@ class TokenSafetyBot {
       status:
         databaseHealthy && queueHealthy && solanaHealthy ? "ok" : "degraded",
       timestamp: new Date().toISOString(),
+      runtime: {
+        nodeEnv: process.env.NODE_ENV ?? "development",
+        productionGuard: isProductionRuntime(),
+      },
       services: {
         database: databaseHealthy ? "healthy" : "unhealthy",
         queue: queueHealthy ? "healthy" : "unhealthy",

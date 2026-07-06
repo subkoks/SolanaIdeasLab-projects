@@ -835,6 +835,29 @@ ${riskScore.recommendations.join("\n")}
     return sent;
   }
 
+  async notifyMonitoringAlert(
+    chatId: number,
+    alert: {
+      type: string;
+      tokenAddress: string;
+      severity: string;
+      message: string;
+    },
+  ): Promise<void> {
+    const shortMint = `${alert.tokenAddress.slice(0, 8)}…${alert.tokenAddress.slice(-4)}`;
+
+    await this.bot.telegram.sendMessage(
+      chatId,
+      [
+        "Monitoring alert",
+        `Type: ${alert.type}`,
+        `Severity: ${alert.severity}`,
+        `Token: ${shortMint}`,
+        alert.message,
+      ].join("\n"),
+    );
+  }
+
   async sendAlert(alert: TelegramAlert): Promise<void> {
     try {
       const message = this.formatAlertMessage(alert);

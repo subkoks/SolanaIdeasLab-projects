@@ -544,10 +544,47 @@ export class MonitorService {
 
   private async sendNotification(alert: MonitoringAlert): Promise<void> {
     try {
-      logger.info(`Notification: ${alert.message}`);
-
-      if (alert.type === "launch" && this.telegramBot) {
+      if (!this.telegramBot) {
+        logger.info(`Notification skipped (no Telegram): ${alert.message}`);
         return;
+      }
+
+      const recipients = new Set<number>();
+
+      if (alert.userId) {
+        const chatId = await this.db.getTelegramChatIdForUser(alert.userId);
+        if (chatId !== null) {
+          recipients.add(chatId);
+        }
+      }
+
+      const tokenAlerts = await this.db.getActiveAlertsForToken(
+        alert.tokenAddress,
+      );
+      for (const tokenAlert of tokenAlerts) {
+        const chatId = await this.db.getTelegramChatIdForUser(
+          tokenAlert.userId,
+        );
+        if (chatId !== null) {
+          recipients.add(chatId);
+        }
+      }
+
+      if (recipients.size === 0) {
+        logger.debug("No Telegram recipients for monitoring alert", {
+          tokenAddress: alert.tokenAddress,
+          type: alert.type,
+        });
+        return;
+      }
+
+      for (const chatId of recipients) {
+        await this.telegramBot.notifyMonitoringAlert(chatId, {
+          type: alert.type,
+          tokenAddress: alert.tokenAddress,
+          severity: alert.severity,
+          message: alert.message,
+        });
       }
     } catch (error) {
       logger.error("Failed to send notification:", error);
