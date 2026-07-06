@@ -18,6 +18,7 @@ import { SafetyScannerService } from "./services/safety-scanner";
 import { SolanaService } from "./services/solana";
 import { TelegramBotService } from "./services/telegram-bot";
 import type { SubscriptionTier } from "./types/auth";
+import { getBillingStatus } from "./utils/billing";
 import { logger } from "./utils/logger";
 
 const walletConnectSchema = z.object({
@@ -164,6 +165,10 @@ class TokenSafetyBot {
       } catch (error) {
         next(error);
       }
+    });
+
+    this.app.get("/api/v1/billing/status", (_req, res) => {
+      res.json(getBillingStatus(config.stripe.secretKey));
     });
 
     this.app.post(
@@ -398,12 +403,14 @@ class TokenSafetyBot {
       async (req, res, next) => {
         try {
           const { tier } = upgradeSchema.parse(req.body);
-          res.json(
-            await this.databaseService.upgradeSubscription(
-              req.user!.id,
-              tier as SubscriptionTier,
-            ),
+          const subscription = await this.databaseService.upgradeSubscription(
+            req.user!.id,
+            tier as SubscriptionTier,
           );
+          res.json({
+            subscription,
+            billing: getBillingStatus(config.stripe.secretKey),
+          });
         } catch (error) {
           next(error);
         }

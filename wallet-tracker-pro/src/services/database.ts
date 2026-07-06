@@ -202,6 +202,56 @@ export class DatabaseService {
     return { subscribers, watches, events }
   }
 
+  public async getAnalyticsOverview() {
+    const now = new Date()
+    const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+    const [eventsLast24h, eventsLast7d, activeWallets, watches, totalEvents] =
+      await Promise.all([
+        this.prisma.walletActivityEvent.count({
+          where: { observedAt: { gte: dayAgo } },
+        }),
+        this.prisma.walletActivityEvent.count({
+          where: { observedAt: { gte: weekAgo } },
+        }),
+        this.prisma.walletActivityEvent.groupBy({
+          by: ['walletAddress'],
+          where: { observedAt: { gte: weekAgo } },
+        }),
+        this.prisma.walletWatch.count({ where: { active: true } }),
+        this.prisma.walletActivityEvent.count(),
+      ])
+
+    const uniqueActiveWallets = activeWallets.length
+    const avgEventsPerWatch =
+      watches > 0 ? Math.round((totalEvents / watches) * 10) / 10 : 0
+
+    return {
+      eventsLast24h,
+      eventsLast7d,
+      uniqueActiveWallets,
+      avgEventsPerWatch,
+    }
+  }
+
+  public async getTopActiveWallets(limit = 5) {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+
+    const grouped = await this.prisma.walletActivityEvent.groupBy({
+      by: ['walletAddress'],
+      where: { observedAt: { gte: weekAgo } },
+      _count: { _all: true },
+      orderBy: { _count: { walletAddress: 'desc' } },
+      take: limit,
+    })
+
+    return grouped.map((row) => ({
+      walletAddress: row.walletAddress,
+      eventCount: row._count._all,
+    }))
+  }
+
   public async healthCheck(): Promise<boolean> {
     try {
       await this.prisma.$queryRaw`SELECT 1`

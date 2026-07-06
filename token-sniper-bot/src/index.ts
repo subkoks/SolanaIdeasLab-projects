@@ -10,11 +10,13 @@ import { errorHandler } from "./middleware/error-handler";
 import { globalRateLimiter } from "./middleware/rate-limit";
 import { DatabaseService } from "./services/database";
 import { HeliusService } from "./services/helius";
+import { HeliusLaserStreamService } from "./services/helius-laserstream";
 import { MonitorService } from "./services/monitor";
 import { QueueService } from "./services/queue";
 import { RiskScoringService } from "./services/risk-scoring";
 import { TelegramBotService } from "./services/telegram-bot";
 import { logger } from "./utils/logger";
+import { getBillingStatus } from "./utils/billing";
 
 class TokenSniperBot {
   private app: express.Application;
@@ -25,6 +27,7 @@ class TokenSniperBot {
   private telegramBot: TelegramBotService | null = null;
   private queue: QueueService;
   private monitor: MonitorService;
+  private laserStream: HeliusLaserStreamService;
 
   constructor() {
     this.app = express();
@@ -33,6 +36,9 @@ class TokenSniperBot {
     this.riskScorer = new RiskScoringService(this.helius, this.db);
     this.queue = new QueueService();
     this.monitor = new MonitorService(this.db, this.helius, this.riskScorer);
+    this.laserStream = new HeliusLaserStreamService((signature, blockTime) => {
+      void this.monitor.ingestLaunchSignature(signature, blockTime);
+    });
 
     if (isTelegramEnabled()) {
       this.bot = new Telegraf(config.telegram.botToken);
@@ -78,6 +84,7 @@ class TokenSniperBot {
     this.app.use("/api/v1/tokens", this.tokenRoutes());
     this.app.use("/api/v1/alerts", this.alertRoutes());
     this.app.use("/api/v1/launches", this.launchRoutes());
+    this.app.use("/api/v1/billing", this.billingRoutes());
     this.app.use("/api/v1/users", authMiddleware, this.userRoutes());
 
     // Webhook for Telegram
@@ -267,6 +274,16 @@ class TokenSniperBot {
     return router;
   }
 
+  private billingRoutes(): express.Router {
+    const router = express.Router();
+
+    router.get("/status", (_req, res) => {
+      res.json(getBillingStatus(config.stripe.secretKey));
+    });
+
+    return router;
+  }
+
   private alertRoutes(): express.Router {
     const router = express.Router();
 
@@ -336,7 +353,10 @@ class TokenSniperBot {
         const userId = req.user!.id;
         const { tier } = req.body;
         const subscription = await this.db.upgradeSubscription(userId, tier);
-        res.json(subscription);
+        res.json({
+          subscription,
+          billing: getBillingStatus(config.stripe.secretKey),
+        });
       } catch (error) {
         res.status(400).json({ error: "Failed to upgrade subscription" });
       }
@@ -460,6 +480,7 @@ class TokenSniperBot {
       if (config.features.riskScoring) {
         await this.monitor.start();
         logger.info("Monitor service started");
+        this.laserStream.start();
       }
 
       // Start HTTP server
@@ -479,6 +500,7 @@ class TokenSniperBot {
 
     try {
       await this.queue.disconnect();
+      this.laserStream.stop();
       await this.helius.disconnect();
       await this.monitor.stop();
       await this.db.disconnect();
