@@ -16,9 +16,23 @@ export interface CheckoutRequest {
   cancelUrl?: string;
 }
 
+export interface StripePriceIds {
+  basic: string;
+  pro: string;
+  enterprise: string;
+}
+
 export type CheckoutSessionResult =
   | {
       mode: "mock";
+      checkoutUrl: string;
+      sessionId: string;
+      tier: BillingTier;
+      priceUsd: number;
+      message: string;
+    }
+  | {
+      mode: "stripe";
       checkoutUrl: string;
       sessionId: string;
       tier: BillingTier;
@@ -71,6 +85,63 @@ export const createCheckoutSession = (
 
   return {
     mode: "stripe",
-    error: "Stripe Checkout session creation pending SDK integration.",
+    error: "Use resolveCheckoutSession for Stripe SDK checkout.",
   };
+};
+
+export const resolveCheckoutSession = async (
+  stripeSecretKey: string,
+  prices: StripePriceIds,
+  request: CheckoutRequest,
+): Promise<CheckoutSessionResult> => {
+  const mockOrFallback = createCheckoutSession(stripeSecretKey, request);
+  if (mockOrFallback.mode === "mock") {
+    return mockOrFallback;
+  }
+
+  const priceId = prices[request.tier];
+  if (!priceId.trim()) {
+    return {
+      mode: "stripe",
+      error: `Stripe price ID not configured for tier ${request.tier}`,
+    };
+  }
+
+  try {
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(stripeSecretKey);
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url:
+        request.successUrl ??
+        "https://checkout.solanaideaslab.local/success?session={CHECKOUT_SESSION_ID}",
+      cancel_url:
+        request.cancelUrl ?? "https://checkout.solanaideaslab.local/cancel",
+      client_reference_id: request.userId,
+      metadata: { tier: request.tier, userId: request.userId },
+    });
+
+    if (!session.url) {
+      return {
+        mode: "stripe",
+        error: "Stripe session missing checkout URL",
+      };
+    }
+
+    return {
+      mode: "stripe",
+      checkoutUrl: session.url,
+      sessionId: session.id,
+      tier: request.tier,
+      priceUsd: TIER_DISPLAY_PRICES_USD[request.tier],
+      message: "Stripe checkout session created.",
+    };
+  } catch (error) {
+    return {
+      mode: "stripe",
+      error:
+        error instanceof Error ? error.message : "Stripe checkout session failed",
+    };
+  }
 };

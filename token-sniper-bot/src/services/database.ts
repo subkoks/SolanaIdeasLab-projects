@@ -518,6 +518,38 @@ export class DatabaseService {
     }
   }
 
+  async getLaunchStats(): Promise<{
+    total: number;
+    last24h: number;
+    byRiskLevel: Record<string, number>;
+  }> {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    try {
+      const [total, last24h, grouped] = await Promise.all([
+        this.prisma.detectedLaunch.count(),
+        this.prisma.detectedLaunch.count({
+          where: { detectedAt: { gte: dayAgo } },
+        }),
+        this.prisma.detectedLaunch.groupBy({
+          by: ["riskLevel"],
+          _count: { _all: true },
+        }),
+      ]);
+
+      const byRiskLevel: Record<string, number> = {};
+      for (const row of grouped) {
+        const key = row.riskLevel ?? "unknown";
+        byRiskLevel[key] = row._count._all;
+      }
+
+      return { total, last24h, byRiskLevel };
+    } catch (error) {
+      logger.error("Failed to get launch stats:", error);
+      throw error;
+    }
+  }
+
   async getRecentDetectedLaunches(limit = 20): Promise<
     Array<{
       creator: string | null;

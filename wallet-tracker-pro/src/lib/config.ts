@@ -27,6 +27,9 @@ export const config = {
     maxWatchesPerSubscriber: parseNumber(process.env.MAX_WATCHES_PER_USER, 10),
     signatureBatchSize: parseNumber(process.env.WATCHER_SIGNATURE_BATCH, 10),
   },
+  analytics: {
+    mockSolUsdPrice: parseNumber(process.env.MOCK_SOL_USD_PRICE, 150),
+  },
   logging: {
     level: process.env.LOG_LEVEL ?? 'info',
   },
