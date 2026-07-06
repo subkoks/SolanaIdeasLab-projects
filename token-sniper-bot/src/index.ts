@@ -17,6 +17,10 @@ import { RiskScoringService } from "./services/risk-scoring";
 import { TelegramBotService } from "./services/telegram-bot";
 import { logger } from "./utils/logger";
 import { getBillingStatus, BILLING_TIERS, isBillingMockMode, resolveCheckoutSession } from "./utils/billing";
+import {
+  buildTierSyncFromStripeEvent,
+  constructStripeEvent,
+} from "./utils/stripe-webhook";
 
 class TokenSniperBot {
   private app: express.Application;
@@ -51,10 +55,73 @@ class TokenSniperBot {
       this.monitor.setTelegramBot(this.telegramBot);
     }
 
+    this.registerStripeWebhook();
     this.setupMiddleware();
     this.setupRoutes();
     this.setupTelegramBot();
     this.setupErrorHandling();
+  }
+
+  private registerStripeWebhook(): void {
+    this.app.post(
+      "/webhook/stripe",
+      express.raw({ type: "application/json" }),
+      async (req, res) => {
+        if (isBillingMockMode(config.stripe.secretKey)) {
+          res.status(503).json({
+            configured: false,
+            message: "Stripe webhook disabled in mock billing mode.",
+          });
+          return;
+        }
+
+        if (!config.stripe.webhookSecret.trim()) {
+          res.status(503).json({
+            configured: false,
+            message: "STRIPE_WEBHOOK_SECRET is not configured.",
+          });
+          return;
+        }
+
+        try {
+          const signature = req.headers["stripe-signature"];
+          const event = await constructStripeEvent(
+            req.body as Buffer,
+            typeof signature === "string" ? signature : undefined,
+            config.stripe.secretKey,
+            config.stripe.webhookSecret,
+          );
+
+          const sync = buildTierSyncFromStripeEvent(
+            event,
+            config.stripe.prices,
+          );
+
+          if (sync) {
+            await this.db.syncSubscriptionFromStripe(
+              sync.userId,
+              sync.tier,
+              sync.stripeSubscriptionId,
+              sync.status,
+            );
+            logger.info("Stripe tier synced", {
+              userId: sync.userId,
+              tier: sync.tier,
+              status: sync.status,
+              eventType: event.type,
+            });
+          }
+
+          res.json({ received: true, synced: Boolean(sync), type: event.type });
+        } catch (error) {
+          logger.error("Stripe webhook failed", { error });
+          res.status(400).json({
+            error:
+              error instanceof Error ? error.message : "Stripe webhook failed",
+          });
+        }
+      },
+    );
   }
 
   private setupMiddleware(): void {
@@ -96,21 +163,6 @@ class TokenSniperBot {
 
       this.bot.handleUpdate(req.body);
       res.sendStatus(200);
-    });
-
-    this.app.post("/webhook/stripe", (_req, res) => {
-      if (isBillingMockMode(config.stripe.secretKey)) {
-        res.status(503).json({
-          configured: false,
-          message: "Stripe webhook disabled in mock billing mode.",
-        });
-        return;
-      }
-
-      res.status(501).json({
-        configured: true,
-        message: "Stripe webhook handler pending SDK integration.",
-      });
     });
 
     this.app.post("/webhook/helius/enhanced", async (req, res) => {

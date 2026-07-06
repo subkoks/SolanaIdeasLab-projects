@@ -120,6 +120,9 @@ export const resolveCheckoutSession = async (
         request.cancelUrl ?? "https://checkout.solanaideaslab.local/cancel",
       client_reference_id: request.userId,
       metadata: { tier: request.tier, userId: request.userId },
+      subscription_data: {
+        metadata: { tier: request.tier, userId: request.userId },
+      },
     });
 
     if (!session.url) {

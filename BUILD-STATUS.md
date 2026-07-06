@@ -1,52 +1,49 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-06 (phase 10)
+Last updated: 2026-07-06 (phase 11)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | Scan quota API + Stripe SDK checkout | Webhook tier sync |
-| **token-sniper-bot** | Launch stats + Stripe SDK checkout | Webhook tier sync |
-| **wallet-tracker-pro** | Tier watch limits + mock portfolio USD | Live SOL price feed |
+| **token-safety-bot** | Stripe webhook tier sync + `/quota` Telegram | E2E Stripe test mode |
+| **token-sniper-bot** | Stripe webhook tier sync + `/launches stats` | E2E Stripe test mode |
+| **wallet-tracker-pro** | Live CoinGecko SOL/USD with mock fallback | Stripe tier for Telegram |
 
 ## token-sniper-bot
 
+**Done (phase 11)**
+- `POST /webhook/stripe` — verifies signature, syncs tier on checkout/subscription events
+- `syncSubscriptionFromStripe()` updates user tier + subscription rows
+- Telegram `/launches stats`
+
 **Done (phase 10)**
-- `GET /api/v1/launches/stats` — total, 24h, breakdown by risk level
-- `resolveCheckoutSession()` — Stripe SDK when keys + price IDs configured
-
-**Done (phase 9)**
-- Mock checkout, LaserStream hardening, billing status
-
-**Still needed**
-- Stripe webhook → subscription tier sync
+- Launch stats API, Stripe SDK checkout
 
 ## wallet-tracker-pro
 
+**Done (phase 11)**
+- Live SOL/USD from CoinGecko (`COINGECKO_API_KEY` optional)
+- `PREFER_MOCK_SOL_PRICE=true` forces mock pricing
+- Portfolio estimates use live price with mock fallback
+
 **Done (phase 10)**
-- Subscriber `tier` column + tier-based watch limits (free 3 / basic 10 / pro 25 / enterprise 100)
-- Telegram `/limits` command
-- `getWalletPortfolioSummary()` — mock USD via `MOCK_SOL_USD_PRICE`
-- `GET /api/analytics/portfolio/[wallet]` + portfolio on activity lookup
-
-**Done (phase 9)**
-- Behavioral analytics + token mint breakdown
-
-**Still needed**
-- Live SOL/USD price (CoinGecko/Jupiter when keys available)
-- Stripe-linked tier upgrades for Telegram subscribers
+- Tier watch limits, portfolio summary
 
 ## token-safety-bot
 
+**Done (phase 11)**
+- `POST /webhook/stripe` — tier sync (incl. Telegram `telegram:<chatId>` users)
+- Telegram `/quota` — daily scan usage
+
 **Done (phase 10)**
-- `GET /api/v1/users/quota` — daily scan usage / remaining / reset time
-- `resolveCheckoutSession()` — Stripe SDK when configured
+- Scan quota HTTP API, Stripe SDK checkout
 
-**Done (phase 9)**
-- Mock checkout + webhook stub
+## Stripe webhook setup
 
-**Still needed** — Stripe webhook tier sync
+1. Set `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` + price IDs in bot `.env`
+2. Stripe Dashboard → Webhooks → endpoint `https://HOST/webhook/stripe`
+3. Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`
 
 ## Commands
 
@@ -54,8 +51,6 @@ Last updated: 2026-07-06 (phase 10)
 ./scripts/local-dev-bootstrap.sh
 ```
 
-**Launch stats:** `curl http://localhost:8000/api/v1/launches/stats`
+**Sniper launch stats:** `/launches stats` or `GET /api/v1/launches/stats`
 
-**Scan quota:** `GET /api/v1/users/quota` (auth required)
-
-**Portfolio:** `GET /api/analytics/portfolio/<wallet>`
+**Safety quota:** `/quota` or `GET /api/v1/users/quota`
