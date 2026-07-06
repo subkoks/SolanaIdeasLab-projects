@@ -24,6 +24,10 @@ import {
   resolveCheckoutSession,
 } from "./utils/billing";
 import { getScanQuota } from "./utils/scan-quota";
+import {
+  buildTierSyncFromStripeEvent,
+  constructStripeEvent,
+} from "./utils/stripe-webhook";
 import { logger } from "./utils/logger";
 
 const walletConnectSchema = z.object({
@@ -122,9 +126,72 @@ class TokenSafetyBot {
       this.telegramBot = null;
     }
 
+    this.registerStripeWebhook();
     this.setupMiddleware();
     this.setupRoutes();
     this.app.use(errorHandler);
+  }
+
+  private registerStripeWebhook(): void {
+    this.app.post(
+      "/webhook/stripe",
+      express.raw({ type: "application/json" }),
+      async (req, res) => {
+        if (isBillingMockMode(config.stripe.secretKey)) {
+          res.status(503).json({
+            configured: false,
+            message: "Stripe webhook disabled in mock billing mode.",
+          });
+          return;
+        }
+
+        if (!config.stripe.webhookSecret.trim()) {
+          res.status(503).json({
+            configured: false,
+            message: "STRIPE_WEBHOOK_SECRET is not configured.",
+          });
+          return;
+        }
+
+        try {
+          const signature = req.headers["stripe-signature"];
+          const event = await constructStripeEvent(
+            req.body as Buffer,
+            typeof signature === "string" ? signature : undefined,
+            config.stripe.secretKey,
+            config.stripe.webhookSecret,
+          );
+
+          const sync = buildTierSyncFromStripeEvent(
+            event,
+            config.stripe.prices,
+          );
+
+          if (sync) {
+            await this.databaseService.syncSubscriptionFromStripe(
+              sync.userId,
+              sync.tier,
+              sync.stripeSubscriptionId,
+              sync.status,
+            );
+            logger.info("Stripe tier synced", {
+              userId: sync.userId,
+              tier: sync.tier,
+              status: sync.status,
+              eventType: event.type,
+            });
+          }
+
+          res.json({ received: true, synced: Boolean(sync), type: event.type });
+        } catch (error) {
+          logger.error("Stripe webhook failed", { error });
+          res.status(400).json({
+            error:
+              error instanceof Error ? error.message : "Stripe webhook failed",
+          });
+        }
+      },
+    );
   }
 
   private setupMiddleware(): void {
@@ -213,24 +280,6 @@ class TokenSafetyBot {
         } catch (error) {
           next(error);
         }
-      },
-    );
-
-    this.app.post(
-      "/webhook/stripe",
-      async (req, res) => {
-        if (isBillingMockMode(config.stripe.secretKey)) {
-          res.status(503).json({
-            configured: false,
-            message: "Stripe webhook disabled in mock billing mode.",
-          });
-          return;
-        }
-
-        res.status(501).json({
-          configured: true,
-          message: "Stripe webhook handler pending SDK integration.",
-        });
       },
     );
 

@@ -456,8 +456,27 @@ Use /stop <alert_id> to cancel specific alerts.
       return;
     }
 
+    if (arg === "stats") {
+      const stats = await this.db.getLaunchStats();
+      const riskLines = Object.entries(stats.byRiskLevel).map(
+        ([level, count]) => `• ${level}: ${count}`,
+      );
+
+      await ctx.reply(
+        [
+          "Launch stats:",
+          `Total recorded: ${stats.total}`,
+          `Last 24h: ${stats.last24h}`,
+          riskLines.length > 0 ? ["By risk:", ...riskLines].join("\n") : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+      return;
+    }
+
     await ctx.reply(
-      "Usage: `/launches subscribe`, `/launches recent`, or `/launches unsubscribe`",
+      "Usage: `/launches subscribe`, `/launches recent`, `/launches stats`, or `/launches unsubscribe`",
     );
   }
 
