@@ -362,7 +362,7 @@ export class TelegramBotService {
         const profile = await this.databaseService.getUserProfile(userId);
         tier = profile.subscriptionTier;
       } catch {
-        tier = "free";
+        // Telegram-only users default to free tier
       }
 
       const quota = getScanQuota(tier, scans, userId);
