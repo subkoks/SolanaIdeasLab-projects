@@ -1,5 +1,7 @@
 import { Context, Telegraf } from 'telegraf'
 import { config } from '../lib/config'
+import { getBillingStatus, isBillingMockMode, resolveSubscriberCheckoutSession } from '../lib/billing'
+import { isValidSubscriberTier } from '../lib/watch-limits'
 import { logger } from '../lib/logger'
 import type { DatabaseService } from './database'
 import type { SolanaWatcherService } from './solana-watcher'
@@ -27,6 +29,8 @@ export class WalletTrackerTelegramBot {
     this.bot.command('list', async (context) => this.handleList(context))
     this.bot.command('activity', async (context) => this.handleActivity(context))
     this.bot.command('limits', async (context) => this.handleLimits(context))
+    this.bot.command('billing', async (context) => this.handleBilling(context))
+    this.bot.command('upgrade', async (context) => this.handleUpgrade(context))
 
     this.bot.catch((error) => {
       logger.error('Telegram bot error', { error })
@@ -66,6 +70,8 @@ export class WalletTrackerTelegramBot {
         '/unwatch <wallet> — remove',
         '/activity [wallet] — recent moves',
         '/limits — your watch tier and capacity',
+        '/billing — tier and pricing mode',
+        '/upgrade <tier> — mock tier upgrade (dev)',
       ].join('\n'),
     )
   }
@@ -200,6 +206,92 @@ export class WalletTrackerTelegramBot {
         `Watches: ${limits.used}/${limits.limit} (${limits.remaining} remaining)`,
       ].join('\n'),
     )
+  }
+
+  private async handleBilling(context: Context): Promise<void> {
+    const chatId = context.chat?.id
+    if (!chatId) {
+      return
+    }
+
+    await this.database.upsertSubscriber(
+      String(chatId),
+      context.from?.username,
+    )
+
+    const billing = getBillingStatus(config.stripe.secretKey)
+    const limits = await this.database.getSubscriberLimits(String(chatId))
+
+    await context.reply(
+      [
+        `Billing: ${billing.mode}`,
+        billing.message,
+        '',
+        limits
+          ? `Your tier: ${limits.tier} (${limits.used}/${limits.limit} watches)`
+          : 'Tier: free',
+        '',
+        `Basic $${billing.pricesUsd.basic}/mo — Pro $${billing.pricesUsd.pro}/mo`,
+      ].join('\n'),
+    )
+  }
+
+  private async handleUpgrade(context: Context): Promise<void> {
+    const chatId = context.chat?.id
+    if (!chatId) {
+      return
+    }
+
+    const tier = getMessageText(context).split(/\s+/)[1]?.toLowerCase()
+
+    if (!tier || !isValidSubscriberTier(tier) || tier === 'free') {
+      await context.reply(
+        'Usage: /upgrade basic|pro|enterprise\n(Mock dev upgrade when Stripe is not configured.)',
+      )
+      return
+    }
+
+    if (isBillingMockMode(config.stripe.secretKey)) {
+      await this.database.upsertSubscriber(
+        String(chatId),
+        context.from?.username,
+      )
+      await this.database.setSubscriberTier(String(chatId), tier)
+
+      const limits = await this.database.getSubscriberLimits(String(chatId))
+      await context.reply(
+        `Upgraded to ${tier}. Watches: ${limits?.used ?? 0}/${limits?.limit ?? 0}`,
+      )
+      return
+    }
+
+    await this.database.upsertSubscriber(
+      String(chatId),
+      context.from?.username,
+    )
+
+    const session = await resolveSubscriberCheckoutSession(
+      config.stripe.secretKey,
+      config.stripe.prices,
+      {
+        chatId: String(chatId),
+        tier,
+      },
+    )
+
+    if (session.mode === 'stripe' && 'error' in session) {
+      await context.reply(`Checkout unavailable: ${session.error}`)
+      return
+    }
+
+    if ('checkoutUrl' in session) {
+      await context.reply(
+        [
+          `Checkout for ${tier} ($${session.priceUsd}/mo):`,
+          session.checkoutUrl,
+        ].join('\n'),
+      )
+    }
   }
 
   public async notifyChat(chatId: string, message: string): Promise<void> {

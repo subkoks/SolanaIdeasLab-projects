@@ -24,7 +24,12 @@ import {
   resolveCheckoutSession,
 } from "./utils/billing";
 import { getScanQuota } from "./utils/scan-quota";
+import {
+  buildTierSyncFromStripeEvent,
+  constructStripeEvent,
+} from "./utils/stripe-webhook";
 import { logger } from "./utils/logger";
+import { assertProductionConfig, isProductionRuntime } from "./utils/production-guard";
 
 const walletConnectSchema = z.object({
   message: z.string().min(1),
@@ -122,12 +127,79 @@ class TokenSafetyBot {
       this.telegramBot = null;
     }
 
+    this.registerStripeWebhook();
     this.setupMiddleware();
     this.setupRoutes();
     this.app.use(errorHandler);
   }
 
+  private registerStripeWebhook(): void {
+    this.app.post(
+      "/webhook/stripe",
+      express.raw({ type: "application/json" }),
+      async (req, res) => {
+        if (isBillingMockMode(config.stripe.secretKey)) {
+          res.status(503).json({
+            configured: false,
+            message: "Stripe webhook disabled in mock billing mode.",
+          });
+          return;
+        }
+
+        if (!config.stripe.webhookSecret.trim()) {
+          res.status(503).json({
+            configured: false,
+            message: "STRIPE_WEBHOOK_SECRET is not configured.",
+          });
+          return;
+        }
+
+        try {
+          const signature = req.headers["stripe-signature"];
+          const event = await constructStripeEvent(
+            req.body as Buffer,
+            typeof signature === "string" ? signature : undefined,
+            config.stripe.secretKey,
+            config.stripe.webhookSecret,
+          );
+
+          const sync = buildTierSyncFromStripeEvent(
+            event,
+            config.stripe.prices,
+          );
+
+          if (sync) {
+            await this.databaseService.syncSubscriptionFromStripe(
+              sync.userId,
+              sync.tier,
+              sync.stripeSubscriptionId,
+              sync.status,
+            );
+            logger.info("Stripe tier synced", {
+              userId: sync.userId,
+              tier: sync.tier,
+              status: sync.status,
+              eventType: event.type,
+            });
+          }
+
+          res.json({ received: true, synced: Boolean(sync), type: event.type });
+        } catch (error) {
+          logger.error("Stripe webhook failed", { error });
+          res.status(400).json({
+            error:
+              error instanceof Error ? error.message : "Stripe webhook failed",
+          });
+        }
+      },
+    );
+  }
+
   private setupMiddleware(): void {
+    if (isProductionRuntime()) {
+      this.app.set("trust proxy", 1);
+    }
+
     this.app.use(
       cors({
         origin:
@@ -136,14 +208,19 @@ class TokenSafetyBot {
     );
     this.app.use(helmet());
     this.app.use(compression());
-    this.app.use(express.json());
-    this.app.use(express.urlencoded({ extended: true }));
+    this.app.use(express.json({ limit: "100kb" }));
+    this.app.use(express.urlencoded({ extended: true, limit: "100kb" }));
     this.app.use(rateLimitMiddleware());
   }
 
   private setupRoutes(): void {
     this.app.get("/health", async (_req, res) => {
       res.json(await this.getHealthStatus());
+    });
+
+    this.app.get("/ready", async (_req, res) => {
+      const ready = await this.getReadinessStatus();
+      res.status(ready.ready ? 200 : 503).json(ready);
     });
 
     this.app.post("/api/v1/auth/wallet/connect", async (req, res, next) => {
@@ -213,24 +290,6 @@ class TokenSafetyBot {
         } catch (error) {
           next(error);
         }
-      },
-    );
-
-    this.app.post(
-      "/webhook/stripe",
-      async (req, res) => {
-        if (isBillingMockMode(config.stripe.secretKey)) {
-          res.status(503).json({
-            configured: false,
-            message: "Stripe webhook disabled in mock billing mode.",
-          });
-          return;
-        }
-
-        res.status(501).json({
-          configured: true,
-          message: "Stripe webhook handler pending SDK integration.",
-        });
       },
     );
 
@@ -593,12 +652,44 @@ class TokenSafetyBot {
     });
   }
 
+  private async getReadinessStatus(): Promise<{
+    ready: boolean;
+    timestamp: string;
+    checks: {
+      database: boolean;
+      queue: boolean;
+      solana: boolean;
+    };
+  }> {
+    const [databaseHealthy, queueHealthy, solanaHealthy] = await Promise.all([
+      this.databaseService.healthCheck(),
+      this.queueService.healthCheck(),
+      this.solanaService.healthCheck(),
+    ]);
+
+    const ready = databaseHealthy && queueHealthy && solanaHealthy;
+
+    return {
+      ready,
+      timestamp: new Date().toISOString(),
+      checks: {
+        database: databaseHealthy,
+        queue: queueHealthy,
+        solana: solanaHealthy,
+      },
+    };
+  }
+
   private async getHealthStatus(): Promise<{
     metrics: {
       activeConnections: number;
       monitoringTokens: number;
       queueSize: number;
       uptimeSeconds: number;
+    };
+    runtime: {
+      nodeEnv: string;
+      productionGuard: boolean;
     };
     services: {
       database: string;
@@ -619,6 +710,10 @@ class TokenSafetyBot {
       status:
         databaseHealthy && queueHealthy && solanaHealthy ? "ok" : "degraded",
       timestamp: new Date().toISOString(),
+      runtime: {
+        nodeEnv: process.env.NODE_ENV ?? "development",
+        productionGuard: isProductionRuntime(),
+      },
       services: {
         database: databaseHealthy ? "healthy" : "unhealthy",
         queue: queueHealthy ? "healthy" : "unhealthy",
@@ -681,6 +776,8 @@ class TokenSafetyBot {
   }
 
   public async start(): Promise<void> {
+    assertProductionConfig();
+
     await this.databaseService.connect();
     await this.queueService.connect();
     await this.solanaService.connect();

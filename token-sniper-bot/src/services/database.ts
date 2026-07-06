@@ -8,6 +8,7 @@ import {
   verifyRefreshToken,
 } from "../middleware/auth";
 import { logger } from "../utils/logger";
+import { parseTelegramChatId, telegramUserId } from "../utils/telegram-user";
 
 export class DatabaseService {
   private prisma: PrismaClient;
@@ -150,6 +151,68 @@ export class DatabaseService {
     }
   }
 
+  async ensureTelegramUser(
+    chatId: number,
+  ): Promise<{ id: string; subscriptionTier: string }> {
+    const walletAddress = telegramUserId(chatId);
+
+    const user = await this.prisma.user.upsert({
+      where: { walletAddress },
+      update: { lastLogin: new Date() },
+      create: {
+        walletAddress,
+        subscriptionTier: "free",
+        isActive: true,
+      },
+    });
+
+    return { id: user.id, subscriptionTier: user.subscriptionTier };
+  }
+
+  async getTelegramUserStats(chatId: number): Promise<{
+    activeAlerts: number;
+    subscriptionTier: string;
+    totalAlerts: number;
+    userId: string;
+  }> {
+    const user = await this.ensureTelegramUser(chatId);
+    const [activeAlerts, totalAlerts] = await Promise.all([
+      this.prisma.tokenAlert.count({
+        where: { userId: user.id, active: true },
+      }),
+      this.prisma.tokenAlert.count({ where: { userId: user.id } }),
+    ]);
+
+    return {
+      userId: user.id,
+      subscriptionTier: user.subscriptionTier,
+      activeAlerts,
+      totalAlerts,
+    };
+  }
+
+  async getTelegramChatIdForUser(userId: string): Promise<number | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { walletAddress: true },
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    return parseTelegramChatId(user.walletAddress);
+  }
+
+  async getActiveAlertsForToken(
+    tokenAddress: string,
+  ): Promise<Array<{ alertType: string; userId: string }>> {
+    return this.prisma.tokenAlert.findMany({
+      where: { tokenAddress, active: true },
+      select: { userId: true, alertType: true },
+    });
+  }
+
   // Alert management
   async getUserAlerts(userId: string): Promise<any[]> {
     try {
@@ -248,7 +311,11 @@ export class DatabaseService {
   // Subscription management
   async upgradeSubscription(userId: string, tier: string): Promise<any> {
     try {
-      // Cancel existing subscription
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { subscriptionTier: tier },
+      });
+
       await this.prisma.subscription.updateMany({
         where: {
           userId,
@@ -260,7 +327,6 @@ export class DatabaseService {
         },
       });
 
-      // Create new subscription
       return await this.prisma.subscription.create({
         data: {
           userId,
@@ -268,11 +334,54 @@ export class DatabaseService {
           status: "active",
           stripeSubscriptionId: `mock_${Date.now()}`,
           currentPeriodStart: new Date(),
-          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
       });
     } catch (error) {
       logger.error("Failed to upgrade subscription:", error);
+      throw error;
+    }
+  }
+
+  async syncSubscriptionFromStripe(
+    userId: string,
+    tier: string,
+    stripeSubscriptionId: string | null,
+    status: "active" | "cancelled",
+  ): Promise<void> {
+    const effectiveTier = status === "active" ? tier : "free";
+
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { subscriptionTier: effectiveTier },
+      });
+
+      if (status === "cancelled") {
+        await this.prisma.subscription.updateMany({
+          where: { userId, status: "active" },
+          data: { status: "cancelled", cancelledAt: new Date() },
+        });
+        return;
+      }
+
+      await this.prisma.subscription.updateMany({
+        where: { userId, status: "active" },
+        data: { status: "cancelled", cancelledAt: new Date() },
+      });
+
+      await this.prisma.subscription.create({
+        data: {
+          userId,
+          tier: effectiveTier,
+          status: "active",
+          stripeSubscriptionId: stripeSubscriptionId ?? undefined,
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      });
+    } catch (error) {
+      logger.error("Failed to sync Stripe subscription:", error);
       throw error;
     }
   }

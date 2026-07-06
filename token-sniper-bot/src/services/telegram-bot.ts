@@ -1,4 +1,6 @@
 import { Context, Markup, Telegraf } from "telegraf";
+import { config } from "../config/environment";
+import { getBillingStatus } from "../utils/billing";
 import { logger } from "../utils/logger";
 import { DatabaseService } from "./database";
 import { HeliusService } from "./helius";
@@ -63,6 +65,7 @@ export class TelegramBotService {
     // Premium commands
     this.bot.command("premium", (ctx) => this.handlePremium(ctx));
     this.bot.command("upgrade", (ctx) => this.handleUpgrade(ctx));
+    this.bot.command("billing", (ctx) => this.handleBilling(ctx));
 
     // Admin commands
     this.bot.command("broadcast", (ctx) => this.handleBroadcast(ctx));
@@ -80,8 +83,12 @@ export class TelegramBotService {
 
   private async handleStart(ctx: Context): Promise<void> {
     try {
-      const userId = ctx.from?.id;
-      if (!userId) return;
+      const chatId = ctx.chat?.id;
+      if (!chatId) {
+        return;
+      }
+
+      await this.db.ensureTelegramUser(chatId);
 
       const message = `
 🚀 **Token Sniper Bot** - Your Solana Token Intelligence Assistant
@@ -164,7 +171,10 @@ Let's find some gems! 🎯
 
   private async handleStatus(ctx: Context): Promise<void> {
     try {
-      const health = await this.helius.healthCheck();
+      const [health, launchStats] = await Promise.all([
+        this.helius.healthCheck(),
+        this.db.getLaunchStats(),
+      ]);
       const status = health ? "🟢 Online" : "🔴 Offline";
 
       const message = `
@@ -172,8 +182,7 @@ Let's find some gems! 🎯
 
 **Service Status:** ${status}
 **RPC Connection:** ${health ? "Connected" : "Disconnected"}
-**Active Alerts:** Loading...
-**Users Today:** Loading...
+**Launches tracked:** ${launchStats.total} (${launchStats.last24h} in 24h)
 
 **Last Update:** ${new Date().toLocaleString()}
       `;
@@ -333,24 +342,31 @@ ${riskScore.recommendations[0] || "No major concerns detected"}
       return;
     }
 
+    const chatId = ctx.chat?.id;
+    if (!chatId) {
+      return;
+    }
+
     try {
-      const userId = ctx.from?.id;
-      if (!userId) return;
+      const user = await this.db.ensureTelegramUser(chatId);
+      const alert = await this.db.createAlert(user.id, {
+        tokenAddress,
+        alertType: "token_watch",
+        criteria: {
+          notifyLaunch: true,
+          notifyRisk: true,
+          notifyWhale: true,
+        },
+      });
 
-      // Create alert (would use actual database in production)
-      await ctx.reply(`✅ Alert set for token: \`${tokenAddress}\``);
-
-      const message = `
-🚨 **Alert Created**
-
-**Token:** \`${tokenAddress}\`
-**Alert Types:** Launch, Risk Changes, Whale Activity
-**Notifications:** Enabled
-
-You'll be notified about important events for this token.
-      `;
-
-      await ctx.replyWithMarkdownV2(message);
+      await ctx.reply(
+        [
+          "Alert created",
+          `Token: ${tokenAddress.slice(0, 8)}…${tokenAddress.slice(-4)}`,
+          `ID: ${alert.id}`,
+          "Use /stop <alert_id> to cancel.",
+        ].join("\n"),
+      );
     } catch (error) {
       logger.error("Alert creation error:", error);
       await ctx.reply("❌ Failed to create alert");
@@ -358,32 +374,30 @@ You'll be notified about important events for this token.
   }
 
   private async handleAlerts(ctx: Context): Promise<void> {
+    const chatId = ctx.chat?.id;
+    if (!chatId) {
+      return;
+    }
+
     try {
-      const userId = ctx.from?.id;
-      if (!userId) return;
+      const user = await this.db.ensureTelegramUser(chatId);
+      const alerts = await this.db.getUserAlerts(user.id);
 
-      // Get user alerts (would use actual database in production)
-      const message = `
-📊 **Your Alerts**
+      if (alerts.length === 0) {
+        await ctx.reply("No active alerts. Use /alert <token> to create one.");
+        return;
+      }
 
-You have 3 active alerts:
+      const lines = alerts.map(
+        (alert, index) =>
+          `${index + 1}. ${alert.tokenAddress.slice(0, 8)}… (${alert.alertType}) — id: ${alert.id}`,
+      );
 
-1. 🚨 Token Launches
-2. ⚠️ Risk Changes
-3. 🐋 Whale Activity
-
-**Recent Notifications:** 5 today
-**Total Alerts:** 12
-
-Use /stop <alert_id> to cancel specific alerts.
-      `;
-
-      await ctx.replyWithMarkdownV2(message, {
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback("🔕 Disable All", "disable_all")],
-          [Markup.button.callback("⚙️ Alert Settings", "alert_settings")],
-        ]),
-      });
+      await ctx.reply(
+        ["Your alerts:", "", ...lines, "", "Use /stop <alert_id> to cancel."].join(
+          "\n",
+        ),
+      );
     } catch (error) {
       logger.error("Alerts command error:", error);
       await ctx.reply("❌ Failed to get alerts");
@@ -399,7 +413,19 @@ Use /stop <alert_id> to cancel specific alerts.
       return;
     }
 
-    await ctx.reply(`✅ Alert ${alertId} cancelled`);
+    const chatId = ctx.chat?.id;
+    if (!chatId) {
+      return;
+    }
+
+    try {
+      const user = await this.db.ensureTelegramUser(chatId);
+      await this.db.deleteAlert(user.id, alertId);
+      await ctx.reply(`Alert ${alertId} cancelled`);
+    } catch (error) {
+      logger.error("Stop alert error:", error);
+      await ctx.reply("❌ Failed to cancel alert");
+    }
   }
 
   private async handleLaunches(ctx: Context): Promise<void> {
@@ -456,8 +482,27 @@ Use /stop <alert_id> to cancel specific alerts.
       return;
     }
 
+    if (arg === "stats") {
+      const stats = await this.db.getLaunchStats();
+      const riskLines = Object.entries(stats.byRiskLevel).map(
+        ([level, count]) => `• ${level}: ${count}`,
+      );
+
+      await ctx.reply(
+        [
+          "Launch stats:",
+          `Total recorded: ${stats.total}`,
+          `Last 24h: ${stats.last24h}`,
+          riskLines.length > 0 ? ["By risk:", ...riskLines].join("\n") : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+      return;
+    }
+
     await ctx.reply(
-      "Usage: `/launches subscribe`, `/launches recent`, or `/launches unsubscribe`",
+      "Usage: `/launches subscribe`, `/launches recent`, `/launches stats`, or `/launches unsubscribe`",
     );
   }
 
@@ -538,6 +583,25 @@ Payment via Stripe - secure and instant.
     });
   }
 
+  private async handleBilling(ctx: Context): Promise<void> {
+    const status = getBillingStatus(config.stripe.secretKey);
+    const stats = await this.db.getLaunchStats();
+
+    await ctx.reply(
+      [
+        `Billing mode: ${status.mode}`,
+        status.message,
+        "",
+        `Tiers: basic $${status.pricesUsd.basic} — pro $${status.pricesUsd.pro} — enterprise $${status.pricesUsd.enterprise}`,
+        "",
+        "HTTP: GET /api/v1/billing/status",
+        "HTTP: POST /api/v1/billing/checkout (auth)",
+        "",
+        `Launches tracked: ${stats.total} (${stats.last24h} in 24h)`,
+      ].join("\n"),
+    );
+  }
+
   private async handleBroadcast(ctx: Context): Promise<void> {
     const userId = ctx.from?.id;
     if (!userId) return;
@@ -565,34 +629,38 @@ Payment via Stripe - secure and instant.
   }
 
   private async handleStats(ctx: Context): Promise<void> {
-    const userId = ctx.from?.id;
-    if (!userId) return;
+    const chatId = ctx.chat?.id;
+    if (!chatId) {
+      return;
+    }
 
-    // Get user stats (would use actual database in production)
-    const message = `
-📊 **Your Statistics**
+    try {
+      const [userStats, launchStats] = await Promise.all([
+        this.db.getTelegramUserStats(chatId),
+        this.db.getLaunchStats(),
+      ]);
 
-**Usage:**
-• Tokens Analyzed: 47
-• Alerts Created: 12
-• Alerts Triggered: 23
-• Success Rate: 68%
+      const launchAlerts = this.launchAlertChatIds.has(chatId)
+        ? "subscribed"
+        : "not subscribed";
 
-**Performance:**
-• Best Pick: +340% ROI
-• Average ROI: +45%
-• Risk Avoided: 8 tokens
-• Money Saved: $2,340
-
-**This Month:**
-• Analysis Count: 15
-• Alert Hits: 7
-• Top Find: TokenXYZ (+180%)
-
-Keep up the great work! 🎯
-    `;
-
-    await ctx.replyWithMarkdownV2(message);
+      await ctx.reply(
+        [
+          "Your statistics",
+          "",
+          `Tier: ${userStats.subscriptionTier}`,
+          `Active alerts: ${userStats.activeAlerts}`,
+          `Total alerts: ${userStats.totalAlerts}`,
+          `Launch alerts: ${launchAlerts}`,
+          "",
+          `Global launches tracked: ${launchStats.total}`,
+          `Launches (24h): ${launchStats.last24h}`,
+        ].join("\n"),
+      );
+    } catch (error) {
+      logger.error("Stats command error:", error);
+      await ctx.reply("Failed to load stats.");
+    }
   }
 
   private async handleText(ctx: Context): Promise<void> {
@@ -765,6 +833,29 @@ ${riskScore.recommendations.join("\n")}
     }
 
     return sent;
+  }
+
+  async notifyMonitoringAlert(
+    chatId: number,
+    alert: {
+      type: string;
+      tokenAddress: string;
+      severity: string;
+      message: string;
+    },
+  ): Promise<void> {
+    const shortMint = `${alert.tokenAddress.slice(0, 8)}…${alert.tokenAddress.slice(-4)}`;
+
+    await this.bot.telegram.sendMessage(
+      chatId,
+      [
+        "Monitoring alert",
+        `Type: ${alert.type}`,
+        `Severity: ${alert.severity}`,
+        `Token: ${shortMint}`,
+        alert.message,
+      ].join("\n"),
+    );
   }
 
   async sendAlert(alert: TelegramAlert): Promise<void> {

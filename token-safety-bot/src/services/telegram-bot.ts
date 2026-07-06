@@ -1,4 +1,8 @@
 import { Context, Telegraf } from "telegraf";
+import type { SubscriptionTier } from "../types/auth";
+import { getScanQuota } from "../utils/scan-quota";
+import { getBillingStatus } from "../utils/billing";
+import { config } from "../config/environment";
 import type { SafetyScanResult } from "./safety-scanner";
 import { DatabaseService } from "./database";
 import { MonitorService } from "./monitor";
@@ -137,6 +141,7 @@ export class TelegramBotService {
         [
           "Token Safety Bot — Solana mint checks, monitoring, and alerts.",
           "",
+          "/quota — daily scan allowance",
           "Use /help for commands. Quick start: /scan <mint>",
           "Premium tiers upgrade via the HTTP API (wallet connect), not in Telegram.",
         ].join("\n"),
@@ -346,6 +351,49 @@ export class TelegramBotService {
 
       await context.reply(
         "Usage: /alerts | /alerts add <mint> [type] | /alerts remove <id>",
+      );
+    });
+
+    this.bot.command("quota", async (context) => {
+      this.knownChatIds.add(context.chat.id);
+      const userId = this.telegramUserId(context.chat.id);
+      const scans = await this.databaseService.getUserScans(userId);
+
+      let tier: SubscriptionTier = "free";
+      try {
+        const profile = await this.databaseService.getUserProfile(userId);
+        tier = profile.subscriptionTier;
+      } catch {
+        // Telegram-only users default to free tier
+      }
+
+      const quota = getScanQuota(tier, scans, userId);
+      const remainingLabel =
+        quota.remaining === -1 ? "unlimited" : String(quota.remaining);
+
+      await context.reply(
+        [
+          `Tier: ${quota.tier}`,
+          `Scans today: ${quota.usedToday}/${quota.limit === -1 ? "∞" : quota.limit}`,
+          `Remaining: ${remainingLabel}`,
+          `Resets: ${new Date(quota.resetsAt).toLocaleString()}`,
+        ].join("\n"),
+      );
+    });
+
+    this.bot.command("billing", async (context) => {
+      this.knownChatIds.add(context.chat.id);
+      const status = getBillingStatus(config.stripe.secretKey);
+
+      await context.reply(
+        [
+          `Billing mode: ${status.mode}`,
+          status.message,
+          "",
+          `Basic $${status.pricesUsd.basic}/mo — Pro $${status.pricesUsd.pro}/mo`,
+          "HTTP: GET /api/v1/billing/status",
+          "Use /quota for daily scan allowance.",
+        ].join("\n"),
       );
     });
 

@@ -1,4 +1,5 @@
 import { config } from "../config/environment";
+import { AlertNotificationThrottle } from "../utils/alert-throttle";
 import { logger } from "../utils/logger";
 import { DatabaseService } from "./database";
 import { HeliusService } from "./helius";
@@ -68,6 +69,7 @@ export class MonitorService {
   private monitoringIntervals: Map<string, NodeJS.Timeout> = new Map();
   private isRunning: boolean = false;
   private activeMonitors: Set<string> = new Set();
+  private readonly alertThrottle: AlertNotificationThrottle;
 
   constructor(
     db: DatabaseService,
@@ -80,6 +82,11 @@ export class MonitorService {
     this.riskScoring = riskScoring;
     this.launchDetection =
       launchDetection ?? new LaunchDetectionService(helius.getConnection());
+    this.alertThrottle = new AlertNotificationThrottle(
+      config.monitoring.alertDedupeMs,
+      config.monitoring.alertRateWindowMs,
+      config.monitoring.alertRateMaxPerChat,
+    );
   }
 
   public setTelegramBot(telegramBot: TelegramBotService | null): void {
@@ -533,10 +540,8 @@ export class MonitorService {
       // 3. Update monitoring statistics
       // 4. Trigger automated actions if needed
 
-      // Send notification if user is specified
-      if (alert.userId) {
-        await this.sendNotification(alert);
-      }
+      // Notify Telegram subscribers (token_watch + monitoring user)
+      await this.sendNotification(alert);
     } catch (error) {
       logger.error("Failed to create alert:", error);
     }
@@ -544,10 +549,62 @@ export class MonitorService {
 
   private async sendNotification(alert: MonitoringAlert): Promise<void> {
     try {
-      logger.info(`Notification: ${alert.message}`);
-
-      if (alert.type === "launch" && this.telegramBot) {
+      if (!this.telegramBot) {
+        logger.info(`Notification skipped (no Telegram): ${alert.message}`);
         return;
+      }
+
+      const recipients = new Set<number>();
+
+      if (alert.userId) {
+        const chatId = await this.db.getTelegramChatIdForUser(alert.userId);
+        if (chatId !== null) {
+          recipients.add(chatId);
+        }
+      }
+
+      const tokenAlerts = await this.db.getActiveAlertsForToken(
+        alert.tokenAddress,
+      );
+      for (const tokenAlert of tokenAlerts) {
+        const chatId = await this.db.getTelegramChatIdForUser(
+          tokenAlert.userId,
+        );
+        if (chatId !== null) {
+          recipients.add(chatId);
+        }
+      }
+
+      if (recipients.size === 0) {
+        logger.debug("No Telegram recipients for monitoring alert", {
+          tokenAddress: alert.tokenAddress,
+          type: alert.type,
+        });
+        return;
+      }
+
+      for (const chatId of recipients) {
+        if (
+          !this.alertThrottle.shouldNotify(
+            chatId,
+            alert.tokenAddress,
+            alert.type,
+          )
+        ) {
+          logger.debug("Alert notification throttled", {
+            chatId,
+            tokenAddress: alert.tokenAddress,
+            type: alert.type,
+          });
+          continue;
+        }
+
+        await this.telegramBot.notifyMonitoringAlert(chatId, {
+          type: alert.type,
+          tokenAddress: alert.tokenAddress,
+          severity: alert.severity,
+          message: alert.message,
+        });
       }
     } catch (error) {
       logger.error("Failed to send notification:", error);

@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { config } from '../lib/config'
 import { estimateUsdFromSol, lamportsToSol } from '../lib/portfolio'
+import { getSolUsdPrice } from '../lib/sol-price'
 import { getWatchLimitForTier, isValidSubscriberTier } from '../lib/watch-limits'
 import { logger } from '../lib/logger'
 
@@ -358,7 +359,7 @@ export class DatabaseService {
     const behavior = await this.getWalletBehaviorSummary(walletAddress, days)
     const tokenMints = await this.getTokenMintBreakdown(walletAddress, 20)
     const netSol = lamportsToSol(behavior.netLamports)
-    const solUsdPrice = config.analytics.mockSolUsdPrice
+    const { priceUsd: solUsdPrice, source: pricingMode } = await getSolUsdPrice()
 
     return {
       days,
@@ -366,7 +367,7 @@ export class DatabaseService {
       netSol,
       estimatedNetUsd: estimateUsdFromSol(Math.abs(netSol), solUsdPrice),
       netDirection: netSol >= 0 ? 'inflow' : 'outflow',
-      pricingMode: 'mock',
+      pricingMode,
       solUsdPrice,
       topTokens: tokenMints.slice(0, 5),
       behavior,

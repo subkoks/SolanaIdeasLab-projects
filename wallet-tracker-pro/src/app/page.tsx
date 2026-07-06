@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { ActivityChart } from '@/components/activity-chart'
 import { ActivityTimelineChart } from '@/components/activity-timeline-chart'
 
@@ -67,6 +67,34 @@ interface PortfolioSummary {
   solUsdPrice: number
 }
 
+interface BillingStatus {
+  mode: string
+  message: string
+  tiers: string[]
+  pricesUsd: Record<string, number>
+  watchLimits: Record<string, number>
+}
+
+interface MockUpgradeResult {
+  tier: string
+  limits?: { tier: string; limit: number; used: number; remaining: number }
+  message?: string
+  error?: string
+}
+
+interface CheckoutSessionResult {
+  mode?: string
+  checkoutUrl?: string
+  message?: string
+  error?: string
+}
+
+interface SubscriberStatus {
+  tier: string
+  limits?: { tier: string; limit: number; used: number; remaining: number }
+  billingMode?: string
+}
+
 export default function HomePage(): ReactNode {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
@@ -78,8 +106,114 @@ export default function HomePage(): ReactNode {
   const [behavior, setBehavior] = useState<WalletBehavior | null>(null)
   const [tokenMints, setTokenMints] = useState<TokenMintBreakdown[]>([])
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null)
+  const [billing, setBilling] = useState<BillingStatus | null>(null)
+  const [chatIdInput, setChatIdInput] = useState('')
+  const [upgradeTier, setUpgradeTier] = useState('pro')
+  const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  const pollSubscriberStatus = async (
+    chatId: string,
+    expectedTier: string,
+  ): Promise<string> => {
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      const response = await fetch(
+        `/api/billing/subscriber?chatId=${encodeURIComponent(chatId)}`,
+      )
+
+      if (response.ok) {
+        const payload = (await response.json()) as SubscriberStatus
+        if (payload.tier === expectedTier && payload.limits) {
+          return `Tier synced: ${payload.tier} (${payload.limits.used}/${payload.limits.limit} watches)`
+        }
+      }
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, 2000)
+      })
+    }
+
+    return 'Checkout complete — waiting for Stripe webhook. Verify /limits in Telegram.'
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    const checkout = params.get('checkout')
+    if (!checkout) {
+      return
+    }
+
+    const completeCheckoutReturn = async (): Promise<void> => {
+      if (checkout !== 'success') {
+        setUpgradeMessage('Checkout cancelled')
+        window.history.replaceState({}, '', window.location.pathname)
+        return
+      }
+
+      let chatId = ''
+      let tier = 'pro'
+      const pending = sessionStorage.getItem('billing_pending')
+      if (pending) {
+        try {
+          const parsed = JSON.parse(pending) as {
+            chatId?: string
+            tier?: string
+          }
+          chatId = parsed.chatId ?? ''
+          tier = parsed.tier ?? tier
+        } catch {
+          // ignore malformed session payload
+        }
+        sessionStorage.removeItem('billing_pending')
+      }
+
+      if (chatId) {
+        setChatIdInput(chatId)
+        setUpgradeTier(tier)
+      }
+
+      const statusRes = await fetch('/api/billing/status')
+      if (!statusRes.ok) {
+        setUpgradeMessage('Checkout returned — reload billing status to verify')
+        window.history.replaceState({}, '', window.location.pathname)
+        return
+      }
+
+      const status = (await statusRes.json()) as BillingStatus
+      setBilling(status)
+
+      if (status.mode === 'mock' && chatId) {
+        const response = await fetch('/api/billing/mock-upgrade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId, tier }),
+        })
+        const payload = (await response.json()) as MockUpgradeResult
+        setUpgradeMessage(
+          response.ok
+            ? payload.limits
+              ? `Mock checkout complete — ${payload.tier}: ${payload.limits.used}/${payload.limits.limit} watches`
+              : 'Mock checkout complete'
+            : (payload.error ?? 'Mock completion failed'),
+        )
+      } else if (chatId) {
+        setUpgradeMessage(await pollSubscriberStatus(chatId, tier))
+      } else {
+        setUpgradeMessage(
+          'Checkout complete — verify tier in Telegram with /limits',
+        )
+      }
+
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
+    void completeCheckoutReturn()
+  }, [])
 
   const loadStats = async (): Promise<void> => {
     const response = await fetch('/api/stats')
@@ -102,6 +236,84 @@ export default function HomePage(): ReactNode {
     setOverview((await overviewRes.json()) as AnalyticsOverview)
     const topPayload = (await topRes.json()) as { wallets: TopWallet[] }
     setTopWallets(topPayload.wallets ?? [])
+  }
+
+  const loadBilling = async (): Promise<void> => {
+    const response = await fetch('/api/billing/status')
+    if (!response.ok) {
+      throw new Error('Failed to load billing')
+    }
+    setBilling((await response.json()) as BillingStatus)
+  }
+
+  const mockUpgrade = async (): Promise<void> => {
+    setUpgradeMessage(null)
+    const chatId = chatIdInput.trim()
+    if (!chatId) {
+      setUpgradeMessage('Enter your Telegram chat ID')
+      return
+    }
+
+    const response = await fetch('/api/billing/mock-upgrade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatId, tier: upgradeTier }),
+    })
+
+    const payload = (await response.json()) as MockUpgradeResult
+    if (!response.ok) {
+      setUpgradeMessage(payload.error ?? 'Upgrade failed')
+      return
+    }
+
+    setUpgradeMessage(
+      payload.limits
+        ? `Upgraded to ${payload.tier}: ${payload.limits.used}/${payload.limits.limit} watches`
+        : (payload.message ?? 'Upgraded'),
+    )
+  }
+
+  const startCheckout = async (): Promise<void> => {
+    setUpgradeMessage(null)
+    const chatId = chatIdInput.trim()
+    if (!chatId) {
+      setUpgradeMessage('Enter your Telegram chat ID')
+      return
+    }
+
+    const origin =
+      typeof window !== 'undefined' ? window.location.origin : undefined
+
+    const response = await fetch('/api/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chatId,
+        tier: upgradeTier,
+        successUrl: origin ? `${origin}/?checkout=success` : undefined,
+        cancelUrl: origin ? `${origin}/?checkout=cancel` : undefined,
+      }),
+    })
+
+    const payload = (await response.json()) as CheckoutSessionResult
+    if (!response.ok) {
+      setUpgradeMessage(payload.error ?? 'Checkout failed')
+      return
+    }
+
+    if (payload.checkoutUrl) {
+      sessionStorage.setItem(
+        'billing_pending',
+        JSON.stringify({ chatId, tier: upgradeTier }),
+      )
+      if (payload.mode === 'mock') {
+        window.location.href = payload.checkoutUrl
+      } else {
+        window.open(payload.checkoutUrl, '_blank', 'noopener,noreferrer')
+        setUpgradeMessage(payload.message ?? 'Checkout opened in a new tab')
+      }
+      return
+    }
   }
 
   const lookupActivity = async (): Promise<void> => {
@@ -261,6 +473,115 @@ export default function HomePage(): ReactNode {
                 </li>
               ))}
             </ul>
+          </>
+        ) : null}
+      </section>
+
+      <section style={{ marginTop: '2rem' }}>
+        <h2 style={{ fontSize: '1.25rem' }}>Plans & billing</h2>
+        <button
+          type="button"
+          onClick={() => void loadBilling()}
+          style={{
+            marginTop: '0.75rem',
+            padding: '0.5rem 1rem',
+            borderRadius: '0.5rem',
+            border: '1px solid #334155',
+            background: '#1e293b',
+            color: '#e2e8f0',
+            cursor: 'pointer',
+          }}
+        >
+          Load plans
+        </button>
+        {billing ? (
+          <>
+            <p style={{ color: '#94a3b8', marginTop: '0.75rem' }}>
+              Mode: <strong>{billing.mode}</strong> — {billing.message}
+            </p>
+            <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8, marginTop: '0.5rem' }}>
+              {billing.tiers
+                .filter((tier) => tier !== 'free')
+                .map((tier) => (
+                  <li key={tier}>
+                    {tier}: ${billing.pricesUsd[tier]}/mo —{' '}
+                    {billing.watchLimits[tier]} watches
+                  </li>
+                ))}
+            </ul>
+            <div style={{ marginTop: '1rem' }}>
+              <p style={{ color: '#cbd5e1', fontSize: '0.9rem' }}>
+                {billing.mode === 'mock'
+                  ? 'Mock upgrade: enter Telegram chat ID or use bot /upgrade pro'
+                  : 'Stripe checkout: enter Telegram chat ID (tier syncs via webhook)'}
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <input
+                  value={chatIdInput}
+                  onChange={(event) => setChatIdInput(event.target.value)}
+                  placeholder="Telegram chat ID"
+                  style={{
+                    flex: 1,
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid #334155',
+                    background: '#111827',
+                    color: '#f8fafc',
+                  }}
+                />
+                <select
+                  value={upgradeTier}
+                  onChange={(event) => setUpgradeTier(event.target.value)}
+                  style={{
+                    padding: '0.5rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid #334155',
+                    background: '#111827',
+                    color: '#f8fafc',
+                  }}
+                >
+                  <option value="basic">basic</option>
+                  <option value="pro">pro</option>
+                  <option value="enterprise">enterprise</option>
+                </select>
+                {billing.mode === 'mock' ? (
+                  <button
+                    type="button"
+                    onClick={() => void mockUpgrade()}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #334155',
+                      background: '#2563eb',
+                      color: '#fff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Mock upgrade
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void startCheckout()}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #334155',
+                      background: '#2563eb',
+                      color: '#fff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Checkout
+                  </button>
+                )}
+              </div>
+              {upgradeMessage ? (
+                <p style={{ marginTop: '0.5rem', color: '#86efac' }}>
+                  {upgradeMessage}
+                </p>
+              ) : null}
+            </div>
           </>
         ) : null}
       </section>
