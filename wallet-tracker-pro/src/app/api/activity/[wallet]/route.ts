@@ -27,11 +27,15 @@ export async function GET(
     )
     const breakdown = await database.getActivityBreakdown(wallet)
     const timeline = await database.getActivityTimeline(wallet, 14)
+    const behavior = await database.getWalletBehaviorSummary(wallet, 30)
+    const tokenMints = await database.getTokenMintBreakdown(wallet, 8)
 
     return NextResponse.json({
       wallet,
       breakdown,
       timeline,
+      behavior,
+      tokenMints,
       activity: activity.map((event) => ({
         direction: event.direction,
         summary: event.summary,

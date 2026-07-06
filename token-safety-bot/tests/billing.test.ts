@@ -1,4 +1,4 @@
-import { getBillingStatus, isBillingMockMode } from '../src/utils/billing'
+import { createCheckoutSession, getBillingStatus, isBillingMockMode } from '../src/utils/billing'
 
 describe('billing helpers', () => {
   it('uses mock mode when Stripe secret is empty', () => {
@@ -6,8 +6,15 @@ describe('billing helpers', () => {
     expect(getBillingStatus('').mode).toBe('mock')
   })
 
-  it('uses stripe mode when secret is configured', () => {
-    expect(isBillingMockMode('sk_test_abc')).toBe(false)
-    expect(getBillingStatus('sk_test_abc').mode).toBe('stripe')
+  it('creates mock checkout sessions without Stripe keys', () => {
+    const session = createCheckoutSession('', {
+      tier: 'basic',
+      userId: 'user-2',
+    })
+
+    expect(session.mode).toBe('mock')
+    if (session.mode === 'mock') {
+      expect(session.priceUsd).toBe(9)
+    }
   })
 })

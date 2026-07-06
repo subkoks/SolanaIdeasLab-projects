@@ -1,5 +1,7 @@
 import WebSocket from "ws";
 import { config } from "../config/environment";
+import { getLaserStreamReconnectDelayMs } from "../utils/laserstream-reconnect";
+import { SignatureDedupe } from "../utils/signature-dedupe";
 import { logger } from "../utils/logger";
 import { PUMP_FUN_PROGRAM_ID } from "./launch-detection";
 import { parsePumpFunLaunchNotification } from "./helius-laserstream-parser";
@@ -9,6 +11,19 @@ export type LaunchTransactionHandler = (
   blockTime: number | null,
 ) => void;
 
+export interface LaserStreamStats {
+  connected: boolean;
+  enabled: boolean;
+  messagesReceived: number;
+  launchesDetected: number;
+  launchesForwarded: number;
+  duplicatesSkipped: number;
+  reconnectAttempts: number;
+  lastConnectedAt: string | null;
+  lastMessageAt: string | null;
+  dedupeCacheSize: number;
+}
+
 export { parsePumpFunLaunchNotification } from "./helius-laserstream-parser";
 
 export class HeliusLaserStreamService {
@@ -16,6 +31,14 @@ export class HeliusLaserStreamService {
   private pingInterval: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private running = false;
+  private reconnectAttempts = 0;
+  private messagesReceived = 0;
+  private launchesDetected = 0;
+  private launchesForwarded = 0;
+  private duplicatesSkipped = 0;
+  private lastConnectedAt: Date | null = null;
+  private lastMessageAt: Date | null = null;
+  private readonly dedupe = new SignatureDedupe(300_000, 2_000);
 
   constructor(private readonly onLaunch: LaunchTransactionHandler) {}
 
@@ -50,11 +73,28 @@ export class HeliusLaserStreamService {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
+  public getStats(): LaserStreamStats {
+    return {
+      connected: this.isActive(),
+      enabled: Boolean(config.externalApis.helius && config.features.laserStream),
+      messagesReceived: this.messagesReceived,
+      launchesDetected: this.launchesDetected,
+      launchesForwarded: this.launchesForwarded,
+      duplicatesSkipped: this.duplicatesSkipped,
+      reconnectAttempts: this.reconnectAttempts,
+      lastConnectedAt: this.lastConnectedAt?.toISOString() ?? null,
+      lastMessageAt: this.lastMessageAt?.toISOString() ?? null,
+      dedupeCacheSize: this.dedupe.size(),
+    };
+  }
+
   private connect(): void {
     const url = `wss://mainnet.helius-rpc.com/?api-key=${config.externalApis.helius}`;
     this.ws = new WebSocket(url);
 
     this.ws.on("open", () => {
+      this.reconnectAttempts = 0;
+      this.lastConnectedAt = new Date();
       logger.info("Helius LaserStream connected");
 
       this.ws?.send(
@@ -85,13 +125,26 @@ export class HeliusLaserStreamService {
     });
 
     this.ws.on("message", (raw) => {
+      this.messagesReceived += 1;
+      this.lastMessageAt = new Date();
+
       try {
         const payload = JSON.parse(String(raw)) as unknown;
         const launch = parsePumpFunLaunchNotification(payload);
 
-        if (launch) {
-          this.onLaunch(launch.signature, launch.blockTime);
+        if (!launch) {
+          return;
         }
+
+        this.launchesDetected += 1;
+
+        if (!this.dedupe.shouldProcess(launch.signature)) {
+          this.duplicatesSkipped += 1;
+          return;
+        }
+
+        this.launchesForwarded += 1;
+        this.onLaunch(launch.signature, launch.blockTime);
       } catch (error) {
         logger.debug("LaserStream message parse failed", { error });
       }
@@ -121,12 +174,18 @@ export class HeliusLaserStreamService {
       return;
     }
 
+    this.reconnectAttempts += 1;
+    const delayMs = getLaserStreamReconnectDelayMs(this.reconnectAttempts);
+
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (this.running) {
-        logger.info("Reconnecting Helius LaserStream");
+        logger.info("Reconnecting Helius LaserStream", {
+          attempt: this.reconnectAttempts,
+          delayMs,
+        });
         this.connect();
       }
-    }, 5_000);
+    }, delayMs);
   }
 }

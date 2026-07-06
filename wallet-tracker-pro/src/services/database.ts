@@ -252,6 +252,69 @@ export class DatabaseService {
     }))
   }
 
+  public async getWalletBehaviorSummary(walletAddress: string, days = 30) {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+
+    const events = await this.prisma.walletActivityEvent.findMany({
+      where: { walletAddress, observedAt: { gte: since } },
+      select: { direction: true, lamports: true },
+    })
+
+    let inCount = 0
+    let outCount = 0
+    let inLamports = BigInt(0)
+    let outLamports = BigInt(0)
+
+    for (const event of events) {
+      if (event.direction === 'in') {
+        inCount += 1
+        inLamports += event.lamports ?? BigInt(0)
+      } else if (event.direction === 'out') {
+        outCount += 1
+        outLamports += event.lamports ?? BigInt(0)
+      }
+    }
+
+    const total = events.length
+    const netLamports = inLamports - outLamports
+
+    return {
+      days,
+      totalEvents: total,
+      inCount,
+      outCount,
+      inOutRatio: outCount > 0 ? Math.round((inCount / outCount) * 100) / 100 : inCount,
+      avgInLamports: inCount > 0 ? (inLamports / BigInt(inCount)).toString() : '0',
+      avgOutLamports: outCount > 0 ? (outLamports / BigInt(outCount)).toString() : '0',
+      netLamports: netLamports.toString(),
+    }
+  }
+
+  public async getTokenMintBreakdown(walletAddress: string, limit = 10) {
+    const events = await this.prisma.walletActivityEvent.findMany({
+      where: {
+        walletAddress,
+        tokenMint: { not: null },
+      },
+      select: { tokenMint: true },
+    })
+
+    const counts = new Map<string, number>()
+
+    for (const event of events) {
+      const mint = event.tokenMint
+      if (!mint) {
+        continue
+      }
+      counts.set(mint, (counts.get(mint) ?? 0) + 1)
+    }
+
+    return Array.from(counts.entries())
+      .map(([tokenMint, eventCount]) => ({ tokenMint, eventCount }))
+      .sort((a, b) => b.eventCount - a.eventCount)
+      .slice(0, limit)
+  }
+
   public async healthCheck(): Promise<boolean> {
     try {
       await this.prisma.$queryRaw`SELECT 1`
