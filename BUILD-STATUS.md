@@ -1,56 +1,48 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-06 (phase 11)
+Last updated: 2026-07-06 (phase 12)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | Stripe webhook tier sync + `/quota` Telegram | E2E Stripe test mode |
-| **token-sniper-bot** | Stripe webhook tier sync + `/launches stats` | E2E Stripe test mode |
-| **wallet-tracker-pro** | Live CoinGecko SOL/USD with mock fallback | Stripe tier for Telegram |
-
-## token-sniper-bot
-
-**Done (phase 11)**
-- `POST /webhook/stripe` — verifies signature, syncs tier on checkout/subscription events
-- `syncSubscriptionFromStripe()` updates user tier + subscription rows
-- Telegram `/launches stats`
-
-**Done (phase 10)**
-- Launch stats API, Stripe SDK checkout
+| **token-safety-bot** | Dependabot @hono/node-server patch | Production hardening |
+| **token-sniper-bot** | Telegram `/billing` | Real user stats in `/stats` |
+| **wallet-tracker-pro** | Stripe webhook + Telegram billing/upgrade | Dashboard checkout UI |
 
 ## wallet-tracker-pro
 
-**Done (phase 11)**
-- Live SOL/USD from CoinGecko (`COINGECKO_API_KEY` optional)
-- `PREFER_MOCK_SOL_PRICE=true` forces mock pricing
-- Portfolio estimates use live price with mock fallback
+**Done (phase 12)**
+- `POST /api/webhooks/stripe` — syncs Telegram subscriber tier via `metadata.chatId`
+- Telegram `/billing`, `/upgrade <tier>` (mock when Stripe unset)
 
-**Done (phase 10)**
-- Tier watch limits, portfolio summary
+## token-sniper-bot
+
+**Done (phase 12)**
+- Telegram `/billing` — mode, tiers, launch counts + HTTP billing paths
 
 ## token-safety-bot
 
-**Done (phase 11)**
-- `POST /webhook/stripe` — tier sync (incl. Telegram `telegram:<chatId>` users)
-- Telegram `/quota` — daily scan usage
+**Done (phase 12)**
+- npm override `@hono/node-server` ≥ 1.19.13 (Dependabot #95)
 
-**Done (phase 10)**
-- Scan quota HTTP API, Stripe SDK checkout
+## Stripe local testing
 
-## Stripe webhook setup
+```bash
+# Sniper (port 8000)
+stripe listen --forward-to localhost:8000/webhook/stripe
 
-1. Set `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` + price IDs in bot `.env`
-2. Stripe Dashboard → Webhooks → endpoint `https://HOST/webhook/stripe`
-3. Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`
+# Safety (port 3000)
+stripe listen --forward-to localhost:3000/webhook/stripe
+
+# Wallet tracker (port 3001)
+stripe listen --forward-to localhost:3001/api/webhooks/stripe
+```
+
+Include `chatId` in checkout metadata for wallet-tracker tier sync.
 
 ## Commands
 
 ```bash
 ./scripts/local-dev-bootstrap.sh
 ```
-
-**Sniper launch stats:** `/launches stats` or `GET /api/v1/launches/stats`
-
-**Safety quota:** `/quota` or `GET /api/v1/users/quota`

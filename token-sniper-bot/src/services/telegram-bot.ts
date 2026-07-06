@@ -1,4 +1,6 @@
 import { Context, Markup, Telegraf } from "telegraf";
+import { config } from "../config/environment";
+import { getBillingStatus } from "../utils/billing";
 import { logger } from "../utils/logger";
 import { DatabaseService } from "./database";
 import { HeliusService } from "./helius";
@@ -63,6 +65,7 @@ export class TelegramBotService {
     // Premium commands
     this.bot.command("premium", (ctx) => this.handlePremium(ctx));
     this.bot.command("upgrade", (ctx) => this.handleUpgrade(ctx));
+    this.bot.command("billing", (ctx) => this.handleBilling(ctx));
 
     // Admin commands
     this.bot.command("broadcast", (ctx) => this.handleBroadcast(ctx));
@@ -555,6 +558,25 @@ Payment via Stripe - secure and instant.
         [Markup.button.callback("💳 Payment Options", "payment_options")],
       ]),
     });
+  }
+
+  private async handleBilling(ctx: Context): Promise<void> {
+    const status = getBillingStatus(config.stripe.secretKey);
+    const stats = await this.db.getLaunchStats();
+
+    await ctx.reply(
+      [
+        `Billing mode: ${status.mode}`,
+        status.message,
+        "",
+        `Tiers: basic $${status.pricesUsd.basic} — pro $${status.pricesUsd.pro} — enterprise $${status.pricesUsd.enterprise}`,
+        "",
+        "HTTP: GET /api/v1/billing/status",
+        "HTTP: POST /api/v1/billing/checkout (auth)",
+        "",
+        `Launches tracked: ${stats.total} (${stats.last24h} in 24h)`,
+      ].join("\n"),
+    );
   }
 
   private async handleBroadcast(ctx: Context): Promise<void> {
