@@ -343,6 +343,36 @@ export class JsonDatabaseService {
     return user
   }
 
+  public async syncSubscriptionFromStripe(
+    userId: string,
+    tier: SubscriptionTier,
+    _stripeSubscriptionId: string | null,
+    status: 'active' | 'cancelled',
+  ): Promise<UserRecord> {
+    const effectiveTier = status === 'active' ? tier : 'free'
+    let user = this.users.get(userId)
+
+    if (!user && userId.startsWith('telegram:')) {
+      user = {
+        id: userId,
+        walletAddress: userId,
+        subscriptionTier: effectiveTier,
+        createdAt: nowIsoString(),
+        lastLoginAt: nowIsoString(),
+        preferences: {},
+      }
+    }
+
+    if (!user) {
+      throw new Error('User not found')
+    }
+
+    user.subscriptionTier = effectiveTier
+    this.users.set(user.id, user)
+    await this.persistState()
+    return user
+  }
+
   public async getUserStats(): Promise<{
     active: number
     premium: number
