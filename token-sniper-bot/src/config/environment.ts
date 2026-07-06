@@ -68,6 +68,7 @@ export const config = {
 
   externalApis: {
     helius: process.env.HELIUS_API_KEY ?? "",
+    heliusWebhookSecret: process.env.HELIUS_WEBHOOK_SECRET ?? "",
     pumpFun: process.env.PUMP_FUN_API_KEY ?? "",
     jupiter: process.env.JUPITER_API_KEY ?? "",
     twitter: process.env.TWITTER_BEARER_TOKEN ?? "",
@@ -137,6 +138,10 @@ export const config = {
     grafanaPassword: process.env.GRAFANA_ADMIN_PASSWORD ?? "admin",
     metricsCollectionInterval: parseNumber(
       process.env.METRICS_COLLECTION_INTERVAL,
+      30_000,
+    ),
+    launchPollIntervalMs: parseNumber(
+      process.env.LAUNCH_POLL_INTERVAL_MS,
       30_000,
     ),
   },

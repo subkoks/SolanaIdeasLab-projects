@@ -91,6 +91,52 @@ class TokenSniperBot {
       res.sendStatus(200);
     });
 
+    this.app.post("/webhook/helius/enhanced", async (req, res) => {
+      try {
+        const secret = config.externalApis.heliusWebhookSecret;
+        const authHeader = req.headers.authorization;
+
+        if (secret && authHeader !== secret) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+
+        const payload = req.body;
+        const items = Array.isArray(payload)
+          ? payload
+          : (payload?.transactions ?? payload?.events ?? []);
+
+        let processed = 0;
+
+        for (const item of items) {
+          const signature =
+            item?.signature ??
+            item?.transaction?.signatures?.[0] ??
+            item?.transactionSignature;
+
+          if (!signature || typeof signature !== "string") {
+            continue;
+          }
+
+          const blockTime =
+            item?.timestamp ?? item?.blockTime ?? item?.transaction?.blockTime;
+
+          const ingested = await this.monitor.ingestLaunchSignature(
+            signature,
+            typeof blockTime === "number" ? blockTime : null,
+          );
+
+          if (ingested) {
+            processed += 1;
+          }
+        }
+
+        res.json({ processed, received: items.length });
+      } catch {
+        res.status(500).json({ error: "Helius webhook processing failed" });
+      }
+    });
+
     // Admin routes (protected)
     this.app.use("/api/v1/admin", authMiddleware, adminAuthMiddleware, this.adminRoutes());
   }

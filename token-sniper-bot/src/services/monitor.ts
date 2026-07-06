@@ -141,10 +141,12 @@ export class MonitorService {
       } catch (error) {
         logger.error("Token launch monitoring error:", error);
       }
-    }, 30000); // Check every 30 seconds
+    }, config.monitoring.launchPollIntervalMs);
 
     this.monitoringIntervals.set("token-launch", interval);
-    logger.info("Token launch monitoring started");
+    logger.info("Token launch monitoring started", {
+      intervalMs: config.monitoring.launchPollIntervalMs,
+    });
   }
 
   private startRiskMonitoring(): void {
@@ -225,6 +227,28 @@ export class MonitorService {
       }
     } catch (error) {
       logger.error("Token launch monitoring error:", error);
+    }
+  }
+
+  public async ingestLaunchSignature(
+    signature: string,
+    blockTime?: number | null,
+  ): Promise<boolean> {
+    try {
+      const launch = await this.launchDetection.ingestSignature(
+        signature,
+        blockTime,
+      );
+
+      if (!launch) {
+        return false;
+      }
+
+      await this.processLaunch(launch);
+      return true;
+    } catch (error) {
+      logger.error("Failed to ingest launch signature:", error);
+      return false;
     }
   }
 

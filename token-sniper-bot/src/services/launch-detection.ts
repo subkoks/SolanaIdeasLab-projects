@@ -95,6 +95,31 @@ export class LaunchDetectionService {
     return launches
   }
 
+  public async ingestSignature(
+    signature: string,
+    blockTime?: number | null,
+  ): Promise<DetectedLaunch | null> {
+    const parsed = await this.parseLaunchTransaction(signature)
+
+    for (const mint of parsed.mints) {
+      if (this.seenMints.has(mint)) {
+        continue
+      }
+
+      this.seenMints.add(mint)
+      this.bootstrapped = true
+
+      return {
+        mint,
+        signature,
+        creator: parsed.creator,
+        timestampMs: (blockTime ?? Math.floor(Date.now() / 1000)) * 1000,
+      }
+    }
+
+    return null
+  }
+
   private async parseLaunchTransaction(
     signature: string,
   ): Promise<ParsedLaunchTx> {
