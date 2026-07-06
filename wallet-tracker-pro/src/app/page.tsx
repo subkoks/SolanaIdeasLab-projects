@@ -82,6 +82,12 @@ interface MockUpgradeResult {
   error?: string
 }
 
+interface CheckoutSessionResult {
+  checkoutUrl?: string
+  message?: string
+  error?: string
+}
+
 export default function HomePage(): ReactNode {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
@@ -156,6 +162,40 @@ export default function HomePage(): ReactNode {
         ? `Upgraded to ${payload.tier}: ${payload.limits.used}/${payload.limits.limit} watches`
         : (payload.message ?? 'Upgraded'),
     )
+  }
+
+  const startCheckout = async (): Promise<void> => {
+    setUpgradeMessage(null)
+    const chatId = chatIdInput.trim()
+    if (!chatId) {
+      setUpgradeMessage('Enter your Telegram chat ID')
+      return
+    }
+
+    const origin =
+      typeof window !== 'undefined' ? window.location.origin : undefined
+
+    const response = await fetch('/api/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chatId,
+        tier: upgradeTier,
+        successUrl: origin ? `${origin}/?checkout=success` : undefined,
+        cancelUrl: origin ? `${origin}/?checkout=cancel` : undefined,
+      }),
+    })
+
+    const payload = (await response.json()) as CheckoutSessionResult
+    if (!response.ok) {
+      setUpgradeMessage(payload.error ?? 'Checkout failed')
+      return
+    }
+
+    if (payload.checkoutUrl) {
+      window.open(payload.checkoutUrl, '_blank', 'noopener,noreferrer')
+      setUpgradeMessage(payload.message ?? 'Checkout opened in a new tab')
+    }
   }
 
   const lookupActivity = async (): Promise<void> => {
@@ -351,41 +391,42 @@ export default function HomePage(): ReactNode {
                   </li>
                 ))}
             </ul>
-            {billing.mode === 'mock' ? (
-              <div style={{ marginTop: '1rem' }}>
-                <p style={{ color: '#cbd5e1', fontSize: '0.9rem' }}>
-                  Mock upgrade: enter Telegram chat ID or use bot{' '}
-                  <code>/upgrade pro</code>
-                </p>
-                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-                  <input
-                    value={chatIdInput}
-                    onChange={(event) => setChatIdInput(event.target.value)}
-                    placeholder="Telegram chat ID"
-                    style={{
-                      flex: 1,
-                      padding: '0.5rem 0.75rem',
-                      borderRadius: '0.5rem',
-                      border: '1px solid #334155',
-                      background: '#111827',
-                      color: '#f8fafc',
-                    }}
-                  />
-                  <select
-                    value={upgradeTier}
-                    onChange={(event) => setUpgradeTier(event.target.value)}
-                    style={{
-                      padding: '0.5rem',
-                      borderRadius: '0.5rem',
-                      border: '1px solid #334155',
-                      background: '#111827',
-                      color: '#f8fafc',
-                    }}
-                  >
-                    <option value="basic">basic</option>
-                    <option value="pro">pro</option>
-                    <option value="enterprise">enterprise</option>
-                  </select>
+            <div style={{ marginTop: '1rem' }}>
+              <p style={{ color: '#cbd5e1', fontSize: '0.9rem' }}>
+                {billing.mode === 'mock'
+                  ? 'Mock upgrade: enter Telegram chat ID or use bot /upgrade pro'
+                  : 'Stripe checkout: enter Telegram chat ID (tier syncs via webhook)'}
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <input
+                  value={chatIdInput}
+                  onChange={(event) => setChatIdInput(event.target.value)}
+                  placeholder="Telegram chat ID"
+                  style={{
+                    flex: 1,
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid #334155',
+                    background: '#111827',
+                    color: '#f8fafc',
+                  }}
+                />
+                <select
+                  value={upgradeTier}
+                  onChange={(event) => setUpgradeTier(event.target.value)}
+                  style={{
+                    padding: '0.5rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid #334155',
+                    background: '#111827',
+                    color: '#f8fafc',
+                  }}
+                >
+                  <option value="basic">basic</option>
+                  <option value="pro">pro</option>
+                  <option value="enterprise">enterprise</option>
+                </select>
+                {billing.mode === 'mock' ? (
                   <button
                     type="button"
                     onClick={() => void mockUpgrade()}
@@ -400,14 +441,29 @@ export default function HomePage(): ReactNode {
                   >
                     Mock upgrade
                   </button>
-                </div>
-                {upgradeMessage ? (
-                  <p style={{ marginTop: '0.5rem', color: '#86efac' }}>
-                    {upgradeMessage}
-                  </p>
-                ) : null}
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void startCheckout()}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #334155',
+                      background: '#2563eb',
+                      color: '#fff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Checkout
+                  </button>
+                )}
               </div>
-            ) : null}
+              {upgradeMessage ? (
+                <p style={{ marginTop: '0.5rem', color: '#86efac' }}>
+                  {upgradeMessage}
+                </p>
+              ) : null}
+            </div>
           </>
         ) : null}
       </section>

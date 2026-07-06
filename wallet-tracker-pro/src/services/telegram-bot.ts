@@ -1,6 +1,6 @@
 import { Context, Telegraf } from 'telegraf'
 import { config } from '../lib/config'
-import { getBillingStatus, isBillingMockMode } from '../lib/billing'
+import { getBillingStatus, isBillingMockMode, resolveSubscriberCheckoutSession } from '../lib/billing'
 import { isValidSubscriberTier } from '../lib/watch-limits'
 import { logger } from '../lib/logger'
 import type { DatabaseService } from './database'
@@ -251,9 +251,16 @@ export class WalletTrackerTelegramBot {
       return
     }
 
-    if (!isBillingMockMode(config.stripe.secretKey)) {
+    if (isBillingMockMode(config.stripe.secretKey)) {
+      await this.database.upsertSubscriber(
+        String(chatId),
+        context.from?.username,
+      )
+      await this.database.setSubscriberTier(String(chatId), tier)
+
+      const limits = await this.database.getSubscriberLimits(String(chatId))
       await context.reply(
-        'Stripe is configured — use checkout flow when dashboard billing is wired.',
+        `Upgraded to ${tier}. Watches: ${limits?.used ?? 0}/${limits?.limit ?? 0}`,
       )
       return
     }
@@ -262,12 +269,29 @@ export class WalletTrackerTelegramBot {
       String(chatId),
       context.from?.username,
     )
-    await this.database.setSubscriberTier(String(chatId), tier)
 
-    const limits = await this.database.getSubscriberLimits(String(chatId))
-    await context.reply(
-      `Upgraded to ${tier}. Watches: ${limits?.used ?? 0}/${limits?.limit ?? 0}`,
+    const session = await resolveSubscriberCheckoutSession(
+      config.stripe.secretKey,
+      config.stripe.prices,
+      {
+        chatId: String(chatId),
+        tier,
+      },
     )
+
+    if (session.mode === 'stripe' && 'error' in session) {
+      await context.reply(`Checkout unavailable: ${session.error}`)
+      return
+    }
+
+    if ('checkoutUrl' in session) {
+      await context.reply(
+        [
+          `Checkout for ${tier} ($${session.priceUsd}/mo):`,
+          session.checkoutUrl,
+        ].join('\n'),
+      )
+    }
   }
 
   public async notifyChat(chatId: string, message: string): Promise<void> {

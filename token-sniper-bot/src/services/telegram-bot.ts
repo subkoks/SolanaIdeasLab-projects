@@ -342,24 +342,31 @@ ${riskScore.recommendations[0] || "No major concerns detected"}
       return;
     }
 
+    const chatId = ctx.chat?.id;
+    if (!chatId) {
+      return;
+    }
+
     try {
-      const userId = ctx.from?.id;
-      if (!userId) return;
+      const user = await this.db.ensureTelegramUser(chatId);
+      const alert = await this.db.createAlert(user.id, {
+        tokenAddress,
+        alertType: "token_watch",
+        criteria: {
+          notifyLaunch: true,
+          notifyRisk: true,
+          notifyWhale: true,
+        },
+      });
 
-      // Create alert (would use actual database in production)
-      await ctx.reply(`✅ Alert set for token: \`${tokenAddress}\``);
-
-      const message = `
-🚨 **Alert Created**
-
-**Token:** \`${tokenAddress}\`
-**Alert Types:** Launch, Risk Changes, Whale Activity
-**Notifications:** Enabled
-
-You'll be notified about important events for this token.
-      `;
-
-      await ctx.replyWithMarkdownV2(message);
+      await ctx.reply(
+        [
+          "Alert created",
+          `Token: ${tokenAddress.slice(0, 8)}…${tokenAddress.slice(-4)}`,
+          `ID: ${alert.id}`,
+          "Use /stop <alert_id> to cancel.",
+        ].join("\n"),
+      );
     } catch (error) {
       logger.error("Alert creation error:", error);
       await ctx.reply("❌ Failed to create alert");
@@ -367,32 +374,30 @@ You'll be notified about important events for this token.
   }
 
   private async handleAlerts(ctx: Context): Promise<void> {
+    const chatId = ctx.chat?.id;
+    if (!chatId) {
+      return;
+    }
+
     try {
-      const userId = ctx.from?.id;
-      if (!userId) return;
+      const user = await this.db.ensureTelegramUser(chatId);
+      const alerts = await this.db.getUserAlerts(user.id);
 
-      // Get user alerts (would use actual database in production)
-      const message = `
-📊 **Your Alerts**
+      if (alerts.length === 0) {
+        await ctx.reply("No active alerts. Use /alert <token> to create one.");
+        return;
+      }
 
-You have 3 active alerts:
+      const lines = alerts.map(
+        (alert, index) =>
+          `${index + 1}. ${alert.tokenAddress.slice(0, 8)}… (${alert.alertType}) — id: ${alert.id}`,
+      );
 
-1. 🚨 Token Launches
-2. ⚠️ Risk Changes
-3. 🐋 Whale Activity
-
-**Recent Notifications:** 5 today
-**Total Alerts:** 12
-
-Use /stop <alert_id> to cancel specific alerts.
-      `;
-
-      await ctx.replyWithMarkdownV2(message, {
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback("🔕 Disable All", "disable_all")],
-          [Markup.button.callback("⚙️ Alert Settings", "alert_settings")],
-        ]),
-      });
+      await ctx.reply(
+        ["Your alerts:", "", ...lines, "", "Use /stop <alert_id> to cancel."].join(
+          "\n",
+        ),
+      );
     } catch (error) {
       logger.error("Alerts command error:", error);
       await ctx.reply("❌ Failed to get alerts");
@@ -408,7 +413,19 @@ Use /stop <alert_id> to cancel specific alerts.
       return;
     }
 
-    await ctx.reply(`✅ Alert ${alertId} cancelled`);
+    const chatId = ctx.chat?.id;
+    if (!chatId) {
+      return;
+    }
+
+    try {
+      const user = await this.db.ensureTelegramUser(chatId);
+      await this.db.deleteAlert(user.id, alertId);
+      await ctx.reply(`Alert ${alertId} cancelled`);
+    } catch (error) {
+      logger.error("Stop alert error:", error);
+      await ctx.reply("❌ Failed to cancel alert");
+    }
   }
 
   private async handleLaunches(ctx: Context): Promise<void> {
