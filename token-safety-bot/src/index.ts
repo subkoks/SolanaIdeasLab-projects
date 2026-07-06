@@ -18,7 +18,11 @@ import { SafetyScannerService } from "./services/safety-scanner";
 import { SolanaService } from "./services/solana";
 import { TelegramBotService } from "./services/telegram-bot";
 import type { SubscriptionTier } from "./types/auth";
-import { getBillingStatus } from "./utils/billing";
+import {
+  getBillingStatus,
+  createCheckoutSession,
+  isBillingMockMode,
+} from "./utils/billing";
 import { logger } from "./utils/logger";
 
 const walletConnectSchema = z.object({
@@ -170,6 +174,60 @@ class TokenSafetyBot {
     this.app.get("/api/v1/billing/status", (_req, res) => {
       res.json(getBillingStatus(config.stripe.secretKey));
     });
+
+    this.app.post(
+      "/api/v1/billing/checkout",
+      authMiddleware,
+      async (req, res, next) => {
+        try {
+          const { tier } = upgradeSchema.parse(req.body);
+          if (tier === "free") {
+            res.status(400).json({ error: "Free tier does not require checkout" });
+            return;
+          }
+
+          const session = createCheckoutSession(config.stripe.secretKey, {
+            tier,
+            userId: req.user!.id,
+            successUrl:
+              typeof req.body?.successUrl === "string"
+                ? req.body.successUrl
+                : undefined,
+            cancelUrl:
+              typeof req.body?.cancelUrl === "string"
+                ? req.body.cancelUrl
+                : undefined,
+          });
+
+          if (session.mode === "stripe") {
+            res.status(501).json(session);
+            return;
+          }
+
+          res.json(session);
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.post(
+      "/webhook/stripe",
+      async (req, res) => {
+        if (isBillingMockMode(config.stripe.secretKey)) {
+          res.status(503).json({
+            configured: false,
+            message: "Stripe webhook disabled in mock billing mode.",
+          });
+          return;
+        }
+
+        res.status(501).json({
+          configured: true,
+          message: "Stripe webhook handler pending SDK integration.",
+        });
+      },
+    );
 
     this.app.post(
       "/api/v1/scan",

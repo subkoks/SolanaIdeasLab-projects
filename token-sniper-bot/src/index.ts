@@ -16,7 +16,7 @@ import { QueueService } from "./services/queue";
 import { RiskScoringService } from "./services/risk-scoring";
 import { TelegramBotService } from "./services/telegram-bot";
 import { logger } from "./utils/logger";
-import { getBillingStatus } from "./utils/billing";
+import { getBillingStatus, createCheckoutSession, BILLING_TIERS, isBillingMockMode } from "./utils/billing";
 
 class TokenSniperBot {
   private app: express.Application;
@@ -96,6 +96,21 @@ class TokenSniperBot {
 
       this.bot.handleUpdate(req.body);
       res.sendStatus(200);
+    });
+
+    this.app.post("/webhook/stripe", (_req, res) => {
+      if (isBillingMockMode(config.stripe.secretKey)) {
+        res.status(503).json({
+          configured: false,
+          message: "Stripe webhook disabled in mock billing mode.",
+        });
+        return;
+      }
+
+      res.status(501).json({
+        configured: true,
+        message: "Stripe webhook handler pending SDK integration.",
+      });
     });
 
     this.app.post("/webhook/helius/enhanced", async (req, res) => {
@@ -281,6 +296,35 @@ class TokenSniperBot {
       res.json(getBillingStatus(config.stripe.secretKey));
     });
 
+    router.post("/checkout", authMiddleware, (req: AuthenticatedRequest, res) => {
+      try {
+        const tier = String(req.body?.tier ?? "");
+        if (!BILLING_TIERS.includes(tier as (typeof BILLING_TIERS)[number])) {
+          res.status(400).json({ error: "Invalid tier" });
+          return;
+        }
+
+        const session = createCheckoutSession(config.stripe.secretKey, {
+          tier: tier as (typeof BILLING_TIERS)[number],
+          userId: req.user!.id,
+          successUrl: req.body?.successUrl,
+          cancelUrl: req.body?.cancelUrl,
+        });
+
+        if (session.mode === "stripe") {
+          res.status(501).json(session);
+          return;
+        }
+
+        res.json(session);
+      } catch (error) {
+        res.status(400).json({
+          error:
+            error instanceof Error ? error.message : "Failed to create checkout",
+        });
+      }
+    });
+
     return router;
   }
 
@@ -422,6 +466,7 @@ class TokenSniperBot {
         redis: redisStatus.status === "fulfilled" ? "healthy" : "unhealthy",
         helius: heliusStatus.status === "fulfilled" ? "healthy" : "unhealthy",
         telegram: "healthy", // Basic check, could be enhanced
+        laserStream: this.laserStream.getStats(),
       },
       metrics: await this.getBotMetrics(),
     };

@@ -43,6 +43,20 @@ interface TimelinePoint {
   out: number
 }
 
+interface WalletBehavior {
+  days: number
+  totalEvents: number
+  inCount: number
+  outCount: number
+  inOutRatio: number
+  netLamports: string
+}
+
+interface TokenMintBreakdown {
+  tokenMint: string
+  eventCount: number
+}
+
 export default function HomePage(): ReactNode {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
@@ -51,6 +65,8 @@ export default function HomePage(): ReactNode {
   const [activity, setActivity] = useState<ActivityEvent[]>([])
   const [breakdown, setBreakdown] = useState<ActivityBreakdown | null>(null)
   const [timeline, setTimeline] = useState<TimelinePoint[]>([])
+  const [behavior, setBehavior] = useState<WalletBehavior | null>(null)
+  const [tokenMints, setTokenMints] = useState<TokenMintBreakdown[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -83,6 +99,8 @@ export default function HomePage(): ReactNode {
     setActivity([])
     setBreakdown(null)
     setTimeline([])
+    setBehavior(null)
+    setTokenMints([])
 
     try {
       const wallet = walletInput.trim()
@@ -98,6 +116,8 @@ export default function HomePage(): ReactNode {
         activity?: ActivityEvent[]
         breakdown?: ActivityBreakdown
         timeline?: TimelinePoint[]
+        behavior?: WalletBehavior
+        tokenMints?: TokenMintBreakdown[]
         error?: string
       }
 
@@ -109,6 +129,8 @@ export default function HomePage(): ReactNode {
       setActivity(payload.activity ?? [])
       setBreakdown(payload.breakdown ?? null)
       setTimeline(payload.timeline ?? [])
+      setBehavior(payload.behavior ?? null)
+      setTokenMints(payload.tokenMints ?? [])
     } catch {
       setError('Failed to fetch activity')
     } finally {
@@ -265,6 +287,31 @@ export default function HomePage(): ReactNode {
           <p style={{ color: '#f87171', marginTop: '0.75rem' }}>{error}</p>
         ) : null}
         {breakdown ? <ActivityChart breakdown={breakdown} /> : null}
+        {behavior ? (
+          <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8, marginTop: '1rem' }}>
+            <li>
+              30-day behavior: <strong>{behavior.inCount}</strong> in /{' '}
+              <strong>{behavior.outCount}</strong> out (ratio{' '}
+              {behavior.inOutRatio})
+            </li>
+            <li>
+              Net lamports (30d): <strong>{behavior.netLamports}</strong>
+            </li>
+          </ul>
+        ) : null}
+        {tokenMints.length > 0 ? (
+          <>
+            <h3 style={{ fontSize: '1rem', marginTop: '1rem' }}>Token activity</h3>
+            <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8 }}>
+              {tokenMints.map((entry) => (
+                <li key={entry.tokenMint}>
+                  {entry.tokenMint.slice(0, 8)}… —{' '}
+                  <strong>{entry.eventCount}</strong> events
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
         {timeline.length > 0 ? (
           <ActivityTimelineChart timeline={timeline} />
         ) : null}
