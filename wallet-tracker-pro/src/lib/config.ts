@@ -32,6 +32,15 @@ export const config = {
     coingeckoApiKey: process.env.COINGECKO_API_KEY ?? '',
     preferMockSolPrice: process.env.PREFER_MOCK_SOL_PRICE === 'true',
   },
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY ?? '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+    prices: {
+      basic: process.env.STRIPE_PRICE_BASIC ?? '',
+      pro: process.env.STRIPE_PRICE_PRO ?? '',
+      enterprise: process.env.STRIPE_PRICE_ENTERPRISE ?? '',
+    },
+  },
   logging: {
     level: process.env.LOG_LEVEL ?? 'info',
   },

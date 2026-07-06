@@ -1,6 +1,8 @@
 import { Context, Telegraf } from "telegraf";
 import type { SubscriptionTier } from "../types/auth";
 import { getScanQuota } from "../utils/scan-quota";
+import { getBillingStatus } from "../utils/billing";
+import { config } from "../config/environment";
 import type { SafetyScanResult } from "./safety-scanner";
 import { DatabaseService } from "./database";
 import { MonitorService } from "./monitor";
@@ -375,6 +377,22 @@ export class TelegramBotService {
           `Scans today: ${quota.usedToday}/${quota.limit === -1 ? "∞" : quota.limit}`,
           `Remaining: ${remainingLabel}`,
           `Resets: ${new Date(quota.resetsAt).toLocaleString()}`,
+        ].join("\n"),
+      );
+    });
+
+    this.bot.command("billing", async (context) => {
+      this.knownChatIds.add(context.chat.id);
+      const status = getBillingStatus(config.stripe.secretKey);
+
+      await context.reply(
+        [
+          `Billing mode: ${status.mode}`,
+          status.message,
+          "",
+          `Basic $${status.pricesUsd.basic}/mo — Pro $${status.pricesUsd.pro}/mo`,
+          "HTTP: GET /api/v1/billing/status",
+          "Use /quota for daily scan allowance.",
         ].join("\n"),
       );
     });
