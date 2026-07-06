@@ -5,10 +5,22 @@ import {
 } from '../src/lib/billing'
 import { buildSubscriberTierSyncFromEvent } from '../src/lib/stripe-webhook'
 
+const emptyPrices = { basic: '', pro: '', enterprise: '' }
+
 describe('wallet tracker billing', () => {
   it('uses mock mode without stripe key', () => {
     expect(isBillingMockMode('')).toBe(true)
-    expect(getBillingStatus('').mode).toBe('mock')
+    expect(getBillingStatus('', '', emptyPrices).mode).toBe('mock')
+  })
+
+  it('reports stripe config readiness', () => {
+    const status = getBillingStatus('sk_test', 'whsec_test', {
+      basic: 'p1',
+      pro: 'p2',
+      enterprise: 'p3',
+    })
+    expect(status.mode).toBe('stripe')
+    expect(status.stripeConfig.liveReady).toBe(true)
   })
 
   it('creates mock subscriber checkout sessions', () => {

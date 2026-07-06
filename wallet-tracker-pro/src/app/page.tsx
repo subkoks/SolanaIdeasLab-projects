@@ -73,6 +73,12 @@ interface BillingStatus {
   tiers: string[]
   pricesUsd: Record<string, number>
   watchLimits: Record<string, number>
+  stripeConfig?: {
+    liveReady: boolean
+    secretKey: boolean
+    webhookSecret: boolean
+    priceIds: Record<string, boolean>
+  }
 }
 
 interface MockUpgradeResult {
@@ -270,6 +276,33 @@ export default function HomePage(): ReactNode {
       payload.limits
         ? `Upgraded to ${payload.tier}: ${payload.limits.used}/${payload.limits.limit} watches`
         : (payload.message ?? 'Upgraded'),
+    )
+  }
+
+  const simulateWebhook = async (): Promise<void> => {
+    setUpgradeMessage(null)
+    const chatId = chatIdInput.trim()
+    if (!chatId) {
+      setUpgradeMessage('Enter your Telegram chat ID')
+      return
+    }
+
+    const response = await fetch('/api/billing/simulate-webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatId, tier: upgradeTier }),
+    })
+
+    const payload = (await response.json()) as MockUpgradeResult
+    if (!response.ok) {
+      setUpgradeMessage(payload.error ?? 'Webhook simulation failed')
+      return
+    }
+
+    setUpgradeMessage(
+      payload.limits
+        ? `Webhook simulated — ${payload.tier}: ${payload.limits.used}/${payload.limits.limit} watches`
+        : (payload.message ?? 'Webhook simulated'),
     )
   }
 
@@ -499,6 +532,26 @@ export default function HomePage(): ReactNode {
             <p style={{ color: '#94a3b8', marginTop: '0.75rem' }}>
               Mode: <strong>{billing.mode}</strong> — {billing.message}
             </p>
+            {billing.stripeConfig ? (
+              <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8, marginTop: '0.5rem' }}>
+                <li>
+                  Secret key: {billing.stripeConfig.secretKey ? 'yes' : 'no'}
+                </li>
+                <li>
+                  Webhook secret:{' '}
+                  {billing.stripeConfig.webhookSecret ? 'yes' : 'no'}
+                </li>
+                <li>
+                  Price IDs: basic{' '}
+                  {billing.stripeConfig.priceIds.basic ? 'yes' : 'no'}, pro{' '}
+                  {billing.stripeConfig.priceIds.pro ? 'yes' : 'no'}, enterprise{' '}
+                  {billing.stripeConfig.priceIds.enterprise ? 'yes' : 'no'}
+                </li>
+                <li>
+                  Live-ready: {billing.stripeConfig.liveReady ? 'yes' : 'no'}
+                </li>
+              </ul>
+            ) : null}
             <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8, marginTop: '0.5rem' }}>
               {billing.tiers
                 .filter((tier) => tier !== 'free')
@@ -545,20 +598,36 @@ export default function HomePage(): ReactNode {
                   <option value="enterprise">enterprise</option>
                 </select>
                 {billing.mode === 'mock' ? (
-                  <button
-                    type="button"
-                    onClick={() => void mockUpgrade()}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      borderRadius: '0.5rem',
-                      border: '1px solid #334155',
-                      background: '#2563eb',
-                      color: '#fff',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Mock upgrade
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void mockUpgrade()}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        borderRadius: '0.5rem',
+                        border: '1px solid #334155',
+                        background: '#2563eb',
+                        color: '#fff',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Mock upgrade
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void simulateWebhook()}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        borderRadius: '0.5rem',
+                        border: '1px solid #334155',
+                        background: '#1e293b',
+                        color: '#e2e8f0',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Simulate webhook
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"

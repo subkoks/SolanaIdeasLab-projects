@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Token Sniper — Alert Dashboard</title>
+    <link rel="stylesheet" href="/dashboard/static/alerts-dashboard.css" />
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">SolanaIdeasLab · token-sniper-bot</p>
+      <h1>Alert dashboard</h1>
+      <p class="lede">Delivery metrics and per-token history from Postgres.</p>
+
+      <section>
+        <h2>Metrics</h2>
+        <button type="button" id="load-metrics">Load metrics</button>
+        <pre id="metrics-output">—</pre>
+      </section>
+
+      <section>
+        <h2>Launch stats</h2>
+        <button type="button" id="load-launches">Load launch stats</button>
+        <pre id="launch-output">—</pre>
+      </section>
+
+      <section>
+        <h2>Token history</h2>
+        <div class="row">
+          <input id="token-input" placeholder="Token mint address" />
+          <button type="button" id="load-history">Load history</button>
+        </div>
+        <pre id="history-output">—</pre>
+      </section>
+    </main>
+    <script src="/dashboard/static/alerts-dashboard.js"></script>
+  </body>
+</html>

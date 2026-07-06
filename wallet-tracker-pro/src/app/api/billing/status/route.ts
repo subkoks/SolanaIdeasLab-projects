@@ -5,7 +5,11 @@ import { WATCH_LIMITS_BY_TIER } from '@/lib/watch-limits'
 
 export async function GET(): Promise<NextResponse> {
   return NextResponse.json({
-    ...getBillingStatus(config.stripe.secretKey),
+    ...getBillingStatus(
+      config.stripe.secretKey,
+      config.stripe.webhookSecret,
+      config.stripe.prices,
+    ),
     watchLimits: WATCH_LIMITS_BY_TIER,
   })
 }

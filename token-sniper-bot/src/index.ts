@@ -2,6 +2,7 @@ import compression from "compression";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import path from "node:path";
 import { Telegraf, session } from "telegraf";
 import { config, isTelegramEnabled } from "./config/environment";
 import type { AuthenticatedRequest } from "./middleware/auth";
@@ -129,13 +130,35 @@ class TokenSniperBot {
     this.app.use(express.urlencoded({ extended: true }));
     this.app.use(globalRateLimiter);
     this.app.use(cors());
-    this.app.use(helmet());
+    this.app.use(
+      helmet({
+        contentSecurityPolicy: {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'"],
+          },
+        },
+      }),
+    );
     this.app.use(compression());
   }
 
+  private setupDashboardRoutes(): void {
+    const publicDir = path.join(process.cwd(), "public");
+
+    this.app.get("/dashboard/alerts", (_req, res) => {
+      res.sendFile(path.join(publicDir, "alerts-dashboard.html"));
+    });
+
+    this.app.use("/dashboard/static", express.static(publicDir));
+  }
+
   private setupRoutes(): void {
+    this.setupDashboardRoutes();
+
     // Health check
-    this.app.get("/health", async (req, res) => {
+    this.app.get("/health", async (_req, res) => {
       try {
         const health = await this.getHealthStatus();
         res.json(health);

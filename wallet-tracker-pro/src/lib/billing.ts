@@ -48,15 +48,54 @@ export type CheckoutSessionResult =
 export const isBillingMockMode = (stripeSecretKey: string): boolean =>
   stripeSecretKey.trim().length === 0
 
-export const getBillingStatus = (stripeSecretKey: string) => ({
-  mode: isBillingMockMode(stripeSecretKey)
+export const getStripeConfigStatus = (
+  secretKey: string,
+  webhookSecret: string,
+  prices: StripePriceIds,
+): {
+  liveReady: boolean
+  priceIds: Record<'basic' | 'pro' | 'enterprise', boolean>
+  secretKey: boolean
+  webhookSecret: boolean
+} => {
+  const priceIds = {
+    basic: prices.basic.trim().length > 0,
+    pro: prices.pro.trim().length > 0,
+    enterprise: prices.enterprise.trim().length > 0,
+  }
+
+  const hasSecret = secretKey.trim().length > 0
+  const hasWebhook = webhookSecret.trim().length > 0
+
+  return {
+    secretKey: hasSecret,
+    webhookSecret: hasWebhook,
+    priceIds,
+    liveReady:
+      hasSecret &&
+      hasWebhook &&
+      priceIds.basic &&
+      priceIds.pro &&
+      priceIds.enterprise,
+  }
+}
+
+export const getBillingStatus = (
+  secretKey: string,
+  webhookSecret: string,
+  prices: StripePriceIds,
+) => ({
+  mode: isBillingMockMode(secretKey)
     ? ('mock' as const)
     : ('stripe' as const),
   tiers: SUBSCRIBER_TIERS,
   pricesUsd: TIER_DISPLAY_PRICES_USD,
-  message: isBillingMockMode(stripeSecretKey)
+  stripeConfig: getStripeConfigStatus(secretKey, webhookSecret, prices),
+  message: isBillingMockMode(secretKey)
     ? 'Stripe not configured — use /upgrade <tier> for local dev tier changes.'
-    : 'Stripe billing configured — checkout from dashboard or /upgrade.',
+    : getStripeConfigStatus(secretKey, webhookSecret, prices).liveReady
+      ? 'Stripe live-ready — checkout + webhook configured.'
+      : 'Stripe partial config — complete keys, webhook secret, and price IDs.',
 })
 
 export const createSubscriberCheckoutSession = (

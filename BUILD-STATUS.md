@@ -1,67 +1,57 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-06 (phase 17)
+Last updated: 2026-07-06 (phase 18)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | Deploy smoke in `scripts/deploy-smoke.sh` | Production deploy doc |
-| **token-sniper-bot** | Alert delivery history + metrics API | Alert dashboard UI |
-| **wallet-tracker-pro** | Dev webhook sim + `/api/health` | Live Stripe with production keys |
+| **token-safety-bot** | Production deploy checklist script | Hosted deploy |
+| **token-sniper-bot** | `/dashboard/alerts` UI | Auth-gated dashboard |
+| **wallet-tracker-pro** | Stripe config status + simulate webhook UI | Live Stripe with production keys |
 
 ## wallet-tracker-pro
 
-**Done (phase 17)**
-- `GET /api/health` — service liveness for deploy smoke
-- `POST /api/billing/simulate-webhook` — mock/dev Stripe tier sync (`BILLING_DEV_WEBHOOK=true` optional)
-- Shared `applySubscriberTierSync` helper used by Stripe webhook
+**Done (phase 18)**
+- Billing status includes `stripeConfig` readiness (keys/webhook/prices booleans)
+- Dashboard Stripe checklist + **Simulate webhook** button (mock mode)
 
-**Done (phase 16)**
-- Subscriber poll after checkout, alert throttle, deploy scripts
+**Done (phase 17)**
+- Dev webhook sim, `/api/health`, subscriber poll
 
 ## token-sniper-bot
 
-**Done (phase 17)**
-- `AlertNotification` model + migration — persisted delivery log
-- `GET /api/v1/alerts/metrics`, `GET /api/v1/alerts/history?token=`
-- Telegram `/history` — per-user or per-token delivery log
+**Done (phase 18)**
+- **`/dashboard/alerts`** — static alert metrics/history dashboard
+- CSP-tuned helmet for dashboard static assets
 
-**Done (phase 16)**
-- Alert dedupe/rate limits, monitor → Telegram delivery
+**Done (phase 17)**
+- Alert delivery history API + Telegram `/history`
 
 ## token-safety-bot
 
-**Done (phase 17)**
-- Included in `scripts/deploy-smoke.sh` (safety + sniper + wallet)
-
-**Done (phase 16)**
-- `scripts/safety-prod-check.sh`, `/ready` probe
+**Done (phase 18)**
+- `scripts/production-deploy-checklist.sh` — env/migration/stripe/smoke steps
 
 ## Stripe local testing
 
 ```bash
-# Sniper (port 8000)
-stripe listen --forward-to localhost:8000/webhook/stripe
-
-# Safety (port 3000)
-stripe listen --forward-to localhost:3000/webhook/stripe
-
-# Wallet tracker (port 3001)
+# Wallet tracker (port 3001) — live path
 stripe listen --forward-to localhost:3001/api/webhooks/stripe
 
-# Or simulate wallet tier sync without Stripe CLI (mock/dev):
+# Mock/dev without Stripe CLI
 curl -X POST http://localhost:3001/api/billing/simulate-webhook \
   -H 'Content-Type: application/json' \
   -d '{"chatId":"YOUR_CHAT_ID","tier":"pro"}'
 ```
 
-Include `chatId` in checkout metadata for wallet-tracker tier sync.
+Keys guide: `~/Desktop/SolanaIdeasLab-API-Keys-Guide.md`
 
 ## Commands
 
 ```bash
 ./scripts/local-dev-bootstrap.sh
+./scripts/production-deploy-checklist.sh
 ./scripts/deploy-smoke.sh
-./scripts/safety-prod-check.sh http://localhost:3000
+# Sniper alert dashboard: http://localhost:8000/dashboard/alerts
 ```

@@ -219,7 +219,11 @@ export class WalletTrackerTelegramBot {
       context.from?.username,
     )
 
-    const billing = getBillingStatus(config.stripe.secretKey)
+    const billing = getBillingStatus(
+      config.stripe.secretKey,
+      config.stripe.webhookSecret,
+      config.stripe.prices,
+    )
     const limits = await this.database.getSubscriberLimits(String(chatId))
 
     await context.reply(
