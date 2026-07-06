@@ -89,6 +89,12 @@ interface CheckoutSessionResult {
   error?: string
 }
 
+interface SubscriberStatus {
+  tier: string
+  limits?: { tier: string; limit: number; used: number; remaining: number }
+  billingMode?: string
+}
+
 export default function HomePage(): ReactNode {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
@@ -106,6 +112,30 @@ export default function HomePage(): ReactNode {
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  const pollSubscriberStatus = async (
+    chatId: string,
+    expectedTier: string,
+  ): Promise<string> => {
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      const response = await fetch(
+        `/api/billing/subscriber?chatId=${encodeURIComponent(chatId)}`,
+      )
+
+      if (response.ok) {
+        const payload = (await response.json()) as SubscriberStatus
+        if (payload.tier === expectedTier && payload.limits) {
+          return `Tier synced: ${payload.tier} (${payload.limits.used}/${payload.limits.limit} watches)`
+        }
+      }
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, 2000)
+      })
+    }
+
+    return 'Checkout complete — waiting for Stripe webhook. Verify /limits in Telegram.'
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -171,11 +201,11 @@ export default function HomePage(): ReactNode {
               : 'Mock checkout complete'
             : (payload.error ?? 'Mock completion failed'),
         )
+      } else if (chatId) {
+        setUpgradeMessage(await pollSubscriberStatus(chatId, tier))
       } else {
         setUpgradeMessage(
-          chatId
-            ? 'Checkout complete — tier syncs via Stripe webhook. Verify /limits in Telegram.'
-            : 'Checkout complete — verify tier in Telegram with /limits',
+          'Checkout complete — verify tier in Telegram with /limits',
         )
       }
 

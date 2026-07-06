@@ -145,6 +145,9 @@ export const config = {
       process.env.LAUNCH_POLL_INTERVAL_MS,
       30_000,
     ),
+    alertDedupeMs: parseNumber(process.env.ALERT_DEDUPE_MS, 300_000),
+    alertRateWindowMs: parseNumber(process.env.ALERT_RATE_WINDOW_MS, 60_000),
+    alertRateMaxPerChat: parseNumber(process.env.ALERT_RATE_MAX_PER_CHAT, 10),
   },
 
   development: {

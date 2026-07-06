@@ -1,41 +1,40 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-06 (phase 15)
+Last updated: 2026-07-06 (phase 16)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | `/ready` + runtime health metadata | Deploy runbook |
-| **token-sniper-bot** | Monitor → Telegram alert delivery | Monitor dedupe / rate limits |
-| **wallet-tracker-pro** | Mock checkout return + tier apply | Live Stripe E2E with keys |
+| **token-safety-bot** | `scripts/safety-prod-check.sh` deploy smoke | Full deploy runbook doc |
+| **token-sniper-bot** | Alert dedupe + per-chat rate limits | Alert history / metrics |
+| **wallet-tracker-pro** | Subscriber poll after Stripe checkout | Live Stripe with production keys |
 
 ## wallet-tracker-pro
 
-**Done (phase 15)**
-- Checkout return handler — `?checkout=success` applies mock tier via `mock-upgrade`
-- Session-persisted chat ID/tier through mock checkout redirect
+**Done (phase 16)**
+- `GET /api/billing/subscriber?chatId=` — tier + watch limits + billing mode
+- Stripe checkout return polls subscriber until tier syncs (or timeout)
 
-**Done (phase 14)**
-- `POST /api/billing/checkout`, dashboard Checkout, Telegram `/upgrade` URL
+**Done (phase 15)**
+- Mock checkout return + tier apply via `?checkout=success`
 
 ## token-sniper-bot
 
-**Done (phase 15)**
-- Monitor `sendNotification` — fans out to Telegram via `token_watch` alerts + monitoring user
-- `notifyMonitoringAlert` on Telegram bot; `parseTelegramChatId` helper
+**Done (phase 16)**
+- `AlertNotificationThrottle` — dedupe + per-chat rate limit (`ALERT_DEDUPE_MS`, `ALERT_RATE_*`)
+- Launch/token_watch alerts always fan out (not only when `userId` set)
 
-**Done (phase 14)**
-- `/alert`, `/alerts`, `/stop` DB-backed
+**Done (phase 15)**
+- Monitor → Telegram delivery
 
 ## token-safety-bot
 
-**Done (phase 15)**
-- `GET /ready` — 503 until database, queue, and Solana checks pass
-- `/health` includes `runtime.nodeEnv` and `runtime.productionGuard`
+**Done (phase 16)**
+- `scripts/safety-prod-check.sh` — curls `/ready` + `/health` for deploy smoke
 
-**Done (phase 14)**
-- Production config guard, body limits, trust proxy
+**Done (phase 15)**
+- `GET /ready`, runtime metadata on `/health`
 
 ## Stripe local testing
 
@@ -56,4 +55,5 @@ Include `chatId` in checkout metadata for wallet-tracker tier sync.
 
 ```bash
 ./scripts/local-dev-bootstrap.sh
+./scripts/safety-prod-check.sh http://localhost:3000
 ```
