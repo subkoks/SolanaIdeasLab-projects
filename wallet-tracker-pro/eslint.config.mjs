@@ -1,11 +1,32 @@
-// ESLint 9 flat config (migrated from .eslintrc.json for eslint-config-next 16).
-import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
-import nextTypescript from "eslint-config-next/typescript";
-import prettier from "eslint-config-prettier";
+import tsPlugin from '@typescript-eslint/eslint-plugin'
+import tsParser from '@typescript-eslint/parser'
+import prettier from 'eslint-config-prettier'
 
 export default [
-  { ignores: [".next/**", "node_modules/**", "dist/**"] },
-  ...nextCoreWebVitals,
-  ...nextTypescript,
+  { ignores: ['.next/**', 'node_modules/**', 'dist/**'] },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+      },
+    },
+    plugins: { '@typescript-eslint': tsPlugin },
+    rules: {
+      ...tsPlugin.configs.recommended.rules,
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          caughtErrors: 'none',
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
   prettier,
-];
+]

@@ -1,58 +1,54 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-06 (phase 6)
+Last updated: 2026-07-06 (phase 7)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
 | **token-safety-bot** | Postgres runtime wired | Stripe billing |
-| **token-sniper-bot** | Launch history API + Telegram | Helius LaserStream |
-| **wallet-tracker-pro** | Activity analytics chart | Portfolio depth |
-
-## token-safety-bot
-
-**Done (phase 5)**
-- `createDatabaseService()` uses Prisma when `DATABASE_URL` is set; JSON file store remains default for tests/dev without Postgres
-- `PrismaDatabaseService` mirrors JSON persistence API (users, scans, alerts, blacklist, cache)
-
-**Still needed**
-- Stripe tier enforcement beyond scan counts
+| **token-sniper-bot** | Helius webhook + configurable poll | LaserStream client |
+| **wallet-tracker-pro** | Timeline analytics + CI lint | Portfolio depth |
 
 ## token-sniper-bot
 
-**Done (phase 6)**
-- `GET /api/v1/launches/recent` — persisted launch history from `DetectedLaunch`
-- Telegram `/launches recent` lists last 10 launches with risk scores
-- `TelegramBotService` shares main `DatabaseService` instance (no duplicate DB client)
+**Done (phase 7)**
+- `POST /webhook/helius/enhanced` — ingest launch txs from Helius enhanced webhooks (optional `HELIUS_WEBHOOK_SECRET`)
+- `LaunchDetectionService.ingestSignature()` for webhook/push path alongside poll
+- Configurable `LAUNCH_POLL_INTERVAL_MS` (default 30s)
 
-**Done (phase 4)**
-- Removed dead duplicate services; improved liquidity pool proxy in risk scoring
+**Done (phase 6)**
+- `GET /api/v1/launches/recent`, Telegram `/launches recent`
 
 **Still needed**
-- Helius LaserStream (real-time vs poll)
+- Native Helius LaserStream WebSocket client
 - Stripe subscriptions
 
 ## wallet-tracker-pro
 
-**Done (phase 6)**
-- Activity direction breakdown API field on `GET /api/activity/[wallet]`
-- Recharts bar chart on dashboard for in/out/unknown counts
+**Done (phase 7)**
+- 14-day activity timeline on `GET /api/activity/[wallet]` + Recharts line chart
+- ESLint flat config (typescript-eslint only) — lint enabled in CI for all projects
 
-**Done (phase 4)**
-- SPL parsing, dashboard API, Telegram MVP
+**Done (phase 6)**
+- Direction breakdown bar chart
 
 **Still needed**
-- Portfolio charts / behavioral analytics depth
+- Portfolio / behavioral analytics depth
 - Stripe / tier limits
+
+## token-safety-bot
+
+**Done (phase 5)** — Postgres via `createDatabaseService()`
+
+**Still needed** — Stripe tier enforcement
 
 ## Commands
 
 ```bash
 ./scripts/local-dev-bootstrap.sh
-./scripts/local-dev-bootstrap.sh --check
 ```
 
-**Sniper launch history:** `GET /api/v1/launches/recent` or Telegram `/launches recent`
+**Helius webhook:** point enhanced webhook to `POST /webhook/helius/enhanced` with `Authorization: <HELIUS_WEBHOOK_SECRET>`
 
 **Wallet tracker dashboard:** `cd wallet-tracker-pro && npm run dev`

@@ -161,6 +161,37 @@ export class DatabaseService {
     }
   }
 
+  public async getActivityTimeline(walletAddress: string, days = 14) {
+    const since = new Date()
+    since.setUTCDate(since.getUTCDate() - days)
+
+    const events = await this.prisma.walletActivityEvent.findMany({
+      where: {
+        walletAddress,
+        observedAt: { gte: since },
+      },
+      select: { observedAt: true, direction: true },
+      orderBy: { observedAt: 'asc' },
+    })
+
+    const buckets = new Map<string, { date: string; in: number; out: number }>()
+
+    for (const event of events) {
+      const date = event.observedAt.toISOString().slice(0, 10)
+      const bucket = buckets.get(date) ?? { date, in: 0, out: 0 }
+
+      if (event.direction === 'in') {
+        bucket.in += 1
+      } else if (event.direction === 'out') {
+        bucket.out += 1
+      }
+
+      buckets.set(date, bucket)
+    }
+
+    return Array.from(buckets.values())
+  }
+
   public async getDashboardStats() {
     const [subscribers, watches, events] = await Promise.all([
       this.prisma.telegramSubscriber.count({ where: { active: true } }),

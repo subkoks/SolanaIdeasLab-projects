@@ -26,10 +26,12 @@ export async function GET(
       Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 50) : DEFAULT_LIMIT,
     )
     const breakdown = await database.getActivityBreakdown(wallet)
+    const timeline = await database.getActivityTimeline(wallet, 14)
 
     return NextResponse.json({
       wallet,
       breakdown,
+      timeline,
       activity: activity.map((event) => ({
         direction: event.direction,
         summary: event.summary,
