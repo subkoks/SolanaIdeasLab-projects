@@ -31,6 +31,24 @@ import {
 import { logger } from "./utils/logger";
 import { assertProductionConfig, isProductionRuntime } from "./utils/production-guard";
 
+const localDevCorsOrigins = [
+  "http://localhost:3000",
+  "http://localhost:8000",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:8000",
+] as const;
+
+const resolveAllowedCorsOrigins = (): readonly string[] => {
+  if (config.server.corsOrigin !== "*") {
+    return config.server.corsOrigin
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  return isProductionRuntime() ? [] : localDevCorsOrigins;
+};
+
 const walletConnectSchema = z.object({
   message: z.string().min(1),
   signature: z.string().min(1),
@@ -202,12 +220,21 @@ class TokenSafetyBot {
 
     this.app.use(
       cors({
-        origin:
-          config.server.corsOrigin === "*"
-            ? isProductionRuntime()
-              ? false
-              : true
-            : config.server.corsOrigin.split(",").map((entry) => entry.trim()),
+        origin(origin, callback) {
+          const allowedOrigins = resolveAllowedCorsOrigins();
+
+          if (!origin) {
+            callback(null, true);
+            return;
+          }
+
+          if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+            return;
+          }
+
+          callback(new Error("Not allowed by CORS"));
+        },
       }),
     );
     this.app.use(helmet());
