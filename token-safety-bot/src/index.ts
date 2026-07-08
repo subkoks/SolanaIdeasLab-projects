@@ -203,7 +203,11 @@ class TokenSafetyBot {
     this.app.use(
       cors({
         origin:
-          config.server.corsOrigin === "*" ? true : config.server.corsOrigin,
+          config.server.corsOrigin === "*"
+            ? isProductionRuntime()
+              ? false
+              : true
+            : config.server.corsOrigin.split(",").map((entry) => entry.trim()),
       }),
     );
     this.app.use(helmet());
@@ -786,9 +790,7 @@ class TokenSafetyBot {
 
     if (this.telegramClient) {
       await this.telegramClient.launch();
-      logger.info("Telegram bot launched", {
-        username: config.telegram.botUsername,
-      });
+      logger.info("Telegram bot launched");
     } else {
       logger.warn(
         "Telegram bot disabled because TELEGRAM_BOT_TOKEN is not set",

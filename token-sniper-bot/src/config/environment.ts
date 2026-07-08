@@ -157,6 +157,10 @@ export const config = {
     skipAuthInDev: process.env.SKIP_AUTH_IN_DEV === "true",
     enableTestEndpoints: process.env.ENABLE_TEST_ENDPOINTS === "true",
   },
+
+  dashboard: {
+    accessToken: process.env.DASHBOARD_ACCESS_TOKEN ?? "",
+  },
 } as const;
 
 export const isTelegramEnabled = (): boolean =>

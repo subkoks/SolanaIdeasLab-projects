@@ -217,16 +217,24 @@ export const endpointRateLimiters = {
   '/api/v1/admin': adminRateLimiter
 }
 
+const endpointRateLimitPaths = new Set(
+  Object.keys(endpointRateLimiters) as (keyof typeof endpointRateLimiters)[],
+)
+
 // Rate limiting middleware that checks endpoint-specific limits
-export const endpointRateLimitMiddleware = (req: Request, res: Response, next: any) => {
-  const path = req.path
-  const limiter = endpointRateLimiters[path as keyof typeof endpointRateLimiters]
-  
-  if (limiter) {
-    return limiter(req, res, next)
+export const endpointRateLimitMiddleware = (
+  req: Request,
+  res: Response,
+  next: (err?: unknown) => void,
+) => {
+  if (!endpointRateLimitPaths.has(req.path as keyof typeof endpointRateLimiters)) {
+    next()
+    return
   }
-  
-  next()
+
+  const limiter =
+    endpointRateLimiters[req.path as keyof typeof endpointRateLimiters]
+  return limiter(req, res, next)
 }
 
 // Clean up expired rate limit records

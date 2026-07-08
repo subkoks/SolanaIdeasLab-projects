@@ -33,6 +33,8 @@ Admin chat IDs: `TELEGRAM_ADMIN_CHAT_IDS` (comma-separated).
 
 http://localhost:8000/dashboard/alerts
 
+- Leave `DASHBOARD_ACCESS_TOKEN` unset for open local dev access
+- When set, paste the token in the dashboard UI or open `?access_token=YOUR_TOKEN`
 - Load **metrics** — delivery counts (24h / 7d)
 - Load **launch stats**
 - **Token history** — enter a mint address

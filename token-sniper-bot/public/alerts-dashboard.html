@@ -12,6 +12,21 @@
       <h1>Alert dashboard</h1>
       <p class="lede">Delivery metrics and per-token history from Postgres.</p>
 
+      <section class="access">
+        <h2>Access token</h2>
+        <p class="hint">
+          Leave blank when <code>DASHBOARD_ACCESS_TOKEN</code> is unset (local dev).
+          In production, paste the token or open with
+          <code>?access_token=…</code>.
+        </p>
+        <input
+          id="access-token-input"
+          type="password"
+          placeholder="Bearer token (optional in dev)"
+          autocomplete="off"
+        />
+      </section>
+
       <section>
         <h2>Metrics</h2>
         <button type="button" id="load-metrics">Load metrics</button>
