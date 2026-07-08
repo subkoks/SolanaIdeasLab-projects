@@ -6,7 +6,8 @@ Repo-specific instructions for Codex CLI and other agents working in this reposi
 
 - This repo holds runnable Solana subprojects; the parent `SolanaIdeasLab` repo holds planning docs.
 - Each subproject is an independent TypeScript package. Work inside the package you are changing.
-- Read `README.md` and `CLAUDE.md` before editing.
+- Read `README.md`, `docs/README.md`, and `CLAUDE.md` before editing.
+- User-facing setup/usage lives in `docs/` — update those when behavior or env vars change.
 
 ## Operating rules
 
