@@ -55,3 +55,9 @@ Keys guide: `~/Desktop/SolanaIdeasLab-API-Keys-Guide.md`
 ./scripts/deploy-smoke.sh
 # Sniper alert dashboard: http://localhost:8000/dashboard/alerts
 ```
+
+## Documentation
+
+User guides (setup, usage, API keys, deploy): **[docs/README.md](./docs/README.md)**
+
+Verification and production keys are optional for initial local dev.

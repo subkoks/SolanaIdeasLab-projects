@@ -1,37 +1,53 @@
-# Projects (companion repo)
+# SolanaIdeasLab Projects
 
-This directory is its own git repo and is pushed separately as **[subkoks/SolanaIdeasLab-projects](https://github.com/subkoks/SolanaIdeasLab-projects)**. The parent `SolanaIdeasLab` repo holds only the planning docs.
+Implementation repo for three Solana tools. Planning and architecture live in [SolanaIdeasLab](https://github.com/subkoks/SolanaIdeasLab).
 
-To work on these, clone both:
+**GitHub:** [subkoks/SolanaIdeasLab-projects](https://github.com/subkoks/SolanaIdeasLab-projects)
+
+## Built apps
+
+| Project | Port | Description |
+|---|---|---|
+| [token-safety-bot](./token-safety-bot) | 3000 | Token safety scans + monitoring |
+| [token-sniper-bot](./token-sniper-bot) | 8000 | Launch detection, alerts, risk API |
+| [wallet-tracker-pro](./wallet-tracker-pro) | 3001 | Wallet watches + analytics dashboard |
+
+## Documentation
+
+**Start here:** [docs/README.md](./docs/README.md)
+
+| Guide | Contents |
+|---|---|
+| [Setup](./docs/SETUP.md) | Install, bootstrap, run locally (**no API keys required**) |
+| [Usage](./docs/USAGE.md) | Dashboards, Telegram commands, billing mock flows |
+| [API keys](./docs/API-KEYS.md) | Helius, Telegram, Stripe — add when ready |
+| [Deploy](./docs/DEPLOY.md) | Production checklist + smoke tests |
+| [Overview](./docs/OVERVIEW.md) | Architecture and ports |
+
+## Quick start
 
 ```bash
-git clone git@github.com:subkoks/SolanaIdeasLab.git
-git clone git@github.com:subkoks/SolanaIdeasLab-projects.git SolanaIdeasLab/projects
+cd ~/Projects/SolanaIdeasLab-projects
+./scripts/local-dev-bootstrap.sh
 ```
 
-## Subprojects
+Then see [docs/SETUP.md](./docs/SETUP.md). Verification and production keys can wait.
 
-## Built (with code)
+## Scripts
 
-- [`wallet-tracker-pro/`](wallet-tracker-pro) — Solana wallet tracker (Next.js, ~35 code files)
-- [`token-safety-bot/`](token-safety-bot) — Token safety bot (~29 code files)
-- [`token-sniper-bot/`](token-sniper-bot) — Token sniper bot (~28 code files)
-- [`shared/`](shared) — Cross-project utilities (auth, db schemas, deployment, UI primitives)
+| Script | Purpose |
+|---|---|
+| `scripts/local-dev-bootstrap.sh` | DBs, `.env`, deps, migrations, type-check |
+| `scripts/deploy-smoke.sh` | Health checks for all three apps |
+| `scripts/production-deploy-checklist.sh` | Pre-deploy steps + smoke |
+| `scripts/safety-prod-check.sh` | Safety `/ready` + `/health` only |
 
-## Planned (not yet built)
+## Engineering
 
-Listed in [`ideas/`](https://github.com/subkoks/SolanaIdeasLab/tree/main/ideas) tier docs. To start any of these, scaffold a subdir here with `src/`, `tests/`, `docs/`, `config/`, `deploy/`.
+- [BUILD-STATUS.md](./BUILD-STATUS.md) — phased build log
+- [AGENTS.md](./AGENTS.md) — contributor/agent rules
+- [shared/](./shared) — cross-project utilities
 
-- ai-agent-platform
-- airdrop-tracker
-- copy-trade-bot
-- crypto-tax-calculator
-- kol-tracker
-- on-chain-casino
-- token-safety-suite
+## Planned (not in this repo yet)
 
-See [`MASTER-PLAN.md`](https://github.com/subkoks/SolanaIdeasLab/blob/main/MASTER-PLAN.md) and [`ARCHITECTURE.md`](https://github.com/subkoks/SolanaIdeasLab/blob/main/ARCHITECTURE.md) for context.
-
-## Codex CLI
-
-Codex CLI can use the repo root `AGENTS.md` and the tracked `.codex/config.toml` defaults in this workspace.
+See [SolanaIdeasLab ideas](https://github.com/subkoks/SolanaIdeasLab/tree/main/ideas) — airdrop-tracker, copy-trade-bot, etc.
