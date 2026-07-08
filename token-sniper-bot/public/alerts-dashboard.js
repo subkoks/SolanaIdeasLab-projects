@@ -1,7 +1,44 @@
 const formatJson = (payload) => JSON.stringify(payload, null, 2)
 
+let dashboardAccessToken = ''
+
+const initAccessToken = () => {
+  const params = new URLSearchParams(window.location.search)
+  const fromUrl = params.get('access_token')
+  if (!fromUrl) {
+    return
+  }
+
+  dashboardAccessToken = fromUrl
+  params.delete('access_token')
+  const query = params.toString()
+  const cleanUrl = `${window.location.pathname}${query ? `?${query}` : ''}`
+  window.history.replaceState({}, '', cleanUrl)
+
+  const input = document.getElementById('access-token-input')
+  if (input instanceof HTMLInputElement) {
+    input.value = fromUrl
+  }
+}
+
+initAccessToken()
+
+const getAccessToken = () => {
+  const input = document.getElementById('access-token-input')
+  if (input instanceof HTMLInputElement && input.value.trim()) {
+    return input.value.trim()
+  }
+  return dashboardAccessToken
+}
+
 const fetchJson = async (url) => {
-  const response = await fetch(url)
+  const token = getAccessToken()
+  const headers = {}
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  const response = await fetch(url, { headers })
   if (!response.ok) {
     throw new Error(`${url} → ${response.status}`)
   }

@@ -1,34 +1,41 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-06 (phase 18)
+Last updated: 2026-07-08 (phase 19)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | Production deploy checklist script | Hosted deploy |
-| **token-sniper-bot** | `/dashboard/alerts` UI | Auth-gated dashboard |
-| **wallet-tracker-pro** | Stripe config status + simulate webhook UI | Live Stripe with production keys |
+| **token-safety-bot** | CodeQL CORS hardening | Hosted deploy |
+| **token-sniper-bot** | Auth-gated dashboard | Hosted deploy |
+| **wallet-tracker-pro** | Checkout return via URL params | Live Stripe with production keys |
 
 ## wallet-tracker-pro
+
+**Done (phase 19)**
+- Mock checkout return uses URL params (`chatId`, `tier`) — no sessionStorage for billing state
+- CodeQL: removed bot username from launch logs
 
 **Done (phase 18)**
 - Billing status includes `stripeConfig` readiness (keys/webhook/prices booleans)
 - Dashboard Stripe checklist + **Simulate webhook** button (mock mode)
 
-**Done (phase 17)**
-- Dev webhook sim, `/api/health`, subscriber poll
-
 ## token-sniper-bot
+
+**Done (phase 19)**
+- **`DASHBOARD_ACCESS_TOKEN`** — optional Bearer auth on `/dashboard/alerts`, `/api/v1/alerts/metrics`, `/history`
+- Dashboard UI: access token field + `?access_token=` deep link
+- CodeQL: validated endpoint rate-limit lookup; redacted Telegram username from startup logs
 
 **Done (phase 18)**
 - **`/dashboard/alerts`** — static alert metrics/history dashboard
 - CSP-tuned helmet for dashboard static assets
 
-**Done (phase 17)**
-- Alert delivery history API + Telegram `/history`
-
 ## token-safety-bot
+
+**Done (phase 19)**
+- Production CORS: wildcard `CORS_ORIGIN=*` no longer reflects any origin in production
+- CodeQL: removed bot username from Telegram launch log
 
 **Done (phase 18)**
 - `scripts/production-deploy-checklist.sh` — env/migration/stripe/smoke steps

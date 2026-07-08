@@ -8,6 +8,7 @@ import { config, isTelegramEnabled } from "./config/environment";
 import type { AuthenticatedRequest } from "./middleware/auth";
 import { adminAuthMiddleware, authMiddleware } from "./middleware/auth";
 import { errorHandler } from "./middleware/error-handler";
+import { dashboardAccessMiddleware } from "./middleware/dashboard-access";
 import { globalRateLimiter } from "./middleware/rate-limit";
 import { DatabaseService } from "./services/database";
 import { HeliusService } from "./services/helius";
@@ -147,7 +148,7 @@ class TokenSniperBot {
   private setupDashboardRoutes(): void {
     const publicDir = path.join(process.cwd(), "public");
 
-    this.app.get("/dashboard/alerts", (_req, res) => {
+    this.app.get("/dashboard/alerts", dashboardAccessMiddleware, (_req, res) => {
       res.sendFile(path.join(publicDir, "alerts-dashboard.html"));
     });
 
@@ -418,7 +419,7 @@ class TokenSniperBot {
   private alertRoutes(): express.Router {
     const router = express.Router();
 
-    router.get("/metrics", async (_req, res) => {
+    router.get("/metrics", dashboardAccessMiddleware, async (_req, res) => {
       try {
         res.json(await this.db.getAlertNotificationMetrics());
       } catch {
@@ -426,7 +427,7 @@ class TokenSniperBot {
       }
     });
 
-    router.get("/history", async (req, res) => {
+    router.get("/history", dashboardAccessMiddleware, async (req, res) => {
       try {
         const tokenAddress = String(req.query.token ?? "");
         const limit = Number(req.query.limit ?? 20);
@@ -647,8 +648,9 @@ class TokenSniperBot {
       // Start HTTP server
       const port = config.server.port || 8000;
       this.app.listen(port, () => {
-        logger.info(`Token Sniper Bot server started on port ${port}`);
-        logger.info(`Telegram bot: @${config.telegram.botUsername}`);
+        logger.info(`Token Sniper Bot server started on port ${port}`, {
+          telegramEnabled: isTelegramEnabled(),
+        });
       });
     } catch (error) {
       logger.error("Failed to start server:", error);

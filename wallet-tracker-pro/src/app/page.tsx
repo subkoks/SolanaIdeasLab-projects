@@ -161,22 +161,8 @@ export default function HomePage(): ReactNode {
         return
       }
 
-      let chatId = ''
-      let tier = 'pro'
-      const pending = sessionStorage.getItem('billing_pending')
-      if (pending) {
-        try {
-          const parsed = JSON.parse(pending) as {
-            chatId?: string
-            tier?: string
-          }
-          chatId = parsed.chatId ?? ''
-          tier = parsed.tier ?? tier
-        } catch {
-          // ignore malformed session payload
-        }
-        sessionStorage.removeItem('billing_pending')
-      }
+      const chatId = params.get('chatId') ?? ''
+      const tier = params.get('tier') ?? 'pro'
 
       if (chatId) {
         setChatIdInput(chatId)
@@ -323,7 +309,9 @@ export default function HomePage(): ReactNode {
       body: JSON.stringify({
         chatId,
         tier: upgradeTier,
-        successUrl: origin ? `${origin}/?checkout=success` : undefined,
+        successUrl: origin
+          ? `${origin}/?checkout=success&chatId=${encodeURIComponent(chatId)}&tier=${encodeURIComponent(upgradeTier)}`
+          : undefined,
         cancelUrl: origin ? `${origin}/?checkout=cancel` : undefined,
       }),
     })
@@ -335,10 +323,6 @@ export default function HomePage(): ReactNode {
     }
 
     if (payload.checkoutUrl) {
-      sessionStorage.setItem(
-        'billing_pending',
-        JSON.stringify({ chatId, tier: upgradeTier }),
-      )
       if (payload.mode === 'mock') {
         window.location.href = payload.checkoutUrl
       } else {

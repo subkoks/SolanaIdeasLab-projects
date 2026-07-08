@@ -39,9 +39,7 @@ export class WalletTrackerTelegramBot {
 
   public async launch(): Promise<void> {
     await this.bot.launch()
-    logger.info('Wallet Tracker Telegram bot launched', {
-      username: config.telegram.botUsername,
-    })
+    logger.info('Wallet Tracker Telegram bot launched')
   }
 
   public async stop(): Promise<void> {
