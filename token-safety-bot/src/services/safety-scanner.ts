@@ -112,6 +112,10 @@ export class SafetyScannerService {
     const cached = await this.databaseService.getCache<SafetyScanResult>(cacheKey)
 
     if (cached) {
+      if (userId) {
+        await this.databaseService.saveScan(normalizedTokenAddress, cached, userId)
+      }
+
       return cached
     }
 

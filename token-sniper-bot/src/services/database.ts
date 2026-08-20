@@ -9,6 +9,11 @@ import {
 } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { parseTelegramChatId, telegramUserId } from "../utils/telegram-user";
+import {
+  isFreshWalletAuthMessage,
+  isValidWalletAddress,
+  verifyWalletSignature,
+} from "../utils/wallet-signature";
 
 export class DatabaseService {
   private prisma: PrismaClient;
@@ -88,14 +93,33 @@ export class DatabaseService {
   // User management
   async authenticateWallet(
     walletAddress: string,
-    _signature: string,
+    signature: string,
+    message = "",
   ): Promise<any> {
     try {
+      const normalizedWalletAddress = walletAddress.trim();
+      if (!isValidWalletAddress(normalizedWalletAddress)) {
+        throw new Error("Invalid wallet address");
+      }
+
+      if (!config.auth.skipWalletSignatureVerify) {
+        if (!message.trim() || !signature.trim()) {
+          throw new Error("Wallet signature and message are required");
+        }
+
+        if (
+          !isFreshWalletAuthMessage(normalizedWalletAddress, message) ||
+          !verifyWalletSignature(normalizedWalletAddress, message, signature)
+        ) {
+          throw new Error("Invalid wallet signature");
+        }
+      }
+
       const user = await this.prisma.user.upsert({
-        where: { walletAddress },
+        where: { walletAddress: normalizedWalletAddress },
         update: { lastLogin: new Date() },
         create: {
-          walletAddress,
+          walletAddress: normalizedWalletAddress,
           subscriptionTier: "free",
           isActive: true,
         },

@@ -20,6 +20,7 @@ import { TelegramBotService } from "./services/telegram-bot";
 import type { SubscriptionTier } from "./types/auth";
 import {
   getBillingStatus,
+  isDevTierUpgradeAllowed,
   isBillingMockMode,
   resolveCheckoutSession,
 } from "./utils/billing";
@@ -281,7 +282,12 @@ class TokenSafetyBot {
     });
 
     this.app.get("/api/v1/billing/status", (_req, res) => {
-      res.json(getBillingStatus(config.stripe.secretKey));
+      res.json(
+        getBillingStatus(
+          config.stripe.secretKey,
+          config.development.allowDevTierUpgrade,
+        ),
+      );
     });
 
     this.app.post(
@@ -569,6 +575,18 @@ class TokenSafetyBot {
       "/api/v1/users/upgrade",
       authMiddleware,
       async (req, res, next) => {
+        if (
+          !isDevTierUpgradeAllowed(
+            config.stripe.secretKey,
+            config.development.allowDevTierUpgrade,
+          )
+        ) {
+          res.status(403).json({
+            error: "Direct tier upgrades are disabled outside local mock billing.",
+          });
+          return;
+        }
+
         try {
           const { tier } = upgradeSchema.parse(req.body);
           const subscription = await this.databaseService.upgradeSubscription(
@@ -577,7 +595,10 @@ class TokenSafetyBot {
           );
           res.json({
             subscription,
-            billing: getBillingStatus(config.stripe.secretKey),
+            billing: getBillingStatus(
+              config.stripe.secretKey,
+              config.development.allowDevTierUpgrade,
+            ),
           });
         } catch (error) {
           next(error);

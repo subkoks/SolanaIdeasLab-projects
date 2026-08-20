@@ -38,4 +38,14 @@ describe('production guard', () => {
 
     expect(() => assertProductionConfig()).toThrow(/SKIP_WALLET_SIGNATURE_VERIFY/)
   })
+
+  it('rejects direct billing upgrades in production', () => {
+    process.env.NODE_ENV = 'production'
+    process.env.JWT_SECRET = 'prod-secret-value'
+    process.env.SKIP_WALLET_SIGNATURE_VERIFY = 'false'
+    process.env.SKIP_AUTH_IN_DEV = 'false'
+    process.env.BILLING_DEV_UPGRADE = 'true'
+
+    expect(() => assertProductionConfig()).toThrow(/BILLING_DEV_UPGRADE/)
+  })
 })

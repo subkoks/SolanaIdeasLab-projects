@@ -111,6 +111,20 @@ TWITTER_BEARER_TOKEN=your_twitter_token
 DEXSCREENER_API_KEY=your_dexscreener_key
 ```
 
+### Wallet login
+
+Production wallet login requires an Ed25519 signature over a fresh message:
+
+```text
+SolanaIdeasLab Token Sniper Login
+Wallet: <wallet address>
+Issued At: <unix milliseconds>
+Expires At: <unix milliseconds>
+```
+
+The message must be unexpired and no more than 10 minutes long. Local development
+may set `SKIP_WALLET_SIGNATURE_VERIFY=true` in the copied `.env` file.
+
 ---
 
 ## 📊 Revenue Model

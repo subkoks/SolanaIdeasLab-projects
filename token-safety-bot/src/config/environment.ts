@@ -110,6 +110,9 @@ export const config = {
   development: {
     enableDebugLogs: process.env.ENABLE_DEBUG_LOGS === "true",
     skipAuthInDev: process.env.SKIP_AUTH_IN_DEV === "true",
+    allowDevTierUpgrade:
+      process.env.NODE_ENV === "development" &&
+      process.env.BILLING_DEV_UPGRADE === "true",
   },
   monitoring: {
     scanCacheTtlMs: parseNumber(

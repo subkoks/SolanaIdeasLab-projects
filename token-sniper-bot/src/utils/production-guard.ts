@@ -1,4 +1,5 @@
-const DEFAULT_JWT_SECRET = "token-safety-bot-dev-secret";
+const DEFAULT_JWT_SECRET = "token-sniper-bot-dev-secret";
+const DEFAULT_REFRESH_SECRET = "token-sniper-bot-dev-refresh";
 
 export const isProductionRuntime = (): boolean =>
   process.env.NODE_ENV === "production";
@@ -9,9 +10,25 @@ export const assertProductionConfig = (): void => {
   }
 
   const jwtSecret = process.env.JWT_SECRET ?? DEFAULT_JWT_SECRET;
-  if (!jwtSecret || jwtSecret === DEFAULT_JWT_SECRET) {
+  if (
+    !jwtSecret ||
+    jwtSecret === DEFAULT_JWT_SECRET ||
+    jwtSecret === "change-me-in-production"
+  ) {
     throw new Error(
       "JWT_SECRET must be set to a non-default value in production",
+    );
+  }
+
+  const refreshSecret =
+    process.env.REFRESH_TOKEN_SECRET ?? DEFAULT_REFRESH_SECRET;
+  if (
+    !refreshSecret ||
+    refreshSecret === DEFAULT_REFRESH_SECRET ||
+    refreshSecret === "change-me-refresh-in-production"
+  ) {
+    throw new Error(
+      "REFRESH_TOKEN_SECRET must be set to a non-default value in production",
     );
   }
 

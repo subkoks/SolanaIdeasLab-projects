@@ -5,6 +5,13 @@ import jwt from 'jsonwebtoken'
 import { config } from '../config/environment'
 import type { AuthenticatedUser, SubscriptionTier } from '../types/auth'
 import { logger } from '../utils/logger'
+import {
+  countScansSince,
+  isWithinScanLimit,
+  SCAN_LIMITS_BY_TIER,
+  ScanLimitExceededError,
+  startOfUtcDay,
+} from '../utils/subscription-limits'
 import type { SafetyScanResult } from './safety-scanner'
 
 interface UserRecord extends AuthenticatedUser {
@@ -300,6 +307,20 @@ export class JsonDatabaseService {
     result: SafetyScanResult,
     userId?: string,
   ): Promise<void> {
+    if (userId) {
+      const tier = this.users.get(userId)?.subscriptionTier ?? 'free'
+      const usedToday = countScansSince(
+        this.scans,
+        userId,
+        startOfUtcDay(),
+      )
+      const limit = SCAN_LIMITS_BY_TIER[tier]
+
+      if (!isWithinScanLimit(tier, usedToday)) {
+        throw new ScanLimitExceededError(limit, usedToday)
+      }
+    }
+
     this.scans.push({
       id: randomUUID(),
       userId,

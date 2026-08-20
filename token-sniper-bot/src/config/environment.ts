@@ -155,6 +155,9 @@ export const config = {
     enableDebugLogs: process.env.ENABLE_DEBUG_LOGS === "true",
     mockExternalApis: process.env.MOCK_EXTERNAL_APIS === "true",
     skipAuthInDev: process.env.SKIP_AUTH_IN_DEV === "true",
+    allowDevTierUpgrade:
+      process.env.NODE_ENV === "development" &&
+      process.env.BILLING_DEV_UPGRADE === "true",
     enableTestEndpoints: process.env.ENABLE_TEST_ENDPOINTS === "true",
   },
 

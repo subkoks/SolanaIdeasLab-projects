@@ -4,6 +4,12 @@ import jwt from 'jsonwebtoken'
 import { config } from '../config/environment'
 import type { AuthenticatedUser, SubscriptionTier } from '../types/auth'
 import { logger } from '../utils/logger'
+import {
+  isWithinScanLimit,
+  SCAN_LIMITS_BY_TIER,
+  ScanLimitExceededError,
+  startOfUtcDay,
+} from '../utils/subscription-limits'
 import type { SafetyScanResult } from './safety-scanner'
 
 interface AlertRecord {
@@ -317,13 +323,37 @@ export class PrismaDatabaseService {
     result: SafetyScanResult,
     userId?: string,
   ): Promise<void> {
-    await this.prisma.tokenAnalysis.create({
-      data: {
-        tokenAddress: normalizeTokenAddress(tokenAddress),
-        userId,
-        result: result as unknown as Prisma.InputJsonValue,
+    await this.prisma.$transaction(
+      async (transaction) => {
+        if (userId) {
+          const user = await transaction.user.findUnique({
+            where: { id: userId },
+            select: { subscriptionTier: true },
+          })
+          const tier = (user?.subscriptionTier ?? 'free') as SubscriptionTier
+          const usedToday = await transaction.tokenAnalysis.count({
+            where: {
+              userId,
+              createdAt: { gte: startOfUtcDay() },
+            },
+          })
+          const limit = SCAN_LIMITS_BY_TIER[tier]
+
+          if (!isWithinScanLimit(tier, usedToday)) {
+            throw new ScanLimitExceededError(limit, usedToday)
+          }
+        }
+
+        await transaction.tokenAnalysis.create({
+          data: {
+            tokenAddress: normalizeTokenAddress(tokenAddress),
+            userId,
+            result: result as unknown as Prisma.InputJsonValue,
+          },
+        })
       },
-    })
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    )
   }
 
   public async getLatestScan(

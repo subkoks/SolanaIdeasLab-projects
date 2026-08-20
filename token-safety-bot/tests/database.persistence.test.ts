@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { JsonDatabaseService } from '../src/services/database'
 import type { SafetyScanResult } from '../src/services/safety-scanner'
+import { ScanLimitExceededError } from '../src/utils/subscription-limits'
 
 const TEST_TOKEN = 'So11111111111111111111111111111111111111112'
 
@@ -60,6 +61,33 @@ describe('DatabaseService persistence', () => {
       expect(blacklistedRecord?.reason).toBe('Known scam token')
 
       await secondInstance.disconnect()
+    } finally {
+      await rm(tempDir, { force: true, recursive: true })
+    }
+  })
+
+  it('enforces the free-tier scan limit at write time', async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'token-safety-db-'))
+    const storePath = path.join(tempDir, 'store.json')
+
+    try {
+      const database = new JsonDatabaseService(storePath)
+      await database.connect()
+      const auth = await database.authenticateWallet('wallet-limit', 'sig')
+
+      for (let index = 0; index < 10; index += 1) {
+        await database.saveScan(
+          `${TEST_TOKEN}-${index}`,
+          buildScanResult(TEST_TOKEN),
+          auth.user.id,
+        )
+      }
+
+      await expect(
+        database.saveScan(TEST_TOKEN, buildScanResult(TEST_TOKEN), auth.user.id),
+      ).rejects.toBeInstanceOf(ScanLimitExceededError)
+
+      await database.disconnect()
     } finally {
       await rm(tempDir, { force: true, recursive: true })
     }
