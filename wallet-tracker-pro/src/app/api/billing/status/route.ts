@@ -9,6 +9,7 @@ export async function GET(): Promise<NextResponse> {
       config.stripe.secretKey,
       config.stripe.webhookSecret,
       config.stripe.prices,
+      config.development.allowDevTierUpgrade,
     ),
     watchLimits: WATCH_LIMITS_BY_TIER,
   })

@@ -13,8 +13,9 @@ const bodySchema = z.object({
 })
 
 const devWebhookAllowed = (): boolean =>
-  isBillingMockMode(config.stripe.secretKey) ||
-  process.env.BILLING_DEV_WEBHOOK === 'true'
+  config.development.allowDevWebhook &&
+  (isBillingMockMode(config.stripe.secretKey) ||
+    process.env.BILLING_DEV_WEBHOOK === 'true')
 
 export async function POST(request: Request): Promise<NextResponse> {
   if (!devWebhookAllowed()) {

@@ -33,6 +33,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         successUrl: body.successUrl,
         cancelUrl: body.cancelUrl,
       },
+      config.appBaseUrl,
     )
 
     if (session.mode === 'stripe' && 'error' in session) {

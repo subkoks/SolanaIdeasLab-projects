@@ -84,6 +84,13 @@ npm test
 npm run dev
 ```
 
+### Wallet login
+
+Production clients first call `POST /api/v1/auth/wallet/challenge`, sign the
+returned message, then call `/api/v1/auth/wallet/connect`. The challenge
+contains a server-issued nonce and expires after 10 minutes; a nonce is
+consumed after one successful login, so the signed message cannot be replayed.
+
 ### Environment Variables
 
 ```bash

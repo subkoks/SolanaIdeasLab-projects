@@ -31,6 +31,7 @@ import {
 } from "./utils/stripe-webhook";
 import { logger } from "./utils/logger";
 import { assertProductionConfig, isProductionRuntime } from "./utils/production-guard";
+import { isValidWalletAddress } from "./utils/wallet-signature";
 
 const localDevCorsOrigins = [
   "http://localhost:3000",
@@ -253,6 +254,27 @@ class TokenSafetyBot {
     this.app.get("/ready", async (_req, res) => {
       const ready = await this.getReadinessStatus();
       res.status(ready.ready ? 200 : 503).json(ready);
+    });
+
+    this.app.post("/api/v1/auth/wallet/challenge", async (req, res, next) => {
+      try {
+        const walletAddress = z
+          .string()
+          .min(32)
+          .parse(req.body?.walletAddress)
+          .trim();
+
+        if (!isValidWalletAddress(walletAddress)) {
+          res.status(400).json({ error: "Invalid wallet address" });
+          return;
+        }
+
+        res.json(
+          await this.databaseService.createWalletAuthChallenge(walletAddress),
+        );
+      } catch (error) {
+        next(error);
+      }
     });
 
     this.app.post("/api/v1/auth/wallet/connect", async (req, res, next) => {

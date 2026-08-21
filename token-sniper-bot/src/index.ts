@@ -30,6 +30,7 @@ import {
   buildTierSyncFromStripeEvent,
   constructStripeEvent,
 } from "./utils/stripe-webhook";
+import { isValidWalletAddress } from "./utils/wallet-signature";
 
 class TokenSniperBot {
   private app: express.Application;
@@ -283,6 +284,25 @@ class TokenSniperBot {
 
   private authRoutes(): express.Router {
     const router = express.Router();
+
+    router.post("/wallet/challenge", async (req, res) => {
+      try {
+        const walletAddress =
+          typeof req.body?.walletAddress === "string"
+            ? req.body.walletAddress.trim()
+            : "";
+
+        if (!isValidWalletAddress(walletAddress)) {
+          res.status(400).json({ error: "Invalid wallet address" });
+          return;
+        }
+
+        res.json(await this.db.createWalletAuthChallenge(walletAddress));
+      } catch (error) {
+        logger.error("Wallet challenge creation failed", { error });
+        res.status(503).json({ error: "Wallet challenge unavailable" });
+      }
+    });
 
     router.post("/wallet/connect", async (req, res) => {
       try {

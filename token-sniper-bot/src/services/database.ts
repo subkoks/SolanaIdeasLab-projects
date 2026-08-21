@@ -10,6 +10,8 @@ import {
 import { logger } from "../utils/logger";
 import { parseTelegramChatId, telegramUserId } from "../utils/telegram-user";
 import {
+  createWalletAuthChallenge,
+  getWalletAuthNonce,
   isFreshWalletAuthMessage,
   isValidWalletAddress,
   verifyWalletSignature,
@@ -109,7 +111,11 @@ export class DatabaseService {
 
         if (
           !isFreshWalletAuthMessage(normalizedWalletAddress, message) ||
-          !verifyWalletSignature(normalizedWalletAddress, message, signature)
+          !verifyWalletSignature(normalizedWalletAddress, message, signature) ||
+          !(await this.consumeWalletAuthChallenge(
+            normalizedWalletAddress,
+            getWalletAuthNonce(normalizedWalletAddress, message) ?? "",
+          ))
         ) {
           throw new Error("Invalid wallet signature");
         }
@@ -145,6 +151,42 @@ export class DatabaseService {
       logger.error("Wallet authentication failed:", error);
       throw new Error("Authentication failed");
     }
+  }
+
+  async createWalletAuthChallenge(
+    walletAddress: string,
+  ): Promise<{ expiresAt: number; message: string }> {
+    const normalizedWalletAddress = walletAddress.trim();
+    if (!isValidWalletAddress(normalizedWalletAddress)) {
+      throw new Error("Invalid wallet address");
+    }
+
+    const challenge = createWalletAuthChallenge(normalizedWalletAddress);
+    await this.redis.setEx(
+      this.walletChallengeKey(normalizedWalletAddress, challenge.nonce),
+      Math.ceil((challenge.expiresAt - Date.now()) / 1000),
+      "1",
+    );
+
+    return { expiresAt: challenge.expiresAt, message: challenge.message };
+  }
+
+  private async consumeWalletAuthChallenge(
+    walletAddress: string,
+    nonce: string,
+  ): Promise<boolean> {
+    if (!nonce) {
+      return false;
+    }
+
+    const consumed = await this.redis.getDel(
+      this.walletChallengeKey(walletAddress, nonce),
+    );
+    return consumed !== null;
+  }
+
+  private walletChallengeKey(walletAddress: string, nonce: string): string {
+    return `wallet-auth-challenge:${walletAddress}:${nonce}`;
   }
 
   async refreshToken(refreshToken: string): Promise<any> {

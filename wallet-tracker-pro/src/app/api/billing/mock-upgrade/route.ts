@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { config } from '@/lib/config'
-import { isBillingMockMode } from '@/lib/billing'
+import { isDevTierUpgradeAllowed } from '@/lib/billing'
 import { isValidSubscriberTier } from '@/lib/watch-limits'
 import { DatabaseService } from '@/services/database'
 
@@ -11,7 +11,12 @@ const bodySchema = z.object({
 })
 
 export async function POST(request: Request): Promise<NextResponse> {
-  if (!isBillingMockMode(config.stripe.secretKey)) {
+  if (
+    !isDevTierUpgradeAllowed(
+      config.stripe.secretKey,
+      config.development.allowDevTierUpgrade,
+    )
+  ) {
     return NextResponse.json(
       { error: 'Mock upgrade disabled when Stripe is configured.' },
       { status: 403 },

@@ -19,6 +19,17 @@ model User {
   subscriptions    Subscription[]
 }
 
+model WalletAuthChallenge {
+  id           String    @id @default(cuid())
+  walletAddress String
+  nonce        String    @unique
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([walletAddress, expiresAt])
+}
+
 model TokenAlert {
   id           String   @id @default(cuid())
   userId       String

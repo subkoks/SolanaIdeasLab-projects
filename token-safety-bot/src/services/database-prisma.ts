@@ -10,6 +10,12 @@ import {
   ScanLimitExceededError,
   startOfUtcDay,
 } from '../utils/subscription-limits'
+import {
+  createWalletAuthChallenge,
+  getWalletAuthNonce,
+  isFreshWalletAuthMessage,
+  isValidWalletAddress,
+} from '../utils/wallet-signature'
 import type { SafetyScanResult } from './safety-scanner'
 
 interface AlertRecord {
@@ -127,6 +133,47 @@ export class PrismaDatabaseService {
     }
   }
 
+  public async createWalletAuthChallenge(
+    walletAddress: string,
+  ): Promise<{ expiresAt: number; message: string }> {
+    const normalizedWalletAddress = walletAddress.trim()
+    if (!isValidWalletAddress(normalizedWalletAddress)) {
+      throw new Error('Invalid wallet address')
+    }
+
+    const challenge = createWalletAuthChallenge(normalizedWalletAddress)
+    await this.prisma.walletAuthChallenge.create({
+      data: {
+        walletAddress: normalizedWalletAddress,
+        nonce: challenge.nonce,
+        expiresAt: new Date(challenge.expiresAt),
+      },
+    })
+
+    return { expiresAt: challenge.expiresAt, message: challenge.message }
+  }
+
+  private async consumeWalletAuthChallenge(
+    walletAddress: string,
+    nonce: string | null,
+  ): Promise<boolean> {
+    if (!nonce) {
+      return false
+    }
+
+    const result = await this.prisma.walletAuthChallenge.updateMany({
+      where: {
+        walletAddress,
+        nonce,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: { consumedAt: new Date() },
+    })
+
+    return result.count === 1
+  }
+
   public async authenticateWallet(
     walletAddress: string,
     signature: string,
@@ -138,14 +185,23 @@ export class PrismaDatabaseService {
       throw new Error('Wallet address is required')
     }
 
+    if (!isValidWalletAddress(normalizedWalletAddress)) {
+      throw new Error('Invalid wallet address')
+    }
+
     if (!config.auth.skipWalletSignatureVerify) {
       if (!message?.trim()) {
         throw new Error('Signed message is required')
       }
 
       const { verifyWalletSignature } = await import('../utils/wallet-signature')
+      const nonce = getWalletAuthNonce(normalizedWalletAddress, message)
 
-      if (!verifyWalletSignature(normalizedWalletAddress, message, signature)) {
+      if (
+        !isFreshWalletAuthMessage(normalizedWalletAddress, message) ||
+        !verifyWalletSignature(normalizedWalletAddress, message, signature) ||
+        !(await this.consumeWalletAuthChallenge(normalizedWalletAddress, nonce))
+      ) {
         throw new Error('Invalid wallet signature')
       }
     }

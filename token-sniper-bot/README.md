@@ -113,16 +113,19 @@ DEXSCREENER_API_KEY=your_dexscreener_key
 
 ### Wallet login
 
-Production wallet login requires an Ed25519 signature over a fresh message:
+Production wallet login first calls `POST /api/v1/auth/wallet/challenge`, then
+requires an Ed25519 signature over the returned, single-use message:
 
 ```text
 SolanaIdeasLab Token Sniper Login
 Wallet: <wallet address>
+Nonce: <server-issued nonce>
 Issued At: <unix milliseconds>
 Expires At: <unix milliseconds>
 ```
 
-The message must be unexpired and no more than 10 minutes long. Local development
+The message must be unexpired, no more than 10 minutes long, and its nonce is
+consumed after one successful login. Local development
 may set `SKIP_WALLET_SIGNATURE_VERIFY=true` in the copied `.env` file.
 
 ---

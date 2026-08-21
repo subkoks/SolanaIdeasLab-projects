@@ -12,6 +12,12 @@ import {
   ScanLimitExceededError,
   startOfUtcDay,
 } from '../utils/subscription-limits'
+import {
+  createWalletAuthChallenge,
+  getWalletAuthNonce,
+  isFreshWalletAuthMessage,
+  isValidWalletAddress,
+} from '../utils/wallet-signature'
 import type { SafetyScanResult } from './safety-scanner'
 
 interface UserRecord extends AuthenticatedUser {
@@ -51,12 +57,19 @@ interface CacheEntry {
   value: unknown
 }
 
+interface WalletAuthChallengeRecord {
+  expiresAt: number
+  nonce: string
+  walletAddress: string
+}
+
 interface PersistedDatabaseState {
   alerts: Array<AlertRecord>
   blacklistedTokens: Array<BlacklistedTokenRecord>
   scans: Array<StoredScanRecord>
   users: Array<UserRecord>
   version: number
+  walletChallenges?: Array<WalletAuthChallengeRecord>
 }
 
 const STORE_VERSION = 1
@@ -101,6 +114,7 @@ export class JsonDatabaseService {
   private readonly scans = new Array<StoredScanRecord>()
   private readonly storageFilePath: string
   private readonly users = new Map<string, UserRecord>()
+  private readonly walletChallenges = new Map<string, WalletAuthChallengeRecord>()
   private connected = false
   private persistQueue: Promise<void> = Promise.resolve()
 
@@ -122,6 +136,47 @@ export class JsonDatabaseService {
     return this.connected
   }
 
+  public async createWalletAuthChallenge(
+    walletAddress: string,
+  ): Promise<{ expiresAt: number; message: string }> {
+    const normalizedWalletAddress = walletAddress.trim()
+    if (!isValidWalletAddress(normalizedWalletAddress)) {
+      throw new Error('Invalid wallet address')
+    }
+
+    const challenge = createWalletAuthChallenge(normalizedWalletAddress)
+    this.walletChallenges.set(challenge.nonce, {
+      expiresAt: challenge.expiresAt,
+      nonce: challenge.nonce,
+      walletAddress: normalizedWalletAddress,
+    })
+    await this.persistState()
+
+    return { expiresAt: challenge.expiresAt, message: challenge.message }
+  }
+
+  private async consumeWalletAuthChallenge(
+    walletAddress: string,
+    nonce: string | null,
+  ): Promise<boolean> {
+    if (!nonce) {
+      return false
+    }
+
+    const challenge = this.walletChallenges.get(nonce)
+    if (
+      !challenge ||
+      challenge.walletAddress !== walletAddress ||
+      challenge.expiresAt <= Date.now()
+    ) {
+      return false
+    }
+
+    this.walletChallenges.delete(nonce)
+    await this.persistState()
+    return true
+  }
+
   public async authenticateWallet(
     walletAddress: string,
     signature: string,
@@ -139,8 +194,13 @@ export class JsonDatabaseService {
       }
 
       const { verifyWalletSignature } = await import('../utils/wallet-signature')
+      const nonce = getWalletAuthNonce(normalizedWalletAddress, message)
 
-      if (!verifyWalletSignature(normalizedWalletAddress, message, signature)) {
+      if (
+        !isFreshWalletAuthMessage(normalizedWalletAddress, message) ||
+        !verifyWalletSignature(normalizedWalletAddress, message, signature) ||
+        !(await this.consumeWalletAuthChallenge(normalizedWalletAddress, nonce))
+      ) {
         throw new Error('Invalid wallet signature')
       }
     }
@@ -582,6 +642,7 @@ export class JsonDatabaseService {
       alerts: Array.from(this.alerts.values()),
       blacklistedTokens: Array.from(this.blacklistedTokens.values()),
       scans: this.scans,
+      walletChallenges: Array.from(this.walletChallenges.values()),
     }
   }
 
@@ -622,6 +683,7 @@ export class JsonDatabaseService {
       this.alerts.clear()
       this.blacklistedTokens.clear()
       this.scans.length = 0
+      this.walletChallenges.clear()
 
       for (const user of parsed.users) {
         this.users.set(user.id, user)
@@ -636,6 +698,10 @@ export class JsonDatabaseService {
       }
 
       this.scans.push(...parsed.scans)
+
+      for (const challenge of parsed.walletChallenges ?? []) {
+        this.walletChallenges.set(challenge.nonce, challenge)
+      }
 
       logger.info('Loaded persistent database state', {
         storageFilePath: this.storageFilePath,

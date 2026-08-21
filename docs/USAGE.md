@@ -93,6 +93,10 @@ http://localhost:3001
 
 ### Billing without Stripe (mock)
 
+Mock tier changes and simulated webhooks require `NODE_ENV=development` plus
+the explicit local flags `BILLING_DEV_UPGRADE=true` and
+`BILLING_DEV_WEBHOOK=true`. They are denied in staging and production.
+
 1. Open dashboard → **Load plans** (mode: `mock`)
 2. Enter your **Telegram chat ID** (from @userinfobot)
 3. Choose tier → **Mock upgrade** or **Simulate webhook**
