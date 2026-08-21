@@ -10,7 +10,10 @@ import { authMiddleware } from "./middleware/auth";
 import { adminAuthMiddleware } from "./middleware/admin";
 import { createScanLimitMiddleware } from "./middleware/scan-limit";
 import { errorHandler } from "./middleware/error-handler";
-import { rateLimitMiddleware } from "./middleware/rate-limit";
+import {
+  rateLimitMiddleware,
+  riskRateLimitMiddleware,
+} from "./middleware/rate-limit";
 import { createDatabaseService } from "./services/database";
 import { MonitorService } from "./services/monitor";
 import { QueueService } from "./services/queue";
@@ -64,6 +67,10 @@ const refreshTokenSchema = z.object({
 const scanSchema = z.object({
   analysisDepth: z.enum(["quick", "deep", "full"]).optional(),
   tokenAddress: z.string().min(32),
+});
+
+const riskQuerySchema = z.object({
+  analysisDepth: z.enum(["quick", "deep", "full"]).default("quick"),
 });
 
 const contractAnalysisSchema = z.object({
@@ -392,6 +399,28 @@ class TokenSafetyBot {
             .parse(req.params.tokenAddress);
           res.json(
             await this.safetyScannerService.getSafetyScore(tokenAddress),
+          );
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.get(
+      "/api/v1/risk/:tokenAddress",
+      riskRateLimitMiddleware(),
+      async (req, res, next) => {
+        try {
+          const tokenAddress = z
+            .string()
+            .min(32)
+            .parse(req.params.tokenAddress);
+          const { analysisDepth } = riskQuerySchema.parse(req.query);
+          res.json(
+            await this.safetyScannerService.getAgentRisk(
+              tokenAddress,
+              analysisDepth,
+            ),
           );
         } catch (error) {
           next(error);

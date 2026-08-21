@@ -596,6 +596,10 @@ npm run test:integration
 ### Public Endpoints
 
 ```typescript
+// Bounded agent-readable risk response with evidence and provenance
+GET /api/v1/risk/:tokenAddress?analysisDepth=quick|deep|full
+// Response fields: schemaVersion, decision, evidence, signals, provenance
+
 // Safety scan
 POST /api/v1/scan
 {

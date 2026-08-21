@@ -1,14 +1,22 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-08-21 (phase 22)
+Last updated: 2026-08-21 (phase 23)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | Replay-safe auth + guarded local dev bypass | Production migration + API smoke |
+| **token-safety-bot** | Canonical risk API + provenance + guarded local dev bypass | Production migration + API smoke |
 | **token-sniper-bot** | Replay-safe auth + guarded local dev bypass | Production Redis/DB smoke |
 | **wallet-tracker-pro** | Dev-only billing + same-origin checkout returns | Authenticated subscriber identity |
+
+## Phase 23 — Agent-readable risk surface
+
+**Done**
+- Added `GET /api/v1/risk/:tokenAddress` with validated `quick`, `deep`, or `full` analysis depth.
+- Added stable schema versioning, deterministic `allow`/`review`/`block` recommendations, bounded signals, evidence, and source provenance.
+- Blacklist overrides report local-blacklist provenance without claiming Solana RPC evidence.
+- Kept the endpoint additive and payment-neutral; x402 access control remains a later phase.
 
 ## Phase 22 — Local development continuation
 
