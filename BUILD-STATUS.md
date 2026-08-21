@@ -1,14 +1,22 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-08-21 (phase 21)
+Last updated: 2026-08-21 (phase 22)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | Replay-safe wallet auth + atomic scan quotas | Production migration + API smoke |
-| **token-sniper-bot** | Replay-safe wallet auth + auth-gated analysis | Production Redis/DB smoke |
+| **token-safety-bot** | Replay-safe auth + guarded local dev bypass | Production migration + API smoke |
+| **token-sniper-bot** | Replay-safe auth + guarded local dev bypass | Production Redis/DB smoke |
 | **wallet-tracker-pro** | Dev-only billing + same-origin checkout returns | Authenticated subscriber identity |
+
+## Phase 22 — Local development continuation
+
+**Done**
+- JWT authentication can be bypassed only in explicit `NODE_ENV=development` with `SKIP_AUTH_IN_DEV=true`; local requests use the existing enterprise dev identity.
+- Wallet-signature verification bypass is accepted only in development/test runtimes.
+- Staging and production reject development bypass flags at startup; regression coverage covers both bypass and denial paths.
+- Updated service README instructions so local auth setup can be skipped without weakening deployed environments.
 
 ## Phase 21 — Trust/Risk Gateway continuation
 

@@ -45,4 +45,11 @@ describe("production guard", () => {
       /SKIP_WALLET_SIGNATURE_VERIFY/,
     );
   });
+
+  it("rejects development bypasses outside development and test", () => {
+    process.env.NODE_ENV = "staging";
+    process.env.SKIP_AUTH_IN_DEV = "true";
+
+    expect(() => assertProductionConfig()).toThrow(/SKIP_AUTH_IN_DEV/);
+  });
 });

@@ -9,6 +9,9 @@ const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 120;
 const DEFAULT_SCAN_CACHE_TTL_MS = 300_000;
 const DEFAULT_LOG_LEVEL = "info";
 const DEFAULT_DATA_STORE_PATH = "./data/token-safety-store.json";
+const isDevelopmentRuntime = process.env.NODE_ENV === "development";
+const isTestRuntime = process.env.NODE_ENV === "test";
+const isDevelopmentOrTestRuntime = isDevelopmentRuntime || isTestRuntime;
 
 const parseNumber = (value: string | undefined, fallback: number): number => {
   const parsed = Number(value);
@@ -79,6 +82,7 @@ export const config = {
       process.env.ADMIN_WALLET_ADDRESSES,
     ),
     skipWalletSignatureVerify:
+      isDevelopmentOrTestRuntime &&
       process.env.SKIP_WALLET_SIGNATURE_VERIFY === "true",
   },
   telegram: {
@@ -109,7 +113,8 @@ export const config = {
   },
   development: {
     enableDebugLogs: process.env.ENABLE_DEBUG_LOGS === "true",
-    skipAuthInDev: process.env.SKIP_AUTH_IN_DEV === "true",
+    skipAuthInDev:
+      isDevelopmentRuntime && process.env.SKIP_AUTH_IN_DEV === "true",
     allowDevTierUpgrade:
       process.env.NODE_ENV === "development" &&
       process.env.BILLING_DEV_UPGRADE === "true",

@@ -103,7 +103,10 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/token_sniper
 REDIS_URL=redis://localhost:6379
 
 # Authentication
+NODE_ENV=development
 JWT_SECRET=your_jwt_secret_here
+SKIP_AUTH_IN_DEV=true
+SKIP_WALLET_SIGNATURE_VERIFY=true
 STRIPE_SECRET_KEY=sk_test_...
 
 # External APIs
@@ -125,8 +128,11 @@ Expires At: <unix milliseconds>
 ```
 
 The message must be unexpired, no more than 10 minutes long, and its nonce is
-consumed after one successful login. Local development
-may set `SKIP_WALLET_SIGNATURE_VERIFY=true` in the copied `.env` file.
+consumed after one successful login. Local development may set
+`SKIP_AUTH_IN_DEV=true` and `SKIP_WALLET_SIGNATURE_VERIFY=true` in the copied
+`.env` file. These bypasses are accepted only with `NODE_ENV=development` (and
+`NODE_ENV=test` for the test suite); staging and production remain
+authenticated.
 
 ---
 
