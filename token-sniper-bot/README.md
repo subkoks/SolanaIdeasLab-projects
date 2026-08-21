@@ -131,8 +131,8 @@ The message must be unexpired, no more than 10 minutes long, and its nonce is
 consumed after one successful login. Local development may set
 `SKIP_AUTH_IN_DEV=true` and `SKIP_WALLET_SIGNATURE_VERIFY=true` in the copied
 `.env` file. These bypasses are accepted only with `NODE_ENV=development` (and
-`NODE_ENV=test` for the test suite); staging and production remain
-authenticated.
+the wallet-signature bypass is also accepted with `NODE_ENV=test` for the test
+suite); staging and production remain authenticated.
 
 ---
 

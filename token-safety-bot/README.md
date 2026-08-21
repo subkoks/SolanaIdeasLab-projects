@@ -118,10 +118,10 @@ SKIP_AUTH_IN_DEV=true
 SKIP_WALLET_SIGNATURE_VERIFY=true
 ```
 
-The development bypasses above are accepted only with `NODE_ENV=development`
-(`NODE_ENV=test` is supported for automated tests). They create a local
-enterprise test identity and skip wallet-signature verification; never enable
-them in staging or production.
+`SKIP_AUTH_IN_DEV` is effective only with `NODE_ENV=development` and creates a
+local enterprise test identity. Wallet-signature bypass is also accepted in
+`NODE_ENV=test` for automated tests. Never enable either bypass in staging or
+production.
 
 ---
 
