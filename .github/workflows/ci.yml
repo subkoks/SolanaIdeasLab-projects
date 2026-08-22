@@ -2,8 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'dependabot/**'
   pull_request:
+    # Dependency-update branches (e.g. dependabot/**) now also validate on
+    # push, since GitHub does not re-run the pull_request workflow when a
+    # Dependabot branch is pushed to directly. This keeps verify checks
+    # current without a manual "Re-run all jobs".
 
 permissions:
   contents: read
