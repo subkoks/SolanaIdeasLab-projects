@@ -74,6 +74,16 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Production-dependency vulnerability scan (uses each package's existing
+      # `npm run security-check`, which runs `npm audit --omit=dev
+      # --audit-level=high`). Runs after a clean `npm ci` so it reflects the
+      # committed lockfile. Does NOT need the Postgres service. Fails the job on
+      # any high-or-above advisory in production deps (dev deps are omitted by
+      # the script itself). `npm audit` exits non-zero on findings and prints the
+      # advisory details, giving deterministic, actionable CI failure output.
+      - name: Security check (npm audit, prod deps)
+        run: npm run security-check
+
       - name: Test (default — JSON/fallback and unit)
         run: npm test
 
