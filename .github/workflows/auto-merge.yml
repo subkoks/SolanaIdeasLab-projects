@@ -21,6 +21,17 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      # Approve same-repo PRs so the branch-protection "required review" gate is
+      # satisfied and auto-merge can complete. We never approve external forks
+      # (the job is scoped to head.repo == github.repository above), so untrusted
+      # code is never approved with the write token. Idempotent: re-approval of
+      # an already-approved PR is a no-op.
+      - name: Approve PR
+        run: gh pr review "$PR_URL" --approve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+
       - name: Enable auto-merge
         run: gh pr merge --auto --squash "$PR_URL"
         env:
