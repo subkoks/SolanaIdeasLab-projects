@@ -1,6 +1,6 @@
 # Overview
 
-SolanaIdeasLab **projects** repo: three Node.js apps for Solana token intelligence and wallet monitoring. Planning docs live in the separate [SolanaIdeasLab](https://github.com/subkoks/SolanaIdeasLab) repo.
+SolanaIdeasLab **projects** repo: three apps converging on a Solana Trust/Risk Gateway for token intelligence, wallet telemetry, alerts, and future agent clients. Planning docs live in the separate [SolanaIdeasLab](https://github.com/subkoks/SolanaIdeasLab) repo.
 
 **GitHub:** [subkoks/SolanaIdeasLab-projects](https://github.com/subkoks/SolanaIdeasLab-projects)
 
@@ -53,6 +53,8 @@ flowchart LR
 You can develop and explore **without verifying on-chain or adding paid keys**. Add keys when you are ready.
 
 ## Shared infrastructure
+
+The apps share a security direction, but not yet a shared runtime package. Keep auth, entitlements, quotas, and provenance contracts aligned until the shared layer is extracted deliberately.
 
 | Service | Databases | Notes |
 |---|---|---|

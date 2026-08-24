@@ -23,6 +23,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         config.stripe.secretKey,
         config.stripe.webhookSecret,
         config.stripe.prices,
+        config.development.allowDevTierUpgrade,
       ).mode,
       tier: limits?.tier ?? 'free',
       limits,

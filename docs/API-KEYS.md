@@ -22,7 +22,9 @@ Never commit `.env` files.
 |---|---|
 | `JWT_SECRET` | `openssl rand -hex 32` per project |
 | `REFRESH_TOKEN_SECRET` | sniper only — `openssl rand -hex 32` |
-| `SKIP_WALLET_SIGNATURE_VERIFY=true` | Dev wallet auth without signatures |
+| `SKIP_WALLET_SIGNATURE_VERIFY=true` | Dev-only wallet auth bypass; production startup rejects it |
+| `BILLING_DEV_UPGRADE=true` | Local-only mock tier changes; requires `NODE_ENV=development` |
+| `BILLING_DEV_WEBHOOK=true` | Local-only simulated billing webhooks; requires `NODE_ENV=development` |
 | Postgres URLs | Bootstrap defaults |
 
 ---

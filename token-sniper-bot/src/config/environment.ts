@@ -2,6 +2,10 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+const isDevelopmentRuntime = process.env.NODE_ENV === "development";
+const isTestRuntime = process.env.NODE_ENV === "test";
+const isDevelopmentOrTestRuntime = isDevelopmentRuntime || isTestRuntime;
+
 const parseNumber = (value: string | undefined, fallback: number): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -12,7 +16,10 @@ const parseWalletAddresses = (value: string | undefined): string[] => {
     return [];
   }
 
-  return value.split(/[\s,]+/).map((entry) => entry.trim()).filter(Boolean);
+  return value
+    .split(/[\s,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 };
 
 export const config = {
@@ -35,8 +42,7 @@ export const config = {
   },
 
   solana: {
-    rpcUrl:
-      process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com",
+    rpcUrl: process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com",
     commitment: process.env.SOLANA_COMMITMENT ?? "confirmed",
     network: process.env.SOLANA_NETWORK ?? "mainnet-beta",
   },
@@ -53,6 +59,7 @@ export const config = {
       process.env.ADMIN_WALLET_ADDRESSES,
     ),
     skipWalletSignatureVerify:
+      isDevelopmentOrTestRuntime &&
       process.env.SKIP_WALLET_SIGNATURE_VERIFY === "true",
   },
 
@@ -102,12 +109,8 @@ export const config = {
       process.env.REDIS_URL ??
       "redis://localhost:6379",
     defaultJobOptions: {
-      attempts: parseNumber(
-        process.env.QUEUE_DEFAULT_JOB_OPTIONS_ATTEMPTS,
-        3,
-      ),
-      backoff:
-        process.env.QUEUE_DEFAULT_JOB_OPTIONS_BACKOFF ?? "exponential",
+      attempts: parseNumber(process.env.QUEUE_DEFAULT_JOB_OPTIONS_ATTEMPTS, 3),
+      backoff: process.env.QUEUE_DEFAULT_JOB_OPTIONS_BACKOFF ?? "exponential",
     },
   },
 
@@ -127,10 +130,7 @@ export const config = {
     ),
     cacheTtlRiskScores: parseNumber(process.env.CACHE_TTL_RISK_SCORES, 1800),
     cacheTtlUserData: parseNumber(process.env.CACHE_TTL_USER_DATA, 900),
-    maxConcurrentAnalysis: parseNumber(
-      process.env.MAX_CONCURRENT_ANALYSIS,
-      10,
-    ),
+    maxConcurrentAnalysis: parseNumber(process.env.MAX_CONCURRENT_ANALYSIS, 10),
     analysisTimeoutMs: parseNumber(process.env.ANALYSIS_TIMEOUT_MS, 30_000),
   },
 
@@ -154,7 +154,11 @@ export const config = {
     enableSwagger: process.env.ENABLE_SWAGGER === "true",
     enableDebugLogs: process.env.ENABLE_DEBUG_LOGS === "true",
     mockExternalApis: process.env.MOCK_EXTERNAL_APIS === "true",
-    skipAuthInDev: process.env.SKIP_AUTH_IN_DEV === "true",
+    skipAuthInDev:
+      isDevelopmentRuntime && process.env.SKIP_AUTH_IN_DEV === "true",
+    allowDevTierUpgrade:
+      process.env.NODE_ENV === "development" &&
+      process.env.BILLING_DEV_UPGRADE === "true",
     enableTestEndpoints: process.env.ENABLE_TEST_ENDPOINTS === "true",
   },
 

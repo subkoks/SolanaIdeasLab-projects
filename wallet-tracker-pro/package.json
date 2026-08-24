@@ -71,6 +71,7 @@
     "react-dom": "^19.2.8",
     "react-hook-form": "^7.85.0",
     "react-hot-toast": "^2.4.1",
+    "react-is": "^19.2.8",
     "react-query": "^3.39.3",
     "react-virtualized-auto-sizer": "^2.0.3",
     "react-window": "^2.3.0",

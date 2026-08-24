@@ -383,7 +383,10 @@ export class TelegramBotService {
 
     this.bot.command("billing", async (context) => {
       this.knownChatIds.add(context.chat.id);
-      const status = getBillingStatus(config.stripe.secretKey);
+      const status = getBillingStatus(
+        config.stripe.secretKey,
+        config.development.allowDevTierUpgrade,
+      );
 
       await context.reply(
         [

@@ -84,6 +84,13 @@ npm test
 npm run dev
 ```
 
+### Wallet login
+
+Production clients first call `POST /api/v1/auth/wallet/challenge`, sign the
+returned message, then call `/api/v1/auth/wallet/connect`. The challenge
+contains a server-issued nonce and expires after 10 minutes; a nonce is
+consumed after one successful login, so the signed message cannot be replayed.
+
 ### Environment Variables
 
 ```bash
@@ -105,9 +112,16 @@ TELEGRAM_BOT_USERNAME=token_safety_bot
 TELEGRAM_WEBHOOK_URL=https://your-domain.com/webhook
 
 # Authentication
+NODE_ENV=development
 JWT_SECRET=replace_me
 SKIP_AUTH_IN_DEV=true
+SKIP_WALLET_SIGNATURE_VERIFY=true
 ```
+
+`SKIP_AUTH_IN_DEV` is effective only with `NODE_ENV=development` and creates a
+local enterprise test identity. Wallet-signature bypass is also accepted in
+`NODE_ENV=test` for automated tests. Never enable either bypass in staging or
+production.
 
 ---
 
@@ -582,6 +596,10 @@ npm run test:integration
 ### Public Endpoints
 
 ```typescript
+// Bounded agent-readable risk response with evidence and provenance
+GET /api/v1/risk/:tokenAddress?analysisDepth=quick|deep|full
+// Response fields: schemaVersion, decision, evidence, signals, provenance
+
 // Safety scan
 POST /api/v1/scan
 {

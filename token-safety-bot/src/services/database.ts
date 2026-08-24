@@ -5,6 +5,19 @@ import jwt from 'jsonwebtoken'
 import { config } from '../config/environment'
 import type { AuthenticatedUser, SubscriptionTier } from '../types/auth'
 import { logger } from '../utils/logger'
+import {
+  countScansSince,
+  isWithinScanLimit,
+  SCAN_LIMITS_BY_TIER,
+  ScanLimitExceededError,
+  startOfUtcDay,
+} from '../utils/subscription-limits'
+import {
+  createWalletAuthChallenge,
+  getWalletAuthNonce,
+  isFreshWalletAuthMessage,
+  isValidWalletAddress,
+} from '../utils/wallet-signature'
 import type { SafetyScanResult } from './safety-scanner'
 
 interface UserRecord extends AuthenticatedUser {
@@ -44,15 +57,31 @@ interface CacheEntry {
   value: unknown
 }
 
+interface WalletAuthChallengeRecord {
+  expiresAt: number
+  nonce: string
+  walletAddress: string
+}
+
+interface StripeWebhookEventRecord {
+  claimedAt: string
+  eventType: string
+  processedAt?: string
+  status: 'processing' | 'processed'
+}
+
 interface PersistedDatabaseState {
   alerts: Array<AlertRecord>
   blacklistedTokens: Array<BlacklistedTokenRecord>
   scans: Array<StoredScanRecord>
+  stripeWebhookEvents?: Array<[string, StripeWebhookEventRecord]>
   users: Array<UserRecord>
   version: number
+  walletChallenges?: Array<WalletAuthChallengeRecord>
 }
 
 const STORE_VERSION = 1
+const STRIPE_WEBHOOK_CLAIM_TIMEOUT_MS = 10 * 60 * 1000
 
 const nowIsoString = (): string => new Date().toISOString()
 
@@ -92,8 +121,10 @@ export class JsonDatabaseService {
   private readonly blacklistedTokens = new Map<string, BlacklistedTokenRecord>()
   private readonly cache = new Map<string, CacheEntry>()
   private readonly scans = new Array<StoredScanRecord>()
+  private readonly stripeWebhookEvents = new Map<string, StripeWebhookEventRecord>()
   private readonly storageFilePath: string
   private readonly users = new Map<string, UserRecord>()
+  private readonly walletChallenges = new Map<string, WalletAuthChallengeRecord>()
   private connected = false
   private persistQueue: Promise<void> = Promise.resolve()
 
@@ -115,6 +146,100 @@ export class JsonDatabaseService {
     return this.connected
   }
 
+  public async claimStripeWebhookEvent(
+    eventId: string,
+    eventType: string,
+  ): Promise<boolean> {
+    const normalizedEventId = eventId.trim()
+    if (!normalizedEventId || normalizedEventId.length > 255) {
+      throw new Error('Invalid Stripe event ID')
+    }
+
+    const existing = this.stripeWebhookEvents.get(normalizedEventId)
+    if (existing?.status === 'processed') {
+      return false
+    }
+
+    if (
+      existing &&
+      Date.now() - Date.parse(existing.claimedAt) < STRIPE_WEBHOOK_CLAIM_TIMEOUT_MS
+    ) {
+      return false
+    }
+
+    this.stripeWebhookEvents.set(normalizedEventId, {
+      claimedAt: nowIsoString(),
+      eventType,
+      status: 'processing',
+    })
+    await this.persistState()
+    return true
+  }
+
+  public async markStripeWebhookEventProcessed(eventId: string): Promise<void> {
+    const normalizedEventId = eventId.trim()
+    const event = this.stripeWebhookEvents.get(normalizedEventId)
+    if (!event) {
+      throw new Error('Stripe event claim not found')
+    }
+
+    event.status = 'processed'
+    event.processedAt = nowIsoString()
+    await this.persistState()
+  }
+
+  public async releaseStripeWebhookEvent(eventId: string): Promise<void> {
+    const normalizedEventId = eventId.trim()
+    const event = this.stripeWebhookEvents.get(normalizedEventId)
+    if (event?.status !== 'processing') {
+      return
+    }
+
+    this.stripeWebhookEvents.delete(normalizedEventId)
+    await this.persistState()
+  }
+
+  public async createWalletAuthChallenge(
+    walletAddress: string,
+  ): Promise<{ expiresAt: number; message: string }> {
+    const normalizedWalletAddress = walletAddress.trim()
+    if (!isValidWalletAddress(normalizedWalletAddress)) {
+      throw new Error('Invalid wallet address')
+    }
+
+    const challenge = createWalletAuthChallenge(normalizedWalletAddress)
+    this.walletChallenges.set(challenge.nonce, {
+      expiresAt: challenge.expiresAt,
+      nonce: challenge.nonce,
+      walletAddress: normalizedWalletAddress,
+    })
+    await this.persistState()
+
+    return { expiresAt: challenge.expiresAt, message: challenge.message }
+  }
+
+  private async consumeWalletAuthChallenge(
+    walletAddress: string,
+    nonce: string | null,
+  ): Promise<boolean> {
+    if (!nonce) {
+      return false
+    }
+
+    const challenge = this.walletChallenges.get(nonce)
+    if (
+      !challenge ||
+      challenge.walletAddress !== walletAddress ||
+      challenge.expiresAt <= Date.now()
+    ) {
+      return false
+    }
+
+    this.walletChallenges.delete(nonce)
+    await this.persistState()
+    return true
+  }
+
   public async authenticateWallet(
     walletAddress: string,
     signature: string,
@@ -132,8 +257,13 @@ export class JsonDatabaseService {
       }
 
       const { verifyWalletSignature } = await import('../utils/wallet-signature')
+      const nonce = getWalletAuthNonce(normalizedWalletAddress, message)
 
-      if (!verifyWalletSignature(normalizedWalletAddress, message, signature)) {
+      if (
+        !isFreshWalletAuthMessage(normalizedWalletAddress, message) ||
+        !verifyWalletSignature(normalizedWalletAddress, message, signature) ||
+        !(await this.consumeWalletAuthChallenge(normalizedWalletAddress, nonce))
+      ) {
         throw new Error('Invalid wallet signature')
       }
     }
@@ -300,6 +430,20 @@ export class JsonDatabaseService {
     result: SafetyScanResult,
     userId?: string,
   ): Promise<void> {
+    if (userId) {
+      const tier = this.users.get(userId)?.subscriptionTier ?? 'free'
+      const usedToday = countScansSince(
+        this.scans,
+        userId,
+        startOfUtcDay(),
+      )
+      const limit = SCAN_LIMITS_BY_TIER[tier]
+
+      if (!isWithinScanLimit(tier, usedToday)) {
+        throw new ScanLimitExceededError(limit, usedToday)
+      }
+    }
+
     this.scans.push({
       id: randomUUID(),
       userId,
@@ -561,6 +705,8 @@ export class JsonDatabaseService {
       alerts: Array.from(this.alerts.values()),
       blacklistedTokens: Array.from(this.blacklistedTokens.values()),
       scans: this.scans,
+      stripeWebhookEvents: Array.from(this.stripeWebhookEvents.entries()),
+      walletChallenges: Array.from(this.walletChallenges.values()),
     }
   }
 
@@ -601,6 +747,8 @@ export class JsonDatabaseService {
       this.alerts.clear()
       this.blacklistedTokens.clear()
       this.scans.length = 0
+      this.stripeWebhookEvents.clear()
+      this.walletChallenges.clear()
 
       for (const user of parsed.users) {
         this.users.set(user.id, user)
@@ -615,6 +763,14 @@ export class JsonDatabaseService {
       }
 
       this.scans.push(...parsed.scans)
+
+      for (const [eventId, event] of parsed.stripeWebhookEvents ?? []) {
+        this.stripeWebhookEvents.set(eventId, event)
+      }
+
+      for (const challenge of parsed.walletChallenges ?? []) {
+        this.walletChallenges.set(challenge.nonce, challenge)
+      }
 
       logger.info('Loaded persistent database state', {
         storageFilePath: this.storageFilePath,

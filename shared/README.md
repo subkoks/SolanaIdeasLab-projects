@@ -1,5 +1,9 @@
 # Shared Components Library
 
+> Scaffold only. This directory is not a production auth/payment package; the
+> runnable apps own their verified implementations until a shared package has
+> tests, persistence, and deployment boundaries.
+
 > Common patterns, authentication, database schemas, and reusable components used across all SolanaIdeasLab projects.
 
 ## Purpose
@@ -26,7 +30,7 @@ shared/
 
 ## Usage
 
-Import patterns into individual projects:
+Import patterns into individual projects only after reviewing and adapting them:
 ```bash
 cp -r shared/auth ../token-sniper-bot/src/
 cp -r shared/database ../wallet-tracker-pro/src/

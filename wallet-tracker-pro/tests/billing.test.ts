@@ -1,7 +1,9 @@
 import {
   createSubscriberCheckoutSession,
   getBillingStatus,
+  getSafeReturnUrl,
   isBillingMockMode,
+  isDevTierUpgradeAllowed,
 } from '../src/lib/billing'
 import { buildSubscriberTierSyncFromEvent } from '../src/lib/stripe-webhook'
 
@@ -11,6 +13,9 @@ describe('wallet tracker billing', () => {
   it('uses mock mode without stripe key', () => {
     expect(isBillingMockMode('')).toBe(true)
     expect(getBillingStatus('', '', emptyPrices).mode).toBe('mock')
+    expect(isDevTierUpgradeAllowed('', false)).toBe(false)
+    expect(isDevTierUpgradeAllowed('', true)).toBe(true)
+    expect(isDevTierUpgradeAllowed('sk_test', true)).toBe(false)
   })
 
   it('reports stripe config readiness', () => {
@@ -34,6 +39,24 @@ describe('wallet tracker billing', () => {
       expect(session.tier).toBe('pro')
       expect(session.priceUsd).toBe(29)
     }
+  })
+
+  it('keeps checkout returns on the application origin', () => {
+    expect(
+      getSafeReturnUrl(
+        'https://attacker.example/steal',
+        '/?checkout=cancel',
+        'https://wallet.example',
+      ),
+    ).toBe('https://wallet.example/?checkout=cancel')
+
+    expect(
+      getSafeReturnUrl(
+        'https://wallet.example/?checkout=success',
+        '/?checkout=cancel',
+        'https://wallet.example',
+      ),
+    ).toBe('https://wallet.example/?checkout=success')
   })
 
   it('maps checkout events with chatId metadata', () => {

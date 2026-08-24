@@ -4,6 +4,18 @@ import jwt from 'jsonwebtoken'
 import { config } from '../config/environment'
 import type { AuthenticatedUser, SubscriptionTier } from '../types/auth'
 import { logger } from '../utils/logger'
+import {
+  isWithinScanLimit,
+  SCAN_LIMITS_BY_TIER,
+  ScanLimitExceededError,
+  startOfUtcDay,
+} from '../utils/subscription-limits'
+import {
+  createWalletAuthChallenge,
+  getWalletAuthNonce,
+  isFreshWalletAuthMessage,
+  isValidWalletAddress,
+} from '../utils/wallet-signature'
 import type { SafetyScanResult } from './safety-scanner'
 
 interface AlertRecord {
@@ -45,6 +57,8 @@ interface CacheEntry {
 
 const normalizeTokenAddress = (tokenAddress: string): string =>
   tokenAddress.trim()
+
+const STRIPE_WEBHOOK_CLAIM_TIMEOUT_MS = 10 * 60 * 1000
 
 const getJwtExpiration = (value: string): jwt.SignOptions['expiresIn'] =>
   value as jwt.SignOptions['expiresIn']
@@ -121,6 +135,110 @@ export class PrismaDatabaseService {
     }
   }
 
+  public async claimStripeWebhookEvent(
+    eventId: string,
+    eventType: string,
+  ): Promise<boolean> {
+    const normalizedEventId = eventId.trim()
+    if (!normalizedEventId || normalizedEventId.length > 255) {
+      throw new Error('Invalid Stripe event ID')
+    }
+
+    let existing = await this.prisma.stripeWebhookEvent.findUnique({
+      where: { id: normalizedEventId },
+    })
+
+    if (!existing) {
+      try {
+        await this.prisma.stripeWebhookEvent.create({
+          data: { id: normalizedEventId, eventType, status: 'processing' },
+        })
+        return true
+      } catch (error) {
+        if (
+          !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+          error.code !== 'P2002'
+        ) {
+          throw error
+        }
+
+        existing = await this.prisma.stripeWebhookEvent.findUnique({
+          where: { id: normalizedEventId },
+        })
+      }
+    }
+
+    if (!existing || existing.status === 'processed') {
+      return false
+    }
+
+    const staleBefore = new Date(Date.now() - STRIPE_WEBHOOK_CLAIM_TIMEOUT_MS)
+    const reclaimed = await this.prisma.stripeWebhookEvent.updateMany({
+      where: {
+        id: normalizedEventId,
+        status: 'processing',
+        claimedAt: { lt: staleBefore },
+      },
+      data: { claimedAt: new Date(), eventType },
+    })
+
+    return reclaimed.count === 1
+  }
+
+  public async markStripeWebhookEventProcessed(eventId: string): Promise<void> {
+    await this.prisma.stripeWebhookEvent.update({
+      where: { id: eventId.trim() },
+      data: { processedAt: new Date(), status: 'processed' },
+    })
+  }
+
+  public async releaseStripeWebhookEvent(eventId: string): Promise<void> {
+    await this.prisma.stripeWebhookEvent.deleteMany({
+      where: { id: eventId.trim(), status: 'processing' },
+    })
+  }
+
+  public async createWalletAuthChallenge(
+    walletAddress: string,
+  ): Promise<{ expiresAt: number; message: string }> {
+    const normalizedWalletAddress = walletAddress.trim()
+    if (!isValidWalletAddress(normalizedWalletAddress)) {
+      throw new Error('Invalid wallet address')
+    }
+
+    const challenge = createWalletAuthChallenge(normalizedWalletAddress)
+    await this.prisma.walletAuthChallenge.create({
+      data: {
+        walletAddress: normalizedWalletAddress,
+        nonce: challenge.nonce,
+        expiresAt: new Date(challenge.expiresAt),
+      },
+    })
+
+    return { expiresAt: challenge.expiresAt, message: challenge.message }
+  }
+
+  private async consumeWalletAuthChallenge(
+    walletAddress: string,
+    nonce: string | null,
+  ): Promise<boolean> {
+    if (!nonce) {
+      return false
+    }
+
+    const result = await this.prisma.walletAuthChallenge.updateMany({
+      where: {
+        walletAddress,
+        nonce,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: { consumedAt: new Date() },
+    })
+
+    return result.count === 1
+  }
+
   public async authenticateWallet(
     walletAddress: string,
     signature: string,
@@ -132,14 +250,23 @@ export class PrismaDatabaseService {
       throw new Error('Wallet address is required')
     }
 
+    if (!isValidWalletAddress(normalizedWalletAddress)) {
+      throw new Error('Invalid wallet address')
+    }
+
     if (!config.auth.skipWalletSignatureVerify) {
       if (!message?.trim()) {
         throw new Error('Signed message is required')
       }
 
       const { verifyWalletSignature } = await import('../utils/wallet-signature')
+      const nonce = getWalletAuthNonce(normalizedWalletAddress, message)
 
-      if (!verifyWalletSignature(normalizedWalletAddress, message, signature)) {
+      if (
+        !isFreshWalletAuthMessage(normalizedWalletAddress, message) ||
+        !verifyWalletSignature(normalizedWalletAddress, message, signature) ||
+        !(await this.consumeWalletAuthChallenge(normalizedWalletAddress, nonce))
+      ) {
         throw new Error('Invalid wallet signature')
       }
     }
@@ -317,13 +444,37 @@ export class PrismaDatabaseService {
     result: SafetyScanResult,
     userId?: string,
   ): Promise<void> {
-    await this.prisma.tokenAnalysis.create({
-      data: {
-        tokenAddress: normalizeTokenAddress(tokenAddress),
-        userId,
-        result: result as unknown as Prisma.InputJsonValue,
+    await this.prisma.$transaction(
+      async (transaction) => {
+        if (userId) {
+          const user = await transaction.user.findUnique({
+            where: { id: userId },
+            select: { subscriptionTier: true },
+          })
+          const tier = (user?.subscriptionTier ?? 'free') as SubscriptionTier
+          const usedToday = await transaction.tokenAnalysis.count({
+            where: {
+              userId,
+              createdAt: { gte: startOfUtcDay() },
+            },
+          })
+          const limit = SCAN_LIMITS_BY_TIER[tier]
+
+          if (!isWithinScanLimit(tier, usedToday)) {
+            throw new ScanLimitExceededError(limit, usedToday)
+          }
+        }
+
+        await transaction.tokenAnalysis.create({
+          data: {
+            tokenAddress: normalizeTokenAddress(tokenAddress),
+            userId,
+            result: result as unknown as Prisma.InputJsonValue,
+          },
+        })
       },
-    })
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    )
   }
 
   public async getLatestScan(

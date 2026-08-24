@@ -10,7 +10,10 @@ import { authMiddleware } from "./middleware/auth";
 import { adminAuthMiddleware } from "./middleware/admin";
 import { createScanLimitMiddleware } from "./middleware/scan-limit";
 import { errorHandler } from "./middleware/error-handler";
-import { rateLimitMiddleware } from "./middleware/rate-limit";
+import {
+  rateLimitMiddleware,
+  riskRateLimitMiddleware,
+} from "./middleware/rate-limit";
 import { createDatabaseService } from "./services/database";
 import { MonitorService } from "./services/monitor";
 import { QueueService } from "./services/queue";
@@ -20,6 +23,7 @@ import { TelegramBotService } from "./services/telegram-bot";
 import type { SubscriptionTier } from "./types/auth";
 import {
   getBillingStatus,
+  isDevTierUpgradeAllowed,
   isBillingMockMode,
   resolveCheckoutSession,
 } from "./utils/billing";
@@ -30,6 +34,7 @@ import {
 } from "./utils/stripe-webhook";
 import { logger } from "./utils/logger";
 import { assertProductionConfig, isProductionRuntime } from "./utils/production-guard";
+import { isValidWalletAddress } from "./utils/wallet-signature";
 
 const localDevCorsOrigins = [
   "http://localhost:3000",
@@ -62,6 +67,10 @@ const refreshTokenSchema = z.object({
 const scanSchema = z.object({
   analysisDepth: z.enum(["quick", "deep", "full"]).optional(),
   tokenAddress: z.string().min(32),
+});
+
+const riskQuerySchema = z.object({
+  analysisDepth: z.enum(["quick", "deep", "full"]).default("quick"),
 });
 
 const contractAnalysisSchema = z.object({
@@ -186,19 +195,43 @@ class TokenSafetyBot {
             config.stripe.prices,
           );
 
-          if (sync) {
-            await this.databaseService.syncSubscriptionFromStripe(
-              sync.userId,
-              sync.tier,
-              sync.stripeSubscriptionId,
-              sync.status,
-            );
-            logger.info("Stripe tier synced", {
-              userId: sync.userId,
-              tier: sync.tier,
-              status: sync.status,
-              eventType: event.type,
+          const claimed = await this.databaseService.claimStripeWebhookEvent(
+            event.id,
+            event.type,
+          );
+
+          if (!claimed) {
+            res.json({
+              duplicate: true,
+              received: true,
+              synced: false,
+              type: event.type,
             });
+            return;
+          }
+
+          try {
+            if (sync) {
+              await this.databaseService.syncSubscriptionFromStripe(
+                sync.userId,
+                sync.tier,
+                sync.stripeSubscriptionId,
+                sync.status,
+              );
+              logger.info("Stripe tier synced", {
+                userId: sync.userId,
+                tier: sync.tier,
+                status: sync.status,
+                eventType: event.type,
+              });
+            }
+
+            await this.databaseService.markStripeWebhookEventProcessed(
+              event.id,
+            );
+          } catch (error) {
+            await this.databaseService.releaseStripeWebhookEvent(event.id);
+            throw error;
           }
 
           res.json({ received: true, synced: Boolean(sync), type: event.type });
@@ -254,6 +287,27 @@ class TokenSafetyBot {
       res.status(ready.ready ? 200 : 503).json(ready);
     });
 
+    this.app.post("/api/v1/auth/wallet/challenge", async (req, res, next) => {
+      try {
+        const walletAddress = z
+          .string()
+          .min(32)
+          .parse(req.body?.walletAddress)
+          .trim();
+
+        if (!isValidWalletAddress(walletAddress)) {
+          res.status(400).json({ error: "Invalid wallet address" });
+          return;
+        }
+
+        res.json(
+          await this.databaseService.createWalletAuthChallenge(walletAddress),
+        );
+      } catch (error) {
+        next(error);
+      }
+    });
+
     this.app.post("/api/v1/auth/wallet/connect", async (req, res, next) => {
       try {
         const { message, signature, walletAddress } = walletConnectSchema.parse(
@@ -281,7 +335,12 @@ class TokenSafetyBot {
     });
 
     this.app.get("/api/v1/billing/status", (_req, res) => {
-      res.json(getBillingStatus(config.stripe.secretKey));
+      res.json(
+        getBillingStatus(
+          config.stripe.secretKey,
+          config.development.allowDevTierUpgrade,
+        ),
+      );
     });
 
     this.app.post(
@@ -364,6 +423,28 @@ class TokenSafetyBot {
             .parse(req.params.tokenAddress);
           res.json(
             await this.safetyScannerService.getSafetyScore(tokenAddress),
+          );
+        } catch (error) {
+          next(error);
+        }
+      },
+    );
+
+    this.app.get(
+      "/api/v1/risk/:tokenAddress",
+      riskRateLimitMiddleware(),
+      async (req, res, next) => {
+        try {
+          const tokenAddress = z
+            .string()
+            .min(32)
+            .parse(req.params.tokenAddress);
+          const { analysisDepth } = riskQuerySchema.parse(req.query);
+          res.json(
+            await this.safetyScannerService.getAgentRisk(
+              tokenAddress,
+              analysisDepth,
+            ),
           );
         } catch (error) {
           next(error);
@@ -569,6 +650,18 @@ class TokenSafetyBot {
       "/api/v1/users/upgrade",
       authMiddleware,
       async (req, res, next) => {
+        if (
+          !isDevTierUpgradeAllowed(
+            config.stripe.secretKey,
+            config.development.allowDevTierUpgrade,
+          )
+        ) {
+          res.status(403).json({
+            error: "Direct tier upgrades are disabled outside local mock billing.",
+          });
+          return;
+        }
+
         try {
           const { tier } = upgradeSchema.parse(req.body);
           const subscription = await this.databaseService.upgradeSubscription(
@@ -577,7 +670,10 @@ class TokenSafetyBot {
           );
           res.json({
             subscription,
-            billing: getBillingStatus(config.stripe.secretKey),
+            billing: getBillingStatus(
+              config.stripe.secretKey,
+              config.development.allowDevTierUpgrade,
+            ),
           });
         } catch (error) {
           next(error);

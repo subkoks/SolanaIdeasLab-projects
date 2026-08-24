@@ -48,6 +48,41 @@ export type CheckoutSessionResult =
 export const isBillingMockMode = (stripeSecretKey: string): boolean =>
   stripeSecretKey.trim().length === 0
 
+export const isDevTierUpgradeAllowed = (
+  stripeSecretKey: string,
+  enabled: boolean,
+): boolean => enabled && isBillingMockMode(stripeSecretKey)
+
+const getSafeBaseUrl = (appBaseUrl: string): URL => {
+  try {
+    return new URL(appBaseUrl)
+  } catch {
+    return new URL('http://localhost:3001')
+  }
+}
+
+export const getSafeReturnUrl = (
+  candidate: string | undefined,
+  fallbackPath: string,
+  appBaseUrl = 'http://localhost:3001',
+): string => {
+  const baseUrl = getSafeBaseUrl(appBaseUrl)
+  const fallback = new URL(fallbackPath, baseUrl)
+
+  if (!candidate) {
+    return fallback.toString()
+  }
+
+  try {
+    const requested = new URL(candidate, baseUrl)
+    return requested.origin === baseUrl.origin
+      ? requested.toString()
+      : fallback.toString()
+  } catch {
+    return fallback.toString()
+  }
+}
+
 export const getStripeConfigStatus = (
   secretKey: string,
   webhookSecret: string,
@@ -84,6 +119,7 @@ export const getBillingStatus = (
   secretKey: string,
   webhookSecret: string,
   prices: StripePriceIds,
+  allowDevTierUpgrade = false,
 ) => ({
   mode: isBillingMockMode(secretKey)
     ? ('mock' as const)
@@ -92,7 +128,9 @@ export const getBillingStatus = (
   pricesUsd: TIER_DISPLAY_PRICES_USD,
   stripeConfig: getStripeConfigStatus(secretKey, webhookSecret, prices),
   message: isBillingMockMode(secretKey)
-    ? 'Stripe not configured — use /upgrade <tier> for local dev tier changes.'
+    ? allowDevTierUpgrade
+      ? 'Stripe not configured — local dev tier changes are enabled.'
+      : 'Stripe not configured — direct tier changes are disabled.'
     : getStripeConfigStatus(secretKey, webhookSecret, prices).liveReady
       ? 'Stripe live-ready — checkout + webhook configured.'
       : 'Stripe partial config — complete keys, webhook secret, and price IDs.',
@@ -101,12 +139,15 @@ export const getBillingStatus = (
 export const createSubscriberCheckoutSession = (
   stripeSecretKey: string,
   request: SubscriberCheckoutRequest,
+  appBaseUrl = 'http://localhost:3001',
 ): CheckoutSessionResult => {
   if (isBillingMockMode(stripeSecretKey)) {
     const sessionId = `mock_cs_${request.chatId}_${request.tier}_${Date.now()}`
-    const successUrl =
-      request.successUrl ??
-      `https://checkout.mock.solanaideaslab.local/success?session=${sessionId}`
+    const successUrl = getSafeReturnUrl(
+      request.successUrl,
+      `/?checkout=success&session=${sessionId}`,
+      appBaseUrl,
+    )
 
     return {
       mode: 'mock',
@@ -129,10 +170,12 @@ export const resolveSubscriberCheckoutSession = async (
   stripeSecretKey: string,
   prices: StripePriceIds,
   request: SubscriberCheckoutRequest,
+  appBaseUrl = 'http://localhost:3001',
 ): Promise<CheckoutSessionResult> => {
   const mockOrFallback = createSubscriberCheckoutSession(
     stripeSecretKey,
     request,
+    appBaseUrl,
   )
   if (mockOrFallback.mode === 'mock') {
     return mockOrFallback
@@ -152,11 +195,16 @@ export const resolveSubscriberCheckoutSession = async (
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url:
-        request.successUrl ??
-        'http://localhost:3001/?checkout=success&session={CHECKOUT_SESSION_ID}',
-      cancel_url:
-        request.cancelUrl ?? 'http://localhost:3001/?checkout=cancel',
+      success_url: getSafeReturnUrl(
+        request.successUrl,
+        '/?checkout=success&session={CHECKOUT_SESSION_ID}',
+        appBaseUrl,
+      ),
+      cancel_url: getSafeReturnUrl(
+        request.cancelUrl,
+        '/?checkout=cancel',
+        appBaseUrl,
+      ),
       client_reference_id: request.chatId,
       metadata: { chatId: request.chatId, tier: request.tier },
       subscription_data: {

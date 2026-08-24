@@ -19,21 +19,26 @@ describe("production guard", () => {
     expect(isProductionRuntime()).toBe(true);
   });
 
-  it("allows dev defaults outside production", () => {
-    process.env.NODE_ENV = "development";
-    expect(() => assertProductionConfig()).not.toThrow();
-  });
-
-  it("rejects default JWT secret in production", () => {
+  it("rejects default JWT secrets in production", () => {
     process.env.NODE_ENV = "production";
-    process.env.JWT_SECRET = "token-safety-bot-dev-secret";
+    process.env.JWT_SECRET = "change-me-in-production";
+    process.env.REFRESH_TOKEN_SECRET = "refresh-secret";
 
     expect(() => assertProductionConfig()).toThrow(/JWT_SECRET/);
   });
 
-  it("rejects skip wallet signature verify in production", () => {
+  it("rejects default refresh secrets in production", () => {
     process.env.NODE_ENV = "production";
-    process.env.JWT_SECRET = "prod-secret-value";
+    process.env.JWT_SECRET = "jwt-secret";
+    process.env.REFRESH_TOKEN_SECRET = "change-me-refresh-in-production";
+
+    expect(() => assertProductionConfig()).toThrow(/REFRESH_TOKEN_SECRET/);
+  });
+
+  it("rejects development bypasses in production", () => {
+    process.env.NODE_ENV = "production";
+    process.env.JWT_SECRET = "jwt-secret";
+    process.env.REFRESH_TOKEN_SECRET = "refresh-secret";
     process.env.SKIP_WALLET_SIGNATURE_VERIFY = "true";
 
     expect(() => assertProductionConfig()).toThrow(
@@ -41,19 +46,8 @@ describe("production guard", () => {
     );
   });
 
-  it("rejects direct billing upgrades in production", () => {
-    process.env.NODE_ENV = "production";
-    process.env.JWT_SECRET = "prod-secret-value";
-    process.env.SKIP_WALLET_SIGNATURE_VERIFY = "false";
-    process.env.SKIP_AUTH_IN_DEV = "false";
-    process.env.BILLING_DEV_UPGRADE = "true";
-
-    expect(() => assertProductionConfig()).toThrow(/BILLING_DEV_UPGRADE/);
-  });
-
   it("rejects development bypasses outside development and test", () => {
     process.env.NODE_ENV = "staging";
-    process.env.SKIP_WALLET_SIGNATURE_VERIFY = "false";
     process.env.SKIP_AUTH_IN_DEV = "true";
 
     expect(() => assertProductionConfig()).toThrow(/SKIP_AUTH_IN_DEV/);

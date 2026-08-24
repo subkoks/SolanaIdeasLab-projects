@@ -2,6 +2,8 @@ import { config } from '../config/environment'
 import { DatabaseService } from './database'
 import { SolanaService } from './solana'
 import type { TokenProgramType } from './solana'
+import { toAgentRiskResponse } from '../utils/risk-response'
+import type { AgentRiskResponse } from '../utils/risk-response'
 
 export type AnalysisDepth = 'quick' | 'deep' | 'full'
 export type SafetyLevel = 'safe' | 'watch' | 'risky' | 'dangerous'
@@ -112,6 +114,10 @@ export class SafetyScannerService {
     const cached = await this.databaseService.getCache<SafetyScanResult>(cacheKey)
 
     if (cached) {
+      if (userId) {
+        await this.databaseService.saveScan(normalizedTokenAddress, cached, userId)
+      }
+
       return cached
     }
 
@@ -279,6 +285,13 @@ export class SafetyScannerService {
       safetyLevel: latestScan.safetyLevel,
       redFlags: latestScan.redFlags,
     }
+  }
+
+  public async getAgentRisk(
+    tokenAddress: string,
+    analysisDepth: AnalysisDepth = 'quick',
+  ): Promise<AgentRiskResponse> {
+    return toAgentRiskResponse(await this.scanToken(tokenAddress, analysisDepth))
   }
 
   public async generateReport(tokenAddress: string): Promise<{ recommendations: Array<string>; reportGeneratedAt: string; result: SafetyScanResult; tokenAddress: string }> {
