@@ -33,6 +33,10 @@ logs/
 **/logs/
 *.log
 
+# Runtime data stores (JSON fallback DB persistence)
+data/
+**/data/
+
 # OS / editor
 .DS_Store
 .vscode/
