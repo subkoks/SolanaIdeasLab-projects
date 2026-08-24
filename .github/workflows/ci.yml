@@ -18,26 +18,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Ephemeral PostgreSQL service used only by jobs that need real database
-# coverage. Credentials here are GitHub Actions service-container defaults and
-# never touch production, CI secrets, or repository settings. Each matrix job
-# gets its own container instance, so the default database name is sufficient
-# for cross-job isolation (no shared state between jobs).
-services:
-  postgres:
-    image: postgres:16-alpine
-    env:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
-    ports:
-      - 5432:5432
-    options: >-
-      --health-cmd "pg_isready -U postgres"
-      --health-interval 10s
-      --health-timeout 5s
-      --health-retries 5
-
 jobs:
   verify:
     name: verify (${{ matrix.project }})
@@ -49,6 +29,25 @@ jobs:
     defaults:
       run:
         working-directory: ${{ matrix.project }}
+    # Ephemeral PostgreSQL service used only by jobs that need real database
+    # coverage. Credentials are GitHub Actions service-container defaults and
+    # never touch production, CI secrets, or repository settings. Each matrix
+    # job gets its own container instance, so the default database name gives
+    # full cross-job isolation (no shared state, no name-collision risk).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
