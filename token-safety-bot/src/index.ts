@@ -439,6 +439,10 @@ export class TokenSafetyBot {
             .string()
             .min(32)
             .parse(req.params.tokenAddress);
+          if (!isValidWalletAddress(tokenAddress)) {
+            res.status(400).json({ error: "Invalid Solana token address" });
+            return;
+          }
           const { analysisDepth } = riskQuerySchema.parse(req.query);
           res.json(
             await this.safetyScannerService.getAgentRisk(
