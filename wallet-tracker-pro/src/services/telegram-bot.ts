@@ -221,6 +221,7 @@ export class WalletTrackerTelegramBot {
       config.stripe.secretKey,
       config.stripe.webhookSecret,
       config.stripe.prices,
+      config.development.allowDevTierUpgrade,
     )
     const limits = await this.database.getSubscriberLimits(String(chatId))
 

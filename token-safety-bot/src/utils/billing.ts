@@ -47,14 +47,24 @@ export type CheckoutSessionResult =
 export const isBillingMockMode = (stripeSecretKey: string): boolean =>
   stripeSecretKey.trim().length === 0;
 
-export const getBillingStatus = (stripeSecretKey: string) => ({
+export const isDevTierUpgradeAllowed = (
+  stripeSecretKey: string,
+  enabled: boolean,
+): boolean => enabled && isBillingMockMode(stripeSecretKey);
+
+export const getBillingStatus = (
+  stripeSecretKey: string,
+  allowDevTierUpgrade = false,
+) => ({
   mode: isBillingMockMode(stripeSecretKey)
     ? ("mock" as const)
     : ("stripe" as const),
   tiers: BILLING_TIERS,
   pricesUsd: TIER_DISPLAY_PRICES_USD,
   message: isBillingMockMode(stripeSecretKey)
-    ? "Stripe keys not configured — tier upgrades apply locally for development."
+    ? allowDevTierUpgrade
+      ? "Stripe keys not configured — tier upgrades apply locally for development."
+      : "Stripe keys not configured — direct tier upgrades are disabled. Set BILLING_DEV_UPGRADE=true for local development."
     : "Stripe billing is configured.",
 });
 

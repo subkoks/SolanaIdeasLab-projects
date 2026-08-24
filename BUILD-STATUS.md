@@ -1,14 +1,44 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-07-08 (phase 19)
+Last updated: 2026-08-21 (phase 23)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | CodeQL CORS hardening | Hosted deploy |
-| **token-sniper-bot** | Auth-gated dashboard | Hosted deploy |
-| **wallet-tracker-pro** | Checkout return via URL params | Live Stripe with production keys |
+| **token-safety-bot** | Canonical risk API + provenance + guarded local dev bypass | Production migration + API smoke |
+| **token-sniper-bot** | Replay-safe auth + guarded local dev bypass | Production Redis/DB smoke |
+| **wallet-tracker-pro** | Dev-only billing + same-origin checkout returns | Authenticated subscriber identity |
+
+## Phase 23 — Agent-readable risk surface
+
+**Done**
+- Added `GET /api/v1/risk/:tokenAddress` with validated `quick`, `deep`, or `full` analysis depth.
+- Added stable schema versioning, deterministic `allow`/`review`/`block` recommendations, bounded signals, evidence, and source provenance.
+- Blacklist overrides report local-blacklist provenance without claiming Solana RPC evidence.
+- Kept the endpoint additive and payment-neutral; x402 access control remains a later phase.
+
+## Phase 22 — Local development continuation
+
+**Done**
+- JWT authentication can be bypassed only in explicit `NODE_ENV=development` with `SKIP_AUTH_IN_DEV=true`; local requests use the existing enterprise dev identity.
+- Wallet-signature verification bypass is accepted only in development/test runtimes.
+- Staging and production reject development bypass flags at startup; regression coverage covers both bypass and denial paths.
+- Updated service README instructions so local auth setup can be skipped without weakening deployed environments.
+
+## Phase 21 — Trust/Risk Gateway continuation
+
+**Done**
+- Strategy re-ranked around a Trust/Risk Gateway in the companion planning repo.
+- Safety and sniper wallet login now require server-issued, single-use challenges in verified environments.
+- Wallet Tracker mock upgrades and simulated webhooks are development-only.
+- Wallet Tracker Stripe return URLs are constrained to `APP_BASE_URL`.
+- Added the missing direct `react-is` dependency required by Recharts; production build now passes.
+
+**Next**
+- Replace chat-ID-only wallet billing identity with an authenticated subscriber session.
+- Derive subscription entitlements from live database state and add webhook idempotency keys.
+- Expose a bounded, provenance-bearing risk endpoint for agent and x402 clients.
 
 ## wallet-tracker-pro
 

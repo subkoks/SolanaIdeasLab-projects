@@ -585,7 +585,10 @@ Payment via Stripe - secure and instant.
   }
 
   private async handleBilling(ctx: Context): Promise<void> {
-    const status = getBillingStatus(config.stripe.secretKey);
+    const status = getBillingStatus(
+      config.stripe.secretKey,
+      config.development.allowDevTierUpgrade,
+    );
     const stats = await this.db.getLaunchStats();
 
     await ctx.reply(

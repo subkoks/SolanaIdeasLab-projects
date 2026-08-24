@@ -59,4 +59,28 @@ describeIfDatabase('PrismaDatabaseService', () => {
       await database.disconnect()
     }
   })
+
+  it('claims Stripe webhook events idempotently and releases on retry', async () => {
+    const database = new PrismaDatabaseService()
+    await database.connect()
+
+    const eventId = `evt_prisma_${Date.now()}`
+    try {
+      expect(await database.claimStripeWebhookEvent(eventId, 'x')).toBe(true)
+      // Duplicate claim (already processing) must be rejected.
+      expect(await database.claimStripeWebhookEvent(eventId, 'x')).toBe(false)
+      // Re-claiming a processed event must also be rejected.
+      await database.markStripeWebhookEventProcessed(eventId)
+      expect(await database.claimStripeWebhookEvent(eventId, 'x')).toBe(false)
+
+      // Release a fresh in-flight event so Stripe can retry it.
+      const retryId = `evt_prisma_retry_${Date.now()}`
+      expect(await database.claimStripeWebhookEvent(retryId, 'x')).toBe(true)
+      await database.releaseStripeWebhookEvent(retryId)
+      expect(await database.claimStripeWebhookEvent(retryId, 'x')).toBe(true)
+      await database.markStripeWebhookEventProcessed(retryId)
+    } finally {
+      await database.disconnect()
+    }
+  })
 })

@@ -98,4 +98,28 @@ describe('SafetyScannerService', () => {
       await rm(tempDir, { force: true, recursive: true })
     }
   })
+
+  it('records authenticated cache hits for quota accounting', async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'token-safety-scan-'))
+    const storePath = path.join(tempDir, 'store.json')
+    const databaseService = new JsonDatabaseService(storePath)
+    const solanaStub = createSolanaStub()
+    const scanner = new SafetyScannerService(
+      databaseService,
+      solanaStub as unknown as SolanaService,
+    )
+
+    try {
+      await databaseService.connect()
+
+      await scanner.scanToken(TEST_TOKEN, 'quick', 'user-1')
+      await scanner.scanToken(TEST_TOKEN, 'quick', 'user-2')
+
+      expect(await databaseService.getUserScans('user-2')).toHaveLength(1)
+      expect(solanaStub.getTokenInfo).toHaveBeenCalledTimes(1)
+    } finally {
+      await databaseService.disconnect()
+      await rm(tempDir, { force: true, recursive: true })
+    }
+  })
 })

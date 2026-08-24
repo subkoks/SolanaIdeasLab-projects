@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { ZodError } from 'zod'
 import { logger } from '../utils/logger'
+import { ScanLimitExceededError } from '../utils/subscription-limits'
 
 export class AppError extends Error {
   public readonly statusCode: number
@@ -28,6 +29,17 @@ export const errorHandler = (error: unknown, req: Request, res: Response, _next:
     res.status(error.statusCode).json({
       error: error.message,
       details: error.details,
+      path: req.originalUrl,
+      timestamp: new Date().toISOString(),
+    })
+    return
+  }
+
+  if (error instanceof ScanLimitExceededError) {
+    res.status(429).json({
+      error: error.message,
+      limit: error.limit,
+      usedToday: error.usedToday,
       path: req.originalUrl,
       timestamp: new Date().toISOString(),
     })

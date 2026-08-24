@@ -76,7 +76,9 @@ Dashboard **Stripe checklist** shows what is still missing for live mode.
 
 ## Wallet checkout — tier not updating
 
-**Mock:** use Simulate webhook or mock-upgrade after checkout redirect.
+**Mock:** set the explicit local flags in `.env`, then use Simulate webhook or
+mock-upgrade after checkout redirect. These routes intentionally return 403
+outside `NODE_ENV=development`.
 
 **Stripe:** ensure:
 

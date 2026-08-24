@@ -8,6 +8,15 @@ const parseNumber = (value: string | undefined, fallback: number): number => {
 }
 
 export const config = {
+  appBaseUrl: process.env.APP_BASE_URL ?? 'http://localhost:3001',
+  development: {
+    allowDevTierUpgrade:
+      process.env.NODE_ENV === 'development' &&
+      process.env.BILLING_DEV_UPGRADE === 'true',
+    allowDevWebhook:
+      process.env.NODE_ENV === 'development' &&
+      process.env.BILLING_DEV_WEBHOOK === 'true',
+  },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
     botUsername: process.env.TELEGRAM_BOT_USERNAME ?? 'wallet_tracker_pro',

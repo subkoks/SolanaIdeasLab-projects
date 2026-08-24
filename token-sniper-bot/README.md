@@ -103,13 +103,36 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/token_sniper
 REDIS_URL=redis://localhost:6379
 
 # Authentication
+NODE_ENV=development
 JWT_SECRET=your_jwt_secret_here
+SKIP_AUTH_IN_DEV=true
+SKIP_WALLET_SIGNATURE_VERIFY=true
 STRIPE_SECRET_KEY=sk_test_...
 
 # External APIs
 TWITTER_BEARER_TOKEN=your_twitter_token
 DEXSCREENER_API_KEY=your_dexscreener_key
 ```
+
+### Wallet login
+
+Production wallet login first calls `POST /api/v1/auth/wallet/challenge`, then
+requires an Ed25519 signature over the returned, single-use message:
+
+```text
+SolanaIdeasLab Token Sniper Login
+Wallet: <wallet address>
+Nonce: <server-issued nonce>
+Issued At: <unix milliseconds>
+Expires At: <unix milliseconds>
+```
+
+The message must be unexpired, no more than 10 minutes long, and its nonce is
+consumed after one successful login. Local development may set
+`SKIP_AUTH_IN_DEV=true` and `SKIP_WALLET_SIGNATURE_VERIFY=true` in the copied
+`.env` file. These bypasses are accepted only with `NODE_ENV=development` (and
+the wallet-signature bypass is also accepted with `NODE_ENV=test` for the test
+suite); staging and production remain authenticated.
 
 ---
 

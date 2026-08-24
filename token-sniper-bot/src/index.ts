@@ -18,11 +18,19 @@ import { QueueService } from "./services/queue";
 import { RiskScoringService } from "./services/risk-scoring";
 import { TelegramBotService } from "./services/telegram-bot";
 import { logger } from "./utils/logger";
-import { getBillingStatus, BILLING_TIERS, isBillingMockMode, resolveCheckoutSession } from "./utils/billing";
+import { assertProductionConfig } from "./utils/production-guard";
+import {
+  BILLING_TIERS,
+  getBillingStatus,
+  isBillingMockMode,
+  isDevTierUpgradeAllowed,
+  resolveCheckoutSession,
+} from "./utils/billing";
 import {
   buildTierSyncFromStripeEvent,
   constructStripeEvent,
 } from "./utils/stripe-webhook";
+import { isValidWalletAddress } from "./utils/wallet-signature";
 
 class TokenSniperBot {
   private app: express.Application;
@@ -277,10 +285,40 @@ class TokenSniperBot {
   private authRoutes(): express.Router {
     const router = express.Router();
 
+    router.post("/wallet/challenge", async (req, res) => {
+      try {
+        const walletAddress =
+          typeof req.body?.walletAddress === "string"
+            ? req.body.walletAddress.trim()
+            : "";
+
+        if (!isValidWalletAddress(walletAddress)) {
+          res.status(400).json({ error: "Invalid wallet address" });
+          return;
+        }
+
+        res.json(await this.db.createWalletAuthChallenge(walletAddress));
+      } catch (error) {
+        logger.error("Wallet challenge creation failed", { error });
+        res.status(503).json({ error: "Wallet challenge unavailable" });
+      }
+    });
+
     router.post("/wallet/connect", async (req, res) => {
       try {
-        const { walletAddress, signature } = req.body;
-        const auth = await this.db.authenticateWallet(walletAddress, signature);
+        const walletAddress =
+          typeof req.body?.walletAddress === "string"
+            ? req.body.walletAddress
+            : "";
+        const signature =
+          typeof req.body?.signature === "string" ? req.body.signature : "";
+        const message =
+          typeof req.body?.message === "string" ? req.body.message : "";
+        const auth = await this.db.authenticateWallet(
+          walletAddress,
+          signature,
+          message,
+        );
         res.json(auth);
       } catch (error) {
         res.status(401).json({ error: "Authentication failed" });
@@ -303,7 +341,7 @@ class TokenSniperBot {
   private tokenRoutes(): express.Router {
     const router = express.Router();
 
-    router.post("/analyze", async (req, res) => {
+    router.post("/analyze", authMiddleware, async (req, res) => {
       try {
         const { tokenAddress, analysisDepth = "quick" } = req.body;
         const analysis = await this.riskScorer.analyzeToken(
@@ -377,7 +415,12 @@ class TokenSniperBot {
     const router = express.Router();
 
     router.get("/status", (_req, res) => {
-      res.json(getBillingStatus(config.stripe.secretKey));
+      res.json(
+        getBillingStatus(
+          config.stripe.secretKey,
+          config.development.allowDevTierUpgrade,
+        ),
+      );
     });
 
     router.post("/checkout", authMiddleware, async (req: AuthenticatedRequest, res) => {
@@ -510,13 +553,33 @@ class TokenSniperBot {
     });
 
     router.post("/upgrade", async (req: AuthenticatedRequest, res) => {
+      if (
+        !isDevTierUpgradeAllowed(
+          config.stripe.secretKey,
+          config.development.allowDevTierUpgrade,
+        )
+      ) {
+        res.status(403).json({
+          error: "Direct tier upgrades are disabled outside local mock billing.",
+        });
+        return;
+      }
+
       try {
         const userId = req.user!.id;
-        const { tier } = req.body;
+        const tier = String(req.body?.tier ?? "");
+        if (!BILLING_TIERS.includes(tier as (typeof BILLING_TIERS)[number])) {
+          res.status(400).json({ error: "Invalid tier" });
+          return;
+        }
+
         const subscription = await this.db.upgradeSubscription(userId, tier);
         res.json({
           subscription,
-          billing: getBillingStatus(config.stripe.secretKey),
+          billing: getBillingStatus(
+            config.stripe.secretKey,
+            config.development.allowDevTierUpgrade,
+          ),
         });
       } catch (error) {
         res.status(400).json({ error: "Failed to upgrade subscription" });
@@ -623,6 +686,8 @@ class TokenSniperBot {
 
   public async start(): Promise<void> {
     try {
+      assertProductionConfig();
+
       // Initialize database
       await this.db.connect();
       logger.info("Database connected");
