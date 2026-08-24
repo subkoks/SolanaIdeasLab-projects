@@ -30,6 +30,16 @@ model WalletAuthChallenge {
   @@index([walletAddress, expiresAt])
 }
 
+model StripeWebhookEvent {
+  id          String    @id
+  eventType   String
+  status      String    @default("processing")
+  claimedAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([status, claimedAt])
+}
+
 model TokenAlert {
   id           String   @id @default(cuid())
   userId       String

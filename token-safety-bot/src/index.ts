@@ -195,19 +195,43 @@ class TokenSafetyBot {
             config.stripe.prices,
           );
 
-          if (sync) {
-            await this.databaseService.syncSubscriptionFromStripe(
-              sync.userId,
-              sync.tier,
-              sync.stripeSubscriptionId,
-              sync.status,
-            );
-            logger.info("Stripe tier synced", {
-              userId: sync.userId,
-              tier: sync.tier,
-              status: sync.status,
-              eventType: event.type,
+          const claimed = await this.databaseService.claimStripeWebhookEvent(
+            event.id,
+            event.type,
+          );
+
+          if (!claimed) {
+            res.json({
+              duplicate: true,
+              received: true,
+              synced: false,
+              type: event.type,
             });
+            return;
+          }
+
+          try {
+            if (sync) {
+              await this.databaseService.syncSubscriptionFromStripe(
+                sync.userId,
+                sync.tier,
+                sync.stripeSubscriptionId,
+                sync.status,
+              );
+              logger.info("Stripe tier synced", {
+                userId: sync.userId,
+                tier: sync.tier,
+                status: sync.status,
+                eventType: event.type,
+              });
+            }
+
+            await this.databaseService.markStripeWebhookEventProcessed(
+              event.id,
+            );
+          } catch (error) {
+            await this.databaseService.releaseStripeWebhookEvent(event.id);
+            throw error;
           }
 
           res.json({ received: true, synced: Boolean(sync), type: event.type });

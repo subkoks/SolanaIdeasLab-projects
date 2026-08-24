@@ -58,6 +58,8 @@ interface CacheEntry {
 const normalizeTokenAddress = (tokenAddress: string): string =>
   tokenAddress.trim()
 
+const STRIPE_WEBHOOK_CLAIM_TIMEOUT_MS = 10 * 60 * 1000
+
 const getJwtExpiration = (value: string): jwt.SignOptions['expiresIn'] =>
   value as jwt.SignOptions['expiresIn']
 
@@ -131,6 +133,69 @@ export class PrismaDatabaseService {
       logger.error('Prisma health check failed', { error })
       return false
     }
+  }
+
+  public async claimStripeWebhookEvent(
+    eventId: string,
+    eventType: string,
+  ): Promise<boolean> {
+    const normalizedEventId = eventId.trim()
+    if (!normalizedEventId || normalizedEventId.length > 255) {
+      throw new Error('Invalid Stripe event ID')
+    }
+
+    let existing = await this.prisma.stripeWebhookEvent.findUnique({
+      where: { id: normalizedEventId },
+    })
+
+    if (!existing) {
+      try {
+        await this.prisma.stripeWebhookEvent.create({
+          data: { id: normalizedEventId, eventType, status: 'processing' },
+        })
+        return true
+      } catch (error) {
+        if (
+          !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+          error.code !== 'P2002'
+        ) {
+          throw error
+        }
+
+        existing = await this.prisma.stripeWebhookEvent.findUnique({
+          where: { id: normalizedEventId },
+        })
+      }
+    }
+
+    if (!existing || existing.status === 'processed') {
+      return false
+    }
+
+    const staleBefore = new Date(Date.now() - STRIPE_WEBHOOK_CLAIM_TIMEOUT_MS)
+    const reclaimed = await this.prisma.stripeWebhookEvent.updateMany({
+      where: {
+        id: normalizedEventId,
+        status: 'processing',
+        claimedAt: { lt: staleBefore },
+      },
+      data: { claimedAt: new Date(), eventType },
+    })
+
+    return reclaimed.count === 1
+  }
+
+  public async markStripeWebhookEventProcessed(eventId: string): Promise<void> {
+    await this.prisma.stripeWebhookEvent.update({
+      where: { id: eventId.trim() },
+      data: { processedAt: new Date(), status: 'processed' },
+    })
+  }
+
+  public async releaseStripeWebhookEvent(eventId: string): Promise<void> {
+    await this.prisma.stripeWebhookEvent.deleteMany({
+      where: { id: eventId.trim(), status: 'processing' },
+    })
   }
 
   public async createWalletAuthChallenge(
