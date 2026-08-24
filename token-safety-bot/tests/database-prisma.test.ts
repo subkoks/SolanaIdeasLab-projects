@@ -11,22 +11,19 @@ describeIfDatabase('PrismaDatabaseService', () => {
     await database.connect()
 
     try {
-      const auth = await database.authenticateWallet(
-        'Wallet1111111111111111111111111111111',
-        'sig',
-      )
+      // Valid base58 (32-byte) addresses so isValidWalletAddress passes.
+      const wallet = 'kDVTwmUSuE1TtywrFnmjoJLaYHW77zT7CEuopwpTN7M'
+      const mint = '3qheuHCnn9S2nhjgNWuFkwDz9Tojz6GsRquFccLPch2r'
 
-      await database.blacklistToken(
-        'Mint1111111111111111111111111111111111',
-        'integration test',
-        { source: 'test' },
-      )
+      const auth = await database.authenticateWallet(wallet, 'sig')
+
+      await database.blacklistToken(mint, 'integration test', { source: 'test' })
 
       await database.saveScan(
-        'Mint1111111111111111111111111111111111',
+        mint,
         {
           analysisDepth: 'quick',
-          tokenAddress: 'Mint1111111111111111111111111111111111',
+          tokenAddress: mint,
           scannedAt: new Date().toISOString(),
           scanTime: 10,
           overallScore: 55,
@@ -46,12 +43,8 @@ describeIfDatabase('PrismaDatabaseService', () => {
         auth.user.id,
       )
 
-      const latest = await database.getLatestScan(
-        'Mint1111111111111111111111111111111111',
-      )
-      const blacklisted = await database.getBlacklistedToken(
-        'Mint1111111111111111111111111111111111',
-      )
+      const latest = await database.getLatestScan(mint)
+      const blacklisted = await database.getBlacklistedToken(mint)
 
       expect(latest?.overallScore).toBe(55)
       expect(blacklisted?.reason).toBe('integration test')
