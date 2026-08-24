@@ -108,7 +108,7 @@ const broadcastSchema = z.object({
   targetTier: z.string().min(1).default("all"),
 });
 
-class TokenSafetyBot {
+export class TokenSafetyBot {
   private readonly app = express();
   private readonly databaseService = createDatabaseService();
   private readonly monitorService: MonitorService;
@@ -935,6 +935,10 @@ class TokenSafetyBot {
     });
   }
 
+  public getApp(): express.Express {
+    return this.app;
+  }
+
   public async stop(): Promise<void> {
     await this.monitorService.stop();
     await this.queueService.disconnect();
@@ -963,21 +967,25 @@ class TokenSafetyBot {
 
 const app = new TokenSafetyBot();
 
-const shutdown = async (signal: string): Promise<void> => {
-  logger.info("Shutdown signal received", { signal });
-  await app.stop();
-  process.exit(0);
-};
+// Tests import the app without binding a port or starting side-effectful
+// services. The server only auto-starts outside the test environment.
+if (process.env.NODE_ENV !== "test") {
+  const shutdown = async (signal: string): Promise<void> => {
+    logger.info("Shutdown signal received", { signal });
+    await app.stop();
+    process.exit(0);
+  };
 
-process.on("SIGINT", () => {
-  void shutdown("SIGINT");
-});
+  process.on("SIGINT", () => {
+    void shutdown("SIGINT");
+  });
 
-process.on("SIGTERM", () => {
-  void shutdown("SIGTERM");
-});
+  process.on("SIGTERM", () => {
+    void shutdown("SIGTERM");
+  });
 
-void app.start().catch((error) => {
-  logger.error("Failed to start Token Safety Bot", { error });
-  process.exit(1);
-});
+  void app.start().catch((error) => {
+    logger.error("Failed to start Token Safety Bot", { error });
+    process.exit(1);
+  });
+}
