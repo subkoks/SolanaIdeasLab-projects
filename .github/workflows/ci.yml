@@ -88,6 +88,9 @@ jobs:
         if: matrix.project != 'token-sniper-bot'
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+          # Lets token-safety-bot's seeded-wallet DB test call authenticateWallet
+          # without a real signature (test-runtime only; no production effect).
+          SKIP_WALLET_SIGNATURE_VERIFY: 'true'
         run: |
           # Apply this package's prisma migrations to the service container.
           npx prisma migrate deploy
