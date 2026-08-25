@@ -56,3 +56,42 @@ describe('address-taking GET routes reject malformed input', () => {
     })
   }
 })
+
+describe('address-taking POST bodies reject malformed input', () => {
+  let tmpDir: string
+  let storePath: string
+
+  beforeAll(async () => {
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const { mkdtemp } = await import('node:fs/promises')
+    tmpDir = await mkdtemp(path.join(os.tmpdir(), 'tsb-addr-post-'))
+    storePath = path.join(tmpDir, 'store.json')
+    process.env.DATA_STORE_PATH = storePath
+  })
+
+  afterAll(async () => {
+    const { rm } = await import('node:fs/promises')
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  it('rejects a malformed programId on POST /safety/contract/analyze with 400', async () => {
+    const bot = new TokenSafetyBot()
+    const app = bot.getApp()
+    const res = await request(app)
+      .post('/api/v1/safety/contract/analyze')
+      .send({ programId: 'x'.repeat(40), analysisType: 'security' })
+    expect(res.status).toBe(400)
+    expect(res.body).toMatchObject({ error: 'Invalid Solana program ID' })
+  })
+
+  it('rejects a malformed tokenAddress on POST /safety/rug-pull/detect with 400', async () => {
+    const bot = new TokenSafetyBot()
+    const app = bot.getApp()
+    const res = await request(app)
+      .post('/api/v1/safety/rug-pull/detect')
+      .send({ tokenAddress: 'x'.repeat(40), timeWindow: 3600 })
+    expect(res.status).toBe(400)
+    expect(res.body).toMatchObject({ error: 'Invalid Solana token address' })
+  })
+})

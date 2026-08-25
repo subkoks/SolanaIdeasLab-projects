@@ -494,6 +494,10 @@ export class TokenSafetyBot {
         const { analysisType, programId } = contractAnalysisSchema.parse(
           req.body,
         );
+        if (!isValidWalletAddress(programId)) {
+          res.status(400).json({ error: "Invalid Solana program ID" });
+          return;
+        }
         res.json(
           await this.safetyScannerService.analyzeContract(
             programId,
@@ -508,6 +512,10 @@ export class TokenSafetyBot {
     this.app.post("/api/v1/safety/rug-pull/detect", async (req, res, next) => {
       try {
         const { timeWindow, tokenAddress } = rugPullSchema.parse(req.body);
+        if (!isValidWalletAddress(tokenAddress)) {
+          res.status(400).json({ error: "Invalid Solana token address" });
+          return;
+        }
         res.json(
           await this.safetyScannerService.detectRugPullRisk(
             tokenAddress,
@@ -528,6 +536,10 @@ export class TokenSafetyBot {
             .string()
             .min(32)
             .parse(req.params.tokenAddress);
+          if (!isValidWalletAddress(tokenAddress)) {
+            res.status(400).json({ error: "Invalid Solana token address" });
+            return;
+          }
           res.json(
             await this.monitorService.startMonitoring(
               tokenAddress,
@@ -549,6 +561,10 @@ export class TokenSafetyBot {
             .string()
             .min(32)
             .parse(req.params.tokenAddress);
+          if (!isValidWalletAddress(tokenAddress)) {
+            res.status(400).json({ error: "Invalid Solana token address" });
+            return;
+          }
           res.json(await this.monitorService.getMonitoringStatus(tokenAddress));
         } catch (error) {
           next(error);
@@ -565,6 +581,10 @@ export class TokenSafetyBot {
             .string()
             .min(32)
             .parse(req.params.tokenAddress);
+          if (!isValidWalletAddress(tokenAddress)) {
+            res.status(400).json({ error: "Invalid Solana token address" });
+            return;
+          }
           await this.monitorService.stopMonitoring(tokenAddress, req.user!.id);
           res.json({ success: true });
         } catch (error) {
@@ -645,6 +665,10 @@ export class TokenSafetyBot {
       async (req, res, next) => {
         try {
           const body = alertSchema.parse(req.body);
+          if (!isValidWalletAddress(body.tokenAddress)) {
+            res.status(400).json({ error: "Invalid Solana token address" });
+            return;
+          }
           res.json(await this.databaseService.createAlert(req.user!.id, body));
         } catch (error) {
           next(error);
@@ -758,6 +782,10 @@ export class TokenSafetyBot {
           const { evidence, reason, tokenAddress } = blacklistSchema.parse(
             req.body,
           );
+          if (!isValidWalletAddress(tokenAddress)) {
+            res.status(400).json({ error: "Invalid Solana token address" });
+            return;
+          }
           res.json(
             await this.databaseService.blacklistToken(
               tokenAddress,
