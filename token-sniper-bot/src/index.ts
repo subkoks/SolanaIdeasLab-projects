@@ -32,7 +32,7 @@ import {
 } from "./utils/stripe-webhook";
 import { isValidWalletAddress } from "./utils/wallet-signature";
 
-class TokenSniperBot {
+export class TokenSniperBot {
   private app: express.Application;
   private bot: Telegraf | null = null;
   private db: DatabaseService;
@@ -344,6 +344,10 @@ class TokenSniperBot {
     router.post("/analyze", authMiddleware, async (req, res) => {
       try {
         const { tokenAddress, analysisDepth = "quick" } = req.body;
+        if (!isValidWalletAddress(tokenAddress)) {
+          res.status(400).json({ error: "Invalid Solana token address" });
+          return;
+        }
         const analysis = await this.riskScorer.analyzeToken(
           tokenAddress,
           analysisDepth,
@@ -357,6 +361,10 @@ class TokenSniperBot {
     router.get("/:tokenAddress/score", async (req, res) => {
       try {
         const { tokenAddress } = req.params;
+        if (!isValidWalletAddress(tokenAddress)) {
+          res.status(400).json({ error: "Invalid Solana token address" });
+          return;
+        }
         const score = await this.riskScorer.getRiskScore(tokenAddress);
         res.json(score);
       } catch (error) {
@@ -367,6 +375,10 @@ class TokenSniperBot {
     router.get("/:tokenAddress/bundles", async (req, res) => {
       try {
         const { tokenAddress } = req.params;
+        if (!isValidWalletAddress(tokenAddress)) {
+          res.status(400).json({ error: "Invalid Solana token address" });
+          return;
+        }
         const bundles = await this.riskScorer.detectBundles(tokenAddress);
         res.json(bundles);
       } catch (error) {
