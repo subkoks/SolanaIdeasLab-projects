@@ -755,24 +755,27 @@ export class TokenSniperBot {
   }
 }
 
-// Start the bot
-const bot = new TokenSniperBot();
+// Start the bot. Guard the bootstrap so importing this module (e.g. in tests)
+// does not auto-start the server or register process handlers. The bot only
+// boots when the file is run directly as the entry point.
+if (require.main === module) {
+  const bot = new TokenSniperBot();
 
-// Handle graceful shutdown
-process.on("SIGTERM", async () => {
-  logger.info("SIGTERM received, shutting down gracefully");
-  await bot.stop();
-  process.exit(0);
-});
+  // Handle graceful shutdown
+  process.on("SIGTERM", async () => {
+    logger.info("SIGTERM received, shutting down gracefully");
+    await bot.stop();
+    process.exit(0);
+  });
 
-process.on("SIGINT", async () => {
-  logger.info("SIGINT received, shutting down gracefully");
-  await bot.stop();
-  process.exit(0);
-});
+  process.on("SIGINT", async () => {
+    logger.info("SIGINT received, shutting down gracefully");
+    await bot.stop();
+    process.exit(0);
+  });
 
-// Start the bot
-bot.start().catch((error) => {
-  logger.error("Failed to start bot:", error);
-  process.exit(1);
-});
+  bot.start().catch((error) => {
+    logger.error("Failed to start bot:", error);
+    process.exit(1);
+  });
+}
