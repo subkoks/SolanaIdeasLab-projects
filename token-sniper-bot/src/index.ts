@@ -492,6 +492,11 @@ export class TokenSniperBot {
           return;
         }
 
+        if (!isValidWalletAddress(tokenAddress)) {
+          res.status(400).json({ error: "Invalid Solana token address" });
+          return;
+        }
+
         res.json({
           notifications: await this.db.getAlertNotificationsForToken(
             tokenAddress,
