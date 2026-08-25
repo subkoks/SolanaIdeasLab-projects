@@ -407,6 +407,10 @@ export class TokenSafetyBot {
     this.app.get("/api/v1/scan/:tokenAddress", async (req, res, next) => {
       try {
         const tokenAddress = z.string().min(32).parse(req.params.tokenAddress);
+        if (!isValidWalletAddress(tokenAddress)) {
+          res.status(400).json({ error: "Invalid Solana token address" });
+          return;
+        }
         res.json(await this.safetyScannerService.getLatestScan(tokenAddress));
       } catch (error) {
         next(error);
@@ -421,6 +425,10 @@ export class TokenSafetyBot {
             .string()
             .min(32)
             .parse(req.params.tokenAddress);
+          if (!isValidWalletAddress(tokenAddress)) {
+            res.status(400).json({ error: "Invalid Solana token address" });
+            return;
+          }
           res.json(
             await this.safetyScannerService.getSafetyScore(tokenAddress),
           );
@@ -464,6 +472,10 @@ export class TokenSafetyBot {
             .string()
             .min(32)
             .parse(req.params.tokenAddress);
+          if (!isValidWalletAddress(tokenAddress)) {
+            res.status(400).json({ error: "Invalid Solana token address" });
+            return;
+          }
           res.json(
             await this.safetyScannerService.generateReport(tokenAddress),
           );
