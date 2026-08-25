@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import { Request, Response } from 'express'
 import { config } from '../config/environment'
 import { logger } from '../utils/logger'
@@ -24,9 +24,10 @@ export const createRateLimiter = (options: {
     },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: options.keyGenerator || ((req: Request) => {
-      return req.ip || req.connection.remoteAddress || 'unknown'
-    }),
+    // Omit keyGenerator when none is supplied so express-rate-limit uses its
+    // built-in IPv6-safe default. A custom keyGenerator that returns a raw IP
+    // (e.g. ipKeyGenerator(req.ip ?? 'unknown')) triggers ERR_ERL_KEY_GEN_IPV6 validation in v7.
+    keyGenerator: options.keyGenerator,
     handler: (req: Request, res: Response) => {
       logger.warn('Rate limit exceeded', {
         ip: req.ip,
@@ -66,7 +67,7 @@ export const telegramRateLimiter = createRateLimiter({
   maxRequests: config.rateLimit.telegramMaxRequests,
   message: 'Too many bot commands, please wait before trying again',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `telegram:${userId}`
   }
 })
@@ -77,7 +78,7 @@ export const authRateLimiter = createRateLimiter({
   maxRequests: 5,
   message: 'Too many authentication attempts, please try again later',
   keyGenerator: (req: Request) => {
-    return `auth:${req.ip}`
+    return `auth:${ipKeyGenerator(req.ip ?? 'unknown')}`
   }
 })
 
@@ -87,7 +88,7 @@ export const analysisRateLimiter = createRateLimiter({
   maxRequests: 10,
   message: 'Too many analysis requests, please try again later',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `analysis:${userId}`
   }
 })
@@ -98,7 +99,7 @@ export const alertRateLimiter = createRateLimiter({
   maxRequests: 20,
   message: 'Too many alert creation requests, please try again later',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `alert:${userId}`
   }
 })
@@ -109,7 +110,7 @@ export const subscriptionRateLimiter = createRateLimiter({
   maxRequests: 3,
   message: 'Too many subscription changes, please try again later',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `subscription:${userId}`
   }
 })
@@ -120,7 +121,7 @@ export const adminRateLimiter = createRateLimiter({
   maxRequests: 100,
   message: 'Admin rate limit exceeded',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `admin:${userId}`
   }
 })
@@ -180,7 +181,7 @@ export const createDynamicRateLimiter = () => {
       upgradeHint: 'Upgrade your subscription for higher limits'
     },
     keyGenerator: (req: Request) => {
-      const userId = (req as any).user?.id || req.ip
+      const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
       return `dynamic:${userId}`
     },
     handler: (req: Request, res: Response) => {
@@ -293,7 +294,7 @@ export const tokenAddressRateLimiter = createRateLimiter({
   message: 'Too many requests for this token, please try again later',
   keyGenerator: (req: Request) => {
     const tokenAddress = req.params.tokenAddress || req.body.tokenAddress
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `token:${tokenAddress}:${userId}`
   }
 })
@@ -304,7 +305,7 @@ export const broadcastRateLimiter = createRateLimiter({
   maxRequests: 10,
   message: 'Too many broadcast requests, please try again later',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `broadcast:${userId}`
   }
 })
@@ -315,7 +316,7 @@ export const uploadRateLimiter = createRateLimiter({
   maxRequests: 50,
   message: 'Too many upload requests, please try again later',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `upload:${userId}`
   }
 })
@@ -326,7 +327,7 @@ export const exportRateLimiter = createRateLimiter({
   maxRequests: 10,
   message: 'Too many export requests, please try again later',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `export:${userId}`
   }
 })
@@ -337,7 +338,7 @@ export const apiKeyRateLimiter = createRateLimiter({
   maxRequests: 5,
   message: 'Too many API key generation requests, please try again later',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `apikey:${userId}`
   }
 })
@@ -348,7 +349,7 @@ export const passwordResetRateLimiter = createRateLimiter({
   maxRequests: 3,
   message: 'Too many password reset requests, please try again later',
   keyGenerator: (req: Request) => {
-    const email = req.body.email || req.ip
+    const email = req.body.email || ipKeyGenerator(req.ip ?? 'unknown')
     return `passwordreset:${email}`
   }
 })
@@ -359,7 +360,7 @@ export const emailVerificationRateLimiter = createRateLimiter({
   maxRequests: 5,
   message: 'Too many email verification requests, please try again later',
   keyGenerator: (req: Request) => {
-    const email = req.body.email || req.ip
+    const email = req.body.email || ipKeyGenerator(req.ip ?? 'unknown')
     return `emailverify:${email}`
   }
 })
@@ -370,7 +371,7 @@ export const socialShareRateLimiter = createRateLimiter({
   maxRequests: 20,
   message: 'Too many social sharing requests, please try again later',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `socialshare:${userId}`
   }
 })
@@ -381,7 +382,7 @@ export const feedbackRateLimiter = createRateLimiter({
   maxRequests: 10,
   message: 'Too many feedback submissions, please try again later',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `feedback:${userId}`
   }
 })
@@ -392,7 +393,7 @@ export const supportTicketRateLimiter = createRateLimiter({
   maxRequests: 5,
   message: 'Too many support ticket submissions, please try again later',
   keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id || req.ip
+    const userId = (req as any).user?.id || ipKeyGenerator(req.ip ?? 'unknown')
     return `support:${userId}`
   }
 })
