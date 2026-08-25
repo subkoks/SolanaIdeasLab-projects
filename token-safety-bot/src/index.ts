@@ -392,6 +392,10 @@ export class TokenSafetyBot {
         const { analysisDepth = "quick", tokenAddress } = scanSchema.parse(
           req.body,
         );
+        if (!isValidWalletAddress(tokenAddress)) {
+          res.status(400).json({ error: "Invalid Solana token address" });
+          return;
+        }
         res.json(
           await this.safetyScannerService.scanToken(
             tokenAddress,
