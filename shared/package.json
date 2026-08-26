@@ -1,0 +1,26 @@
+{
+  "name": "@solanaideaslab/shared",
+  "version": "0.1.0",
+  "description": "Canonical shared auth + API middleware for SolanaIdeasLab bots (real Ed25519 + HS256 JWT; no external crypto deps).",
+  "private": true,
+  "main": "dist/auth/wallet-auth.js",
+  "types": "dist/auth/wallet-auth.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "test": "jest --rootDir .",
+    "lint": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.12.7",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.4.5"
+  }
+}
