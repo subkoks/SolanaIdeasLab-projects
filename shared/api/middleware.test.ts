@@ -91,6 +91,23 @@ describe('ApiMiddleware.subscriptionMiddleware', () => {
     ApiMiddleware.subscriptionMiddleware('pro')(req as AuthenticatedRequest, res, next)
     expect(res.statusCode).toBe(401)
   })
+
+  it('allows when required tier exactly matches user tier (free/free)', () => {
+    const user = makeUser('free')
+    const { req, res, next } = mockReqRes({})
+    ;(req as AuthenticatedRequest).user = user
+    ApiMiddleware.subscriptionMiddleware('free')(req as AuthenticatedRequest, res, next)
+    expect(next).toHaveBeenCalled()
+    expect(res.statusCode).toBe(0)
+  })
+
+  it('rejects unknown tier gracefully', () => {
+    const user = makeUser('free')
+    const { req, res, next } = mockReqRes({})
+    ;(req as AuthenticatedRequest).user = user
+    ApiMiddleware.subscriptionMiddleware('platinum')(req as AuthenticatedRequest, res, next)
+    expect(res.statusCode).toBe(403)
+  })
 })
 
 describe('ApiMiddleware.rateLimitMiddleware', () => {
