@@ -10,6 +10,7 @@ function appFor(auth: WalletAuth): express.Express {
   const app = express()
   app.get(
     '/protected',
+    ApiMiddleware.rateLimitMiddleware(100, 60_000),
     ApiMiddleware.authMiddleware((t) => auth.verifyToken(t)),
     (req: AuthenticatedRequest, res) => {
       res.json({ ok: true, wallet: req.user?.wallet })

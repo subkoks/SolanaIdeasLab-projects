@@ -30,7 +30,7 @@ function b64url(input: Buffer | string): string {
     .toString('base64')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
-    .replace(/=+$/, '')
+    .replaceAll('=', '')
 }
 
 function b64urlDecode(input: string): Buffer {
