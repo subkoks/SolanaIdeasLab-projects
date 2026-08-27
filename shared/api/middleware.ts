@@ -45,6 +45,8 @@ export class ApiMiddleware {
         req.user = user
         next()
       } catch (error) {
+        // Log for operators; never leak internals to the client.
+        console.error('[authMiddleware] authentication failed:', error)
         res.status(401).json({
           success: false,
           error: 'Authentication failed',

@@ -1,4 +1,4 @@
-import { Keypair, PublicKey } from '@solana/web3.js'
+import { Keypair } from '@solana/web3.js'
 import nacl from 'tweetnacl'
 import { WalletAuth, AuthUser, verifyEd25519 } from '../auth/wallet-auth'
 
@@ -27,11 +27,9 @@ describe('WalletAuth — Ed25519 challenge verification (real crypto)', () => {
     const honest = Keypair.generate()
     const attacker = Keypair.generate()
     const auth = new WalletAuth({} as any, TEST_SECRET)
-    const wallet = makeWallet(attacker) // attacker signs, but claims honest's key
-    // Build a challenge for the honest address, signed by attacker
+    // Attacker signs a challenge for honest's address; verified against honest's key -> false
     const message = auth.buildChallenge(honest.publicKey.toBase58())
     const signature = nacl.sign.detached(new TextEncoder().encode(message), attacker.secretKey)
-    // Verify with honest's key -> must be false (signature is attacker's)
     expect(verifyEd25519(honest.publicKey, new TextEncoder().encode(message), signature)).toBe(false)
   })
 
