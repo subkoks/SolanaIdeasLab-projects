@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [token-safety-bot, token-sniper-bot, wallet-tracker-pro]
+        project: [shared, token-safety-bot, token-sniper-bot, wallet-tracker-pro]
     defaults:
       run:
         working-directory: ${{ matrix.project }}
