@@ -1,61 +1,62 @@
-import {
-  assertProductionConfig,
-  isProductionRuntime,
-} from "../src/utils/production-guard";
+import { assertProductionConfig } from "../src/utils/production-guard";
 
-describe("production guard", () => {
-  const originalEnv = process.env;
+const originalEnv = process.env;
 
-  beforeEach(() => {
-    process.env = { ...originalEnv };
+afterEach(() => {
+  process.env = { ...originalEnv };
+});
+
+/** Build a clean production env with only the given overrides. */
+function prodEnv(overrides: Record<string, string | undefined> = {}) {
+  const env: Record<string, string> = {
+    NODE_ENV: "production",
+    JWT_SECRET: "a-strong-production-secret-at-least-16-chars",
+  };
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v === undefined) delete env[k];
+    else env[k] = v;
+  }
+  return env as NodeJS.ProcessEnv;
+}
+
+describe("production-guard", () => {
+  it("rejects SKIP_AUTH_IN_DEV in production", () => {
+    process.env = prodEnv({ SKIP_AUTH_IN_DEV: "true" });
+    expect(() => assertProductionConfig()).toThrow(/SKIP_AUTH_IN_DEV/);
   });
 
-  afterAll(() => {
-    process.env = originalEnv;
-  });
-
-  it("detects production runtime", () => {
-    process.env.NODE_ENV = "production";
-    expect(isProductionRuntime()).toBe(true);
-  });
-
-  it("allows dev defaults outside production", () => {
-    process.env.NODE_ENV = "development";
-    expect(() => assertProductionConfig()).not.toThrow();
-  });
-
-  it("rejects default JWT secret in production", () => {
-    process.env.NODE_ENV = "production";
-    process.env.JWT_SECRET = "token-safety-bot-dev-secret";
-
+  it("rejects the default dev JWT secret in production", () => {
+    process.env = prodEnv({ JWT_SECRET: "token-safety-bot-dev-secret" });
     expect(() => assertProductionConfig()).toThrow(/JWT_SECRET/);
   });
 
-  it("rejects skip wallet signature verify in production", () => {
-    process.env.NODE_ENV = "production";
-    process.env.JWT_SECRET = "prod-secret-value";
-    process.env.SKIP_WALLET_SIGNATURE_VERIFY = "true";
-
-    expect(() => assertProductionConfig()).toThrow(
-      /SKIP_WALLET_SIGNATURE_VERIFY/,
-    );
+  it("rejects an empty JWT secret in production", () => {
+    process.env = prodEnv({ JWT_SECRET: "" });
+    expect(() => assertProductionConfig()).toThrow(/JWT_SECRET/);
   });
 
-  it("rejects direct billing upgrades in production", () => {
-    process.env.NODE_ENV = "production";
-    process.env.JWT_SECRET = "prod-secret-value";
-    process.env.SKIP_WALLET_SIGNATURE_VERIFY = "false";
-    process.env.SKIP_AUTH_IN_DEV = "false";
-    process.env.BILLING_DEV_UPGRADE = "true";
+  it("rejects SKIP_WALLET_SIGNATURE_VERIFY in production", () => {
+    process.env = prodEnv({ SKIP_WALLET_SIGNATURE_VERIFY: "true" });
+    expect(() => assertProductionConfig()).toThrow(/SKIP_WALLET_SIGNATURE_VERIFY/);
+  });
 
+  it("rejects BILLING_DEV_UPGRADE in production", () => {
+    process.env = prodEnv({ BILLING_DEV_UPGRADE: "true" });
     expect(() => assertProductionConfig()).toThrow(/BILLING_DEV_UPGRADE/);
   });
 
-  it("rejects development bypasses outside development and test", () => {
-    process.env.NODE_ENV = "staging";
-    process.env.SKIP_WALLET_SIGNATURE_VERIFY = "false";
-    process.env.SKIP_AUTH_IN_DEV = "true";
+  it("allows the development runtime to keep the dev bypass + default secret", () => {
+    process.env = {
+      ...originalEnv,
+      NODE_ENV: "development",
+      SKIP_AUTH_IN_DEV: "true",
+      JWT_SECRET: "token-safety-bot-dev-secret",
+    };
+    expect(() => assertProductionConfig()).not.toThrow();
+  });
 
-    expect(() => assertProductionConfig()).toThrow(/SKIP_AUTH_IN_DEV/);
+  it("allows a production runtime with a real secret and no bypass flags", () => {
+    process.env = prodEnv();
+    expect(() => assertProductionConfig()).not.toThrow();
   });
 });

@@ -73,13 +73,28 @@ export const getSafeReturnUrl = (
     return fallback.toString()
   }
 
+  // First try to interpret the candidate as an absolute URL (no base). If it
+  // parses as absolute, only allow it when its origin matches the app origin.
   try {
-    const requested = new URL(candidate, baseUrl)
-    return requested.origin === baseUrl.origin
-      ? requested.toString()
+    const absolute = new URL(candidate)
+    return absolute.origin === baseUrl.origin
+      ? absolute.toString()
       : fallback.toString()
   } catch {
-    return fallback.toString()
+    // Not an absolute URL: only allow it as a same-origin relative path.
+    // Reject anything that does not begin with "/" so scheme-less tricks
+    // (e.g. "ht!tp://evil" or "//evil.com") cannot be smuggled in as a path.
+    if (!candidate.startsWith('/')) {
+      return fallback.toString()
+    }
+    try {
+      const requested = new URL(candidate, baseUrl)
+      return requested.origin === baseUrl.origin
+        ? requested.toString()
+        : fallback.toString()
+    } catch {
+      return fallback.toString()
+    }
   }
 }
 

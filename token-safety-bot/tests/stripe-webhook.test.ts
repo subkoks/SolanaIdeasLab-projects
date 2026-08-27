@@ -1,5 +1,6 @@
 import {
   buildTierSyncFromStripeEvent,
+  isBillingTier,
   mapPriceIdToTier,
 } from '../src/utils/stripe-webhook'
 
@@ -57,5 +58,17 @@ describe('stripe webhook mapping', () => {
 
   it('maps price ids to tiers', () => {
     expect(mapPriceIdToTier(prices, 'price_pro')).toBe('pro')
+  })
+
+  it('isBillingTier validates tier names', () => {
+    expect(isBillingTier('free')).toBe(true)
+    expect(isBillingTier('enterprise')).toBe(true)
+    expect(isBillingTier('platinum')).toBe(false)
+    expect(isBillingTier('')).toBe(false)
+    // narrows the type for downstream use
+    const value: string = 'pro'
+    if (isBillingTier(value)) {
+      expect(value).toBe('pro')
+    }
   })
 })

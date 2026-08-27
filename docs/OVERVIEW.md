@@ -54,7 +54,13 @@ You can develop and explore **without verifying on-chain or adding paid keys**. 
 
 ## Shared infrastructure
 
-The apps share a security direction, but not yet a shared runtime package. Keep auth, entitlements, quotas, and provenance contracts aligned until the shared layer is extracted deliberately.
+`shared/` is now a real, buildable package (`@solanaideaslab/shared`) providing
+canonical wallet-ownership proof (Ed25519 challenge verification) and API
+middleware (Bearer auth, subscription tier-gating, rate limiting) used across
+the bots. See [`shared/README.md`](../shared/README.md). It is intentionally
+self-contained (Node `crypto` for JWT; `@solana/web3.js` for Ed25519) so bots
+can adopt it without weakening auth. Keep auth, entitlements, quotas, and
+provenance contracts aligned with this module.
 
 | Service | Databases | Notes |
 |---|---|---|
