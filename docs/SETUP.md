@@ -122,6 +122,33 @@ cd token-safety-bot && npm test
 cd wallet-tracker-pro && npm test
 ```
 
+### Full local regression (recommended)
+
+`scripts/test-all.sh` runs type-check + unit tests for **all four** packages
+(`shared` + the three bots) with **no network, deploy, wallet, secret, or
+external state change**:
+
+```bash
+bash scripts/test-all.sh
+```
+
+### Shared package (`@solanaideaslab/shared`)
+
+`shared/` is a self-contained, buildable package (real Ed25519 + HS256 JWT). To
+type-check / test / build it locally without a separate install, reuse a sibling
+bot's installed `node_modules` via a symlink:
+
+```bash
+cd shared
+ln -sfn ../token-safety-bot/node_modules ./node_modules
+node ../token-safety-bot/node_modules/typescript/bin/tsc -p tsconfig.json --noEmit   # type-check
+node ../token-safety-bot/node_modules/jest/bin/jest.js --rootDir .                   # tests
+node ../token-safety-bot/node_modules/typescript/bin/tsc -p tsconfig.json           # build -> dist/
+```
+
+The symlink and `dist/` are gitignored. See `shared/README.md` and
+`shared/ADOPTION.md` for the API and bot-integration guide.
+
 ## Database management
 
 | Command | Where |
