@@ -88,15 +88,15 @@ jobs:
         run: npm test
 
       # Real-database coverage for packages that have DATABASE_URL-gated
-      # Prisma suites. Skipped for token-sniper-bot (no DB-gated suites).
-      # DATABASE_URL is set ONLY in this step's env, so the default `npm test`
-      # step above keeps exercising the JSON/fallback path untouched. We run
-      # the explicit DB test files (not a name filter) so the JSON-fallback
-      # HTTP suite is never loaded while a live DATABASE_URL is in scope.
+      # Prisma suites. Skipped for token-sniper-bot (no DB-gated suites) and
+      # shared (no database). DATABASE_URL is set ONLY in this step's env, so
+      # the default `npm test` step above keeps exercising the JSON/fallback path
+      # untouched. We run the explicit DB test files (not a name filter) so the
+      # JSON-fallback HTTP suite is never loaded while a live DATABASE_URL is in scope.
       - name: Test (PostgreSQL — claim/P2002/stale-claim suites)
-        if: matrix.project != 'token-sniper-bot'
+        if: matrix.project != 'token-sniper-bot' && matrix.project != 'shared'
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+          DATABASE_URL: postgresql://postgres:***@localhost:5432/postgres?schema=public
           # Lets token-safety-bot's seeded-wallet DB test call authenticateWallet
           # without a real signature (test-runtime only; no production effect).
           SKIP_WALLET_SIGNATURE_VERIFY: 'true'

@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.json",
     "type-check": "tsc -p tsconfig.json --noEmit",
     "test": "jest --rootDir .",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "security-check": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
     "@solana/web3.js": "^1.95.0",
