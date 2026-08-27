@@ -133,3 +133,29 @@ describe('createApiResponse', () => {
     expect(typeof r.timestamp).toBe('string')
   })
 })
+
+describe('ApiMiddleware.errorHandler', () => {
+  const realEnv = process.env.NODE_ENV
+  afterEach(() => {
+    process.env.NODE_ENV = realEnv
+  })
+
+  it('returns 500 with the real message outside production', () => {
+    process.env.NODE_ENV = 'test'
+    const { req, res } = mockReqRes() as any
+    ApiMiddleware.errorHandler(new Error('boom details'), req, res, () => {})
+    expect(res.statusCode).toBe(500)
+    expect(res.body.success).toBe(false)
+    expect(res.body.error).toBe('boom details')
+  })
+
+  it('does NOT leak internal error details in production', () => {
+    process.env.NODE_ENV = 'production'
+    const { req, res } = mockReqRes() as any
+    ApiMiddleware.errorHandler(new Error('secret stack trace'), req, res, () => {})
+    expect(res.statusCode).toBe(500)
+    expect(res.body.success).toBe(false)
+    expect(res.body.error).toBe('Internal server error')
+    expect(res.body.error).not.toContain('secret')
+  })
+})
