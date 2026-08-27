@@ -30,10 +30,11 @@ jobs:
       run:
         working-directory: ${{ matrix.project }}
     # Ephemeral PostgreSQL service used only by jobs that need real database
-    # coverage. Credentials are GitHub Actions service-container defaults and
-    # never touch production, CI secrets, or repository settings. Each matrix
-    # job gets its own container instance, so the default database name gives
-    # full cross-job isolation (no shared state, no name-collision risk).
+    # coverage. It is a throwaway CI container with no production data, secrets,
+    # or network exposure; POSTGRES_HOST_AUTH_METHOD: trust is the standard
+    # GitHub Actions pattern for ephemeral test DBs and avoids intermittent
+    # P1000 credential races on the migrated runners. Each matrix job gets its
+    # own container instance (full cross-job isolation).
     services:
       postgres:
         image: postgres:16-alpine
@@ -41,6 +42,7 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -58,7 +60,11 @@ jobs:
           cache-dependency-path: ${{ matrix.project }}/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        # shared is developed on macOS; its committed lockfile pins the darwin
+        # esbuild optional dep, which `npm ci` rejects on the Linux runner
+        # (EBADPLATFORM). `npm install` resolves the correct platform's optional
+        # deps, so we use it for shared. The 3 bots use the reproducible `npm ci`.
+        run: ${{ matrix.project == 'shared' && 'npm install' || 'npm ci' }}
 
       - name: Generate Prisma client
         run: |
