@@ -59,6 +59,49 @@ describe('wallet tracker billing', () => {
     ).toBe('https://wallet.example/?checkout=success')
   })
 
+  it('falls back when the candidate is missing or malformed', () => {
+    // undefined candidate -> fallback
+    expect(
+      getSafeReturnUrl(undefined, '/?checkout=cancel', 'https://wallet.example'),
+    ).toBe('https://wallet.example/?checkout=cancel')
+
+    // malformed URL -> fallback (no throw, no open redirect)
+    expect(
+      getSafeReturnUrl(
+        'ht!tp://%%%not a url',
+        '/?checkout=cancel',
+        'https://wallet.example',
+      ),
+    ).toBe('https://wallet.example/?checkout=cancel')
+
+    // protocol-relative "//evil.com" must NOT be allowed
+    expect(
+      getSafeReturnUrl(
+        '//evil.com/steal',
+        '/?checkout=cancel',
+        'https://wallet.example',
+      ),
+    ).toBe('https://wallet.example/?checkout=cancel')
+
+    // absolute cross-origin URL must NOT be allowed
+    expect(
+      getSafeReturnUrl(
+        'https://evil.example/steal',
+        '/?checkout=cancel',
+        'https://wallet.example',
+      ),
+    ).toBe('https://wallet.example/?checkout=cancel')
+
+    // relative path on same origin is allowed
+    expect(
+      getSafeReturnUrl(
+        '/dashboard?ok=1',
+        '/?checkout=cancel',
+        'https://wallet.example',
+      ),
+    ).toBe('https://wallet.example/dashboard?ok=1')
+  })
+
   it('maps checkout events with chatId metadata', () => {
     const payload = buildSubscriberTierSyncFromEvent(
       {
