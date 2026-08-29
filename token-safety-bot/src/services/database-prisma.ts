@@ -259,12 +259,18 @@ export class PrismaDatabaseService {
         throw new Error('Signed message is required')
       }
 
-      const { verifyWalletSignature } = await import('../utils/wallet-signature')
+      const { verifyWalletSignatureWithShared } = await import(
+        '../auth/shared-wallet-proof'
+      )
       const nonce = getWalletAuthNonce(normalizedWalletAddress, message)
 
       if (
         !isFreshWalletAuthMessage(normalizedWalletAddress, message) ||
-        !verifyWalletSignature(normalizedWalletAddress, message, signature) ||
+        !verifyWalletSignatureWithShared(
+          normalizedWalletAddress,
+          message,
+          signature,
+        ) ||
         !(await this.consumeWalletAuthChallenge(normalizedWalletAddress, nonce))
       ) {
         throw new Error('Invalid wallet signature')
