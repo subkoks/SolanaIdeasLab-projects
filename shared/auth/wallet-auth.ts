@@ -190,3 +190,32 @@ export class WalletAuth {
 export const createWalletAuth = (connection: Connection, jwtSecret: string): WalletAuth => {
   return new WalletAuth(connection, jwtSecret)
 }
+
+/**
+ * Stateless, dependency-free Ed25519 wallet-proof verifier built on top of
+ * {@link verifyEd25519}. Intended to be consumed by the individual bots as the
+ * canonical "does this signature prove ownership of this wallet?" primitive,
+ * so each bot reuses one audited implementation instead of re-rolling tweetnacl
+ * calls. It performs ONLY signature verification — challenge/nonce/expiry/
+ * replay policy is the bot's responsibility and is intentionally not handled
+ * here, to avoid weakening any bot's existing auth flow.
+ *
+ * The signature is passed as raw bytes (bots decode base58 with their own
+ * `bs58` dependency before calling), keeping this module free of extra deps.
+ *
+ * Usage:
+ *   const verifier = new verifyEd25519WalletAuth(walletAddress)
+ *   if (verifier.verify(messageBytes, signatureBytes)) { ... }
+ */
+export class verifyEd25519WalletAuth {
+  private readonly publicKey: PublicKey
+
+  constructor(walletAddress: string) {
+    this.publicKey = new PublicKey(walletAddress)
+  }
+
+  /** Verify a raw signature (Uint8Array) over `message` (Uint8Array). */
+  verify(message: Uint8Array, signature: Uint8Array): boolean {
+    return verifyEd25519(this.publicKey, message, signature)
+  }
+}
