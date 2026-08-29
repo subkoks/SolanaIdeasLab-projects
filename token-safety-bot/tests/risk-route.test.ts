@@ -95,3 +95,66 @@ describe('address-taking POST bodies reject malformed input', () => {
     expect(res.body).toMatchObject({ error: 'Invalid Solana token address' })
   })
 })
+
+describe('request body size bounds (DoS/parse-amplification hardening)', () => {
+  let tmpDir: string
+  let storePath: string
+
+  beforeAll(async () => {
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const { mkdtemp } = await import('node:fs/promises')
+    tmpDir = await mkdtemp(path.join(os.tmpdir(), 'tsb-size-'))
+    storePath = path.join(tmpDir, 'store.json')
+    process.env.DATA_STORE_PATH = storePath
+  })
+
+  afterAll(async () => {
+    const { rm } = await import('node:fs/promises')
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  it('rejects an oversized signature on POST /auth/wallet/connect with 400', async () => {
+    const bot = new TokenSafetyBot()
+    const app = bot.getApp()
+    const res = await request(app)
+      .post('/api/v1/auth/wallet/connect')
+      .send({
+        walletAddress: 'x'.repeat(44),
+        message: 'tiny',
+        signature: 'a'.repeat(4096),
+      })
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects an oversized message on POST /auth/wallet/connect with 400', async () => {
+    const bot = new TokenSafetyBot()
+    const app = bot.getApp()
+    const res = await request(app)
+      .post('/api/v1/auth/wallet/connect')
+      .send({
+        walletAddress: 'x'.repeat(44),
+        message: 'b'.repeat(8192),
+        signature: 'c'.repeat(88),
+      })
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects an oversized refreshToken on POST /auth/refresh with 400', async () => {
+    const bot = new TokenSafetyBot()
+    const app = bot.getApp()
+    const res = await request(app)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: 'z'.repeat(16384) })
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects an oversized tokenAddress on POST /safety/rug-pull/detect with 400', async () => {
+    const bot = new TokenSafetyBot()
+    const app = bot.getApp()
+    const res = await request(app)
+      .post('/api/v1/safety/rug-pull/detect')
+      .send({ tokenAddress: 'a'.repeat(256), timeWindow: 3600 })
+    expect(res.status).toBe(400)
+  })
+})
