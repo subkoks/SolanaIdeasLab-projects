@@ -92,9 +92,25 @@ describe('shared database/schemas.sql — static validation', () => {
     expect(schema).toMatch(/metadata\s+JSONB/i)
   })
 
-  it('enforces the subscription_tier CHECK enum', () => {
+  it('enforces the subscriptions.tier CHECK enum (aligned with SubscriptionTier)', () => {
     expect(schema).toMatch(
-      /CHECK\s*\(\s*subscription_tier\s+IN\s*\(\s*'free',\s*'basic',\s*'pro',\s*'enterprise'\s*\)\s*\)/i,
+      /tier\s+VARCHAR\(20\)\s+NOT\s+NULL\s+CHECK\s*\(\s*tier\s+IN\s*\(\s*'free',\s*'basic',\s*'pro',\s*'enterprise'\s*\)\s*\)/i,
+    )
+  })
+
+  it('enforces the subscriptions.status CHECK enum', () => {
+    expect(schema).toMatch(
+      /status\s+VARCHAR\(20\)\s+DEFAULT\s+'active'\s+CHECK\s*\(\s*status\s+IN\s*\(\s*'active',\s*'cancelled',\s*'expired'\s*\)\s*\)/i,
+    )
+  })
+
+  it('declares api_keys.key_hash as VARCHAR(64) UNIQUE NOT NULL', () => {
+    expect(schema).toMatch(/key_hash\s+VARCHAR\(64\)\s+UNIQUE\s+NOT\s+NULL/i)
+  })
+
+  it('declares audit_logs.user_id as a nullable FK (ON DELETE SET NULL)', () => {
+    expect(schema).toMatch(
+      /user_id\s+UUID\s+REFERENCES\s+users\(id\)\s+ON\s+DELETE\s+SET\s+NULL/i,
     )
   })
 
@@ -212,6 +228,53 @@ describe('shared database/schemas.sql — exec smoke (in-memory Postgres)', () =
       "SELECT id FROM audit_logs WHERE action = 'login'",
     )
     expect(logs.rows.length).toBe(1)
+
+    // audit_logs.user_id uses ON DELETE SET NULL (not CASCADE): deleting the
+    // user keeps the audit row but nulls its user_id.
+    const u3 = await pg.query(
+      "INSERT INTO users (wallet_address, subscription_tier) VALUES ($1, 'pro') RETURNING id",
+      ['44444444444444444444444444444444444444444444'],
+    )
+    await pg.query(
+      "INSERT INTO audit_logs (user_id, action, resource_type, resource_id) VALUES ($1, 'action', 'res', 'xyz')",
+      [u3.rows[0].id],
+    )
+    await pg.query('DELETE FROM users WHERE id = $1', [u3.rows[0].id])
+    const auditAfter = await pg.query(
+      "SELECT user_id FROM audit_logs WHERE resource_id = 'xyz'",
+    )
+    expect(auditAfter.rows.length).toBe(1)
+    expect(auditAfter.rows[0].user_id).toBeNull()
+
+    // users.subscription_tier defaults to 'free' when omitted; email is nullable.
+    const u4 = await pg.query(
+      "INSERT INTO users (wallet_address) VALUES ($1) RETURNING subscription_tier, email, created_at",
+      ['55555555555555555555555555555555555555555555'],
+    )
+    expect(u4.rows[0].subscription_tier).toBe('free')
+    expect(u4.rows[0].email).toBeNull()
+    expect(u4.rows[0].created_at).not.toBeNull()
+  })
+
+  it('rejects an invalid subscriptions.tier (CHECK enum aligned with SubscriptionTier)', async () => {
+    const pg = await setupQuery()
+    const statements = normalizeForPgMem(readSchema())
+      .split(';')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+    for (const stmt of statements) {
+      await pg.query(stmt)
+    }
+    const u = await pg.query(
+      "INSERT INTO users (wallet_address, subscription_tier) VALUES ($1, 'pro') RETURNING id",
+      ['66666666666666666666666666666666666666666666'],
+    )
+    await expect(
+      pg.query(
+        'INSERT INTO subscriptions (user_id, tier, status) VALUES ($1, $2, $3)',
+        [u.rows[0].id, 'platinum', 'active'],
+      ),
+    ).rejects.toThrow()
   })
 
   it('supports a valid base58-length wallet address column width (44 chars)', () => {
