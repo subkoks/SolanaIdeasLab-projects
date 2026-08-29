@@ -32,18 +32,25 @@ weaken) security-critical logic.
 - The `jwtSecret` must be provided by the consuming service (env/config). The
   library refuses to start with a secret shorter than 16 characters.
 
-## Local development (no network install)
+## Local development (self-contained)
 
-The package reuses a sibling bot's installed `node_modules` via a symlink so
-that `@solana/web3.js` and `express` resolve without a separate install:
+`shared/` is a **self-contained package** with its own `package.json`,
+`package-lock.json`, and `tsconfig.json`. Install and run it standalone — no
+sibling symlink required (the older "symlink a bot's node_modules" approach is
+obsolete and was removed because it hid missing devDependencies):
 
 ```bash
 cd shared
-ln -sfn ../token-safety-bot/node_modules ./node_modules
-node ../token-safety-bot/node_modules/typescript/bin/tsc -p tsconfig.json --noEmit   # type-check
-node ../token-safety-bot/node_modules/jest/bin/jest.js --rootDir .                   # tests
-node ../token-safety-bot/node_modules/typescript/bin/tsc -p tsconfig.json           # build -> dist/
+npm install            # installs shared's own devDependencies
+npm run type-check     # tsc --noEmit
+npm test               # jest (includes the local schema harness)
+npm run lint           # eslint
+npm run build          # tsc -p tsconfig.json -> dist/
 ```
+
+`dist/` is gitignored. Consumers (the bots) depend on `shared` via
+`"@solanaideaslab/shared": "file:../shared"` and build `dist/` through their own
+`build:shared` pre-hook, so `shared/dist` need not exist in the repo.
 
 ## Tests
 
