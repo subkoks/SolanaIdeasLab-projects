@@ -11,6 +11,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    "isolatedModules": true,
     "types": ["node", "jest", "express", "supertest"]
   },
   "include": ["auth/**/*.ts", "api/**/*.ts", "adapters/**/*.ts"],
