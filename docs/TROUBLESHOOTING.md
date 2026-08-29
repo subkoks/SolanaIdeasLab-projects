@@ -1,12 +1,34 @@
 # Troubleshooting
 
+## Local npm mirror rewrites lockfiles (important)
+
+On some local machines `npm install` resolves packages through a **local npm
+mirror** (e.g. `pkgs.safetycli.com`) instead of `registry.npmjs.org`. This
+changes the `resolved` URLs inside `package-lock.json` even when the dependency
+graph is unchanged. The rewritten lockfile is **functionally identical** (same
+package versions), but committing it pollutes the repo with mirror URLs and
+creates noisy diffs.
+
+**Rule:** never commit a lockfile that was rewritten by the local mirror. After
+any local `npm install`, if `git status` shows a `package-lock.json` change you
+did not intend, restore it:
+
+```bash
+git checkout -- <project>/package-lock.json
+```
+
+The committed lockfiles all point at `registry.npmjs.org` and are what CI uses.
+If you are deliberately updating a lockfile (e.g. fixing a CI failure), regenerate
+it with a clean `npm install` against `registry.npmjs.org` and review the diff
+before committing.
+
 ## Bootstrap
 
 ### `npm ci` / lockfile out of sync
 
 ```bash
 cd <project> && npm install
-# commit package-lock.json if you are fixing CI
+# commit package-lock.json ONLY if you are intentionally changing dependencies
 ```
 
 CI uses Node 22 — regenerate lockfile with Node 22 if local Node differs.
