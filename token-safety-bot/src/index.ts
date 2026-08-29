@@ -55,18 +55,18 @@ const resolveAllowedCorsOrigins = (): readonly string[] => {
 };
 
 const walletConnectSchema = z.object({
-  message: z.string().min(1),
-  signature: z.string().min(1),
-  walletAddress: z.string().min(32),
+  message: z.string().min(1).max(2048),
+  signature: z.string().min(1).max(128),
+  walletAddress: z.string().min(32).max(64),
 });
 
 const refreshTokenSchema = z.object({
-  refreshToken: z.string().min(1),
+  refreshToken: z.string().min(1).max(4096),
 });
 
 const scanSchema = z.object({
   analysisDepth: z.enum(["quick", "deep", "full"]).optional(),
-  tokenAddress: z.string().min(32),
+  tokenAddress: z.string().min(32).max(64),
 });
 
 const riskQuerySchema = z.object({
@@ -74,19 +74,19 @@ const riskQuerySchema = z.object({
 });
 
 const contractAnalysisSchema = z.object({
-  analysisType: z.string().min(1).default("security"),
-  programId: z.string().min(32),
+  analysisType: z.string().min(1).max(64).default("security"),
+  programId: z.string().min(32).max(64),
 });
 
 const rugPullSchema = z.object({
   timeWindow: z.number().int().positive().default(3600),
-  tokenAddress: z.string().min(32),
+  tokenAddress: z.string().min(32).max(64),
 });
 
 const alertSchema = z.object({
-  alertType: z.string().min(1),
+  alertType: z.string().min(1).max(64),
   criteria: z.record(z.string(), z.unknown()).optional(),
-  tokenAddress: z.string().min(32),
+  tokenAddress: z.string().min(32).max(64),
 });
 
 const profileSchema = z.object({
@@ -99,13 +99,13 @@ const upgradeSchema = z.object({
 
 const blacklistSchema = z.object({
   evidence: z.unknown().optional(),
-  reason: z.string().min(1),
-  tokenAddress: z.string().min(32),
+  reason: z.string().min(1).max(512),
+  tokenAddress: z.string().min(32).max(64),
 });
 
 const broadcastSchema = z.object({
-  message: z.string().min(1),
-  targetTier: z.string().min(1).default("all"),
+  message: z.string().min(1).max(1024),
+  targetTier: z.string().min(1).max(32).default("all"),
 });
 
 export class TokenSafetyBot {
@@ -410,7 +410,7 @@ export class TokenSafetyBot {
 
     this.app.get("/api/v1/scan/:tokenAddress", async (req, res, next) => {
       try {
-        const tokenAddress = z.string().min(32).parse(req.params.tokenAddress);
+        const tokenAddress = z.string().min(32).max(64).parse(req.params.tokenAddress);
         if (!isValidWalletAddress(tokenAddress)) {
           res.status(400).json({ error: "Invalid Solana token address" });
           return;
