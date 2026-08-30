@@ -1,4 +1,4 @@
-import { getWatchLimitForTier } from '../src/lib/watch-limits'
+import { getWatchLimitForTier, isValidSubscriberTier } from '../src/lib/watch-limits'
 import { estimateUsdFromSol, lamportsToSol } from '../src/lib/portfolio'
 
 describe('watch limits', () => {
@@ -6,6 +6,13 @@ describe('watch limits', () => {
     expect(getWatchLimitForTier('free')).toBe(3)
     expect(getWatchLimitForTier('pro')).toBe(25)
     expect(getWatchLimitForTier('unknown')).toBe(3)
+  })
+
+  it('validates subscriber tiers', () => {
+    expect(isValidSubscriberTier('free')).toBe(true)
+    expect(isValidSubscriberTier('enterprise')).toBe(true)
+    expect(isValidSubscriberTier('platinum')).toBe(false)
+    expect(isValidSubscriberTier('')).toBe(false)
   })
 })
 

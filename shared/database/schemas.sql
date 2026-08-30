@@ -16,7 +16,7 @@ CREATE TABLE users (
 CREATE TABLE subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    tier VARCHAR(20) NOT NULL,
+    tier VARCHAR(20) NOT NULL CHECK (tier IN ('free', 'basic', 'pro', 'enterprise')),
     status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'cancelled', 'expired')),
     stripe_subscription_id VARCHAR(255),
     current_period_end TIMESTAMP WITH TIME ZONE,

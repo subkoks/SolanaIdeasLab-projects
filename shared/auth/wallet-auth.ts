@@ -1,11 +1,13 @@
-import { WalletAdapter } from '@solana/wallet-adapter-base'
-import { Connection, PublicKey, Transaction } from '@solana/web3.js'
+import { Connection, PublicKey } from '@solana/web3.js'
+import crypto from 'crypto'
+
+export type SubscriptionTier = 'free' | 'basic' | 'pro' | 'enterprise'
 
 export interface AuthUser {
   id: string
   wallet: string
   publicKey: PublicKey
-  subscriptionTier: 'free' | 'basic' | 'pro' | 'enterprise'
+  subscriptionTier: SubscriptionTier
   createdAt: Date
   lastActive: Date
 }
@@ -16,16 +18,75 @@ export interface AuthSession {
   expiresAt: Date
 }
 
+export interface WalletAdapterLike {
+  publicKey: PublicKey | null
+  signMessage(message: Uint8Array): Promise<Uint8Array>
+}
+
+const DEFAULT_TOKEN_TTL_MS = 24 * 60 * 60 * 1000
+
+function b64url(input: Buffer | string): string {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replaceAll('=', '')
+}
+
+function b64urlDecode(input: string): Buffer {
+  const pad = input.length % 4 === 0 ? '' : '='.repeat(4 - (input.length % 4))
+  return Buffer.from(input.replace(/-/g, '+').replace(/_/g, '/') + pad, 'base64')
+}
+
+/**
+ * Build an Ed25519 JWK public key from a Solana PublicKey.
+ * Solana public keys are 32 raw bytes; Node's WebCrypto verifies Ed25519
+ * signatures when the key is provided as an OKP/JWK key object.
+ */
+function publicKeyToJwk(publicKey: PublicKey): crypto.KeyObject {
+  const raw = Buffer.from(publicKey.toBytes())
+  const jwk = {
+    kty: 'OKP',
+    crv: 'Ed25519',
+    x: raw.toString('base64url'),
+  }
+  return crypto.createPublicKey({ key: jwk, format: 'jwk' })
+}
+
+/**
+ * Real Ed25519 signature verification for a wallet-ownership challenge.
+ * Returns true only when the signature was produced by the private key
+ * corresponding to `publicKey` over `message`.
+ */
+export function verifyEd25519(publicKey: PublicKey, message: Uint8Array, signature: Uint8Array): boolean {
+  try {
+    const keyObj = publicKeyToJwk(publicKey)
+    return crypto.verify(null, Buffer.from(message), keyObj, Buffer.from(signature))
+  } catch {
+    return false
+  }
+}
+
 export class WalletAuth {
   private connection: Connection
   private jwtSecret: string
 
   constructor(connection: Connection, jwtSecret: string) {
+    if (!jwtSecret || jwtSecret.length < 16) {
+      // Guard against accidentally running with a trivial/empty secret.
+      // Operators must supply a strong secret (e.g. from env in production).
+      throw new Error('WalletAuth requires a jwtSecret of at least 16 characters')
+    }
     this.connection = connection
     this.jwtSecret = jwtSecret
   }
 
-  async authenticateWallet(wallet: WalletAdapter): Promise<AuthSession> {
+  /**
+   * Off-chain wallet-ownership proof: the client signs a timestamped
+   * challenge; we verify the Ed25519 signature against the claimed public
+   * key. No on-chain RPC call is required for authentication itself.
+   */
+  async authenticateWallet(wallet: WalletAdapterLike): Promise<AuthSession> {
     if (!wallet.publicKey) {
       throw new Error('Wallet not connected')
     }
@@ -33,57 +94,128 @@ export class WalletAuth {
     const publicKey = wallet.publicKey
     const walletAddress = publicKey.toBase58()
 
-    // Sign a challenge message to prove ownership
-    const message = `Sign in to SolanaIdeasLab at ${new Date().toISOString()}`
-    const signature = await wallet.signMessage(new TextEncoder().encode(message))
+    const message = this.buildChallenge(walletAddress)
+    const messageBytes = new TextEncoder().encode(message)
+    const signature = await wallet.signMessage(messageBytes)
 
-    // Verify the signature
-    const isValid = this.verifySignature(publicKey, message, signature)
-    if (!isValid) {
+    if (!verifyEd25519(publicKey, messageBytes, signature)) {
       throw new Error('Invalid signature')
     }
 
-    // Get or create user
     const user = await this.getOrCreateUser(walletAddress, publicKey)
-
-    // Create JWT session
     const token = this.createJWT(user)
 
     return {
       token,
       user,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+      expiresAt: new Date(Date.now() + DEFAULT_TOKEN_TTL_MS),
     }
   }
 
-  private verifySignature(publicKey: PublicKey, message: string, signature: Uint8Array): boolean {
-    // Implementation using NaCl verification
-    return true // Simplified for scaffold
+  /** Deterministic, time-bounded challenge message. */
+  buildChallenge(walletAddress: string): string {
+    return `Sign in to SolanaIdeasLab at ${new Date().toISOString()} for ${walletAddress}`
   }
 
-  private async getOrCreateUser(walletAddress: string, publicKey: PublicKey): Promise<AuthUser> {
-    // Database lookup/creation logic
+  private getOrCreateUser(walletAddress: string, publicKey: PublicKey): AuthUser {
+    const now = new Date()
     return {
       id: walletAddress,
       wallet: walletAddress,
       publicKey,
       subscriptionTier: 'free',
-      createdAt: new Date(),
-      lastActive: new Date()
+      createdAt: now,
+      lastActive: now,
     }
   }
 
-  private createJWT(user: AuthUser): string {
-    // JWT creation logic
-    return 'jwt_token_here' // Simplified for scaffold
+  /** Real HS256 JWT signing (no external dependency). */
+  createJWT(user: AuthUser, ttlMs: number = DEFAULT_TOKEN_TTL_MS): string {
+    const header = { alg: 'HS256', typ: 'JWT' }
+    const payload = {
+      sub: user.id,
+      wallet: user.wallet,
+      tier: user.subscriptionTier,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor((Date.now() + ttlMs) / 1000),
+    }
+    const headerB64 = b64url(JSON.stringify(header))
+    const payloadB64 = b64url(JSON.stringify(payload))
+    const signingInput = `${headerB64}.${payloadB64}`
+    const sig = crypto.createHmac('sha256', this.jwtSecret).update(signingInput).digest('base64url')
+    return `${signingInput}.${sig}`
   }
 
-  async verifyToken(token: string): Promise<AuthUser | null> {
-    // JWT verification logic
-    return null // Simplified for scaffold
+  /** Real HS256 JWT verification; returns null on any failure. */
+  verifyToken(token: string): AuthUser | null {
+    if (!token || typeof token !== 'string') return null
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const [headerB64, payloadB64, sig] = parts
+    const signingInput = `${headerB64}.${payloadB64}`
+    const expectedSig = crypto
+      .createHmac('sha256', this.jwtSecret)
+      .update(signingInput)
+      .digest('base64url')
+    // Constant-time comparison to avoid signature timing leaks.
+    const a = Buffer.from(sig)
+    const b = Buffer.from(expectedSig)
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null
+
+    let payload: any
+    try {
+      payload = JSON.parse(b64urlDecode(payloadB64).toString('utf8'))
+    } catch {
+      return null
+    }
+    if (typeof payload.exp !== 'number' || payload.exp * 1000 < Date.now()) return null
+
+    let publicKey: PublicKey
+    try {
+      publicKey = new PublicKey(payload.wallet)
+    } catch {
+      return null
+    }
+    return {
+      id: payload.sub,
+      wallet: payload.wallet,
+      publicKey,
+      subscriptionTier: (payload.tier as SubscriptionTier) ?? 'free',
+      createdAt: new Date(payload.iat * 1000),
+      lastActive: new Date(),
+    }
   }
 }
 
 export const createWalletAuth = (connection: Connection, jwtSecret: string): WalletAuth => {
   return new WalletAuth(connection, jwtSecret)
+}
+
+/**
+ * Stateless, dependency-free Ed25519 wallet-proof verifier built on top of
+ * {@link verifyEd25519}. Intended to be consumed by the individual bots as the
+ * canonical "does this signature prove ownership of this wallet?" primitive,
+ * so each bot reuses one audited implementation instead of re-rolling tweetnacl
+ * calls. It performs ONLY signature verification — challenge/nonce/expiry/
+ * replay policy is the bot's responsibility and is intentionally not handled
+ * here, to avoid weakening any bot's existing auth flow.
+ *
+ * The signature is passed as raw bytes (bots decode base58 with their own
+ * `bs58` dependency before calling), keeping this module free of extra deps.
+ *
+ * Usage:
+ *   const verifier = new verifyEd25519WalletAuth(walletAddress)
+ *   if (verifier.verify(messageBytes, signatureBytes)) { ... }
+ */
+export class verifyEd25519WalletAuth {
+  private readonly publicKey: PublicKey
+
+  constructor(walletAddress: string) {
+    this.publicKey = new PublicKey(walletAddress)
+  }
+
+  /** Verify a raw signature (Uint8Array) over `message` (Uint8Array). */
+  verify(message: Uint8Array, signature: Uint8Array): boolean {
+    return verifyEd25519(this.publicKey, message, signature)
+  }
 }

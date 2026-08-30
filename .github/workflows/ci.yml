@@ -25,10 +25,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [token-safety-bot, token-sniper-bot, wallet-tracker-pro]
+        project: [shared, token-safety-bot, token-sniper-bot, wallet-tracker-pro]
     defaults:
       run:
         working-directory: ${{ matrix.project }}
+    # Ephemeral PostgreSQL service used only by jobs that need real database
+    # coverage. It is a throwaway CI container with no production data, secrets,
+    # or network exposure; POSTGRES_HOST_AUTH_METHOD: trust is the standard
+    # GitHub Actions pattern for ephemeral test DBs and avoids intermittent
+    # P1000 credential races on the migrated runners. Each matrix job gets its
+    # own container instance (full cross-job isolation).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +60,11 @@ jobs:
           cache-dependency-path: ${{ matrix.project }}/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        # shared is developed on macOS; its committed lockfile pins the darwin
+        # esbuild optional dep, which `npm ci` rejects on the Linux runner
+        # (EBADPLATFORM). `npm install` resolves the correct platform's optional
+        # deps, so we use it for shared. The 3 bots use the reproducible `npm ci`.
+        run: ${{ matrix.project == 'shared' && 'npm install' || 'npm ci' }}
 
       - name: Generate Prisma client
         run: |
@@ -55,5 +80,43 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test
+      # Production-dependency vulnerability scan (uses each package's existing
+      # `npm run security-check`, which runs `npm audit --omit=dev
+      # --audit-level=high`). Runs after a clean `npm ci` so it reflects the
+      # committed lockfile. Does NOT need the Postgres service. Fails the job on
+      # any high-or-above advisory in production deps (dev deps are omitted by
+      # the script itself). `npm audit` exits non-zero on findings and prints the
+      # advisory details, giving deterministic, actionable CI failure output.
+      - name: Security check (npm audit, prod deps)
+        run: npm run security-check
+
+      - name: Test (default — JSON/fallback and unit)
         run: npm test
+
+      # Real-database coverage for packages that have DATABASE_URL-gated
+      # Prisma suites. Skipped for token-sniper-bot (no DB-gated suites) and
+      # shared (no database). DATABASE_URL is set ONLY in this step's env, so
+      # the default `npm test` step above keeps exercising the JSON/fallback path
+      # untouched. We run the explicit DB test files (not a name filter) so the
+      # JSON-fallback HTTP suite is never loaded while a live DATABASE_URL is in scope.
+      - name: Test (PostgreSQL — claim/P2002/stale-claim suites)
+        if: matrix.project != 'token-sniper-bot' && matrix.project != 'shared'
+        env:
+          DATABASE_URL: postgresql://postgres:***@localhost:5432/postgres?schema=public
+          # Lets token-safety-bot's seeded-wallet DB test call authenticateWallet
+          # without a real signature (test-runtime only; no production effect).
+          SKIP_WALLET_SIGNATURE_VERIFY: 'true'
+        run: |
+          # Apply this package's prisma migrations to the service container.
+          npx prisma migrate deploy
+          # Run only the DATABASE_URL-gated Prisma suites (explicit files so
+          # the JSON-fallback HTTP suite is never loaded under DATABASE_URL).
+          DB_FILES=()
+          for f in tests/database-prisma.test.ts tests/database-analytics.test.ts tests/database-behavior.test.ts tests/database-breakdown.test.ts; do
+            [ -f "$f" ] && DB_FILES+=("$f")
+          done
+          if [ ${#DB_FILES[@]} -gt 0 ]; then
+            npx jest "${DB_FILES[@]}"
+          else
+            echo "No DATABASE_URL-gated test files in ${{ matrix.project }}"
+          fi
