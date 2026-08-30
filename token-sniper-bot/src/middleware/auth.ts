@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config/environment";
 import { logger } from "../utils/logger";
+import { parseAuthToken } from "../auth/parseAuthToken";
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -43,12 +44,11 @@ export const authMiddleware = async (
       return;
     }
 
-    const decoded = jwt.verify(token, config.jwt.secret) as JWTPayload;
-    req.user = {
-      id: decoded.userId,
-      walletAddress: decoded.walletAddress,
-      subscriptionTier: decoded.subscriptionTier,
-    };
+    // Pin algorithm to HS256; use dual-read parser for claim normalization
+    const decoded = jwt.verify(token, config.jwt.secret, {
+      algorithms: ["HS256"]
+    }) as JWTPayload;
+    req.user = parseAuthToken(decoded, config.jwt.issuer, config.jwt.audience);
 
     next();
   } catch (error) {
@@ -175,7 +175,9 @@ export const generateRefreshToken = (userId: string): string => {
 };
 
 export const verifyRefreshToken = (token: string): { userId: string } => {
-  const decoded = jwt.verify(token, config.jwt.refreshSecret) as any;
+  const decoded = jwt.verify(token, config.jwt.refreshSecret, {
+    algorithms: ["HS256"]
+  }) as any;
   return { userId: decoded.userId };
 };
 
@@ -189,12 +191,11 @@ export const optionalAuthMiddleware = async (
     const token = authHeader && authHeader.split(" ")[1];
 
     if (token) {
-      const decoded = jwt.verify(token, config.jwt.secret) as JWTPayload;
-      req.user = {
-        id: decoded.userId,
-        walletAddress: decoded.walletAddress,
-        subscriptionTier: decoded.subscriptionTier,
-      };
+      // Pin algorithm to HS256; use dual-read parser
+      const decoded = jwt.verify(token, config.jwt.secret, {
+        algorithms: ["HS256"]
+      }) as JWTPayload;
+      req.user = parseAuthToken(decoded, config.jwt.issuer, config.jwt.audience);
     }
 
     next();

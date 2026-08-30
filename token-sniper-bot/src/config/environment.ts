@@ -52,6 +52,8 @@ export const config = {
     expiresIn: process.env.JWT_EXPIRES_IN ?? "24h",
     refreshSecret:
       process.env.REFRESH_TOKEN_SECRET ?? "token-sniper-bot-dev-refresh",
+    issuer: process.env.JWT_ISSUER,
+    audience: process.env.JWT_AUDIENCE,
   },
 
   auth: {
