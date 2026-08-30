@@ -1,11 +1,8 @@
 import type { NextFunction, Response } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config/environment";
-import type {
-  AuthenticatedRequest,
-  AuthenticatedUser,
-  SubscriptionTier,
-} from "../types/auth";
+import type { AuthenticatedRequest, AuthenticatedUser, SubscriptionTier } from "../types/auth";
+import { parseAuthToken } from "../auth/parseAuthToken";
 import { logger } from "../utils/logger";
 
 interface AccessTokenPayload {
@@ -49,15 +46,11 @@ export const authMiddleware = (
   }
 
   try {
-    const payload = jwt.verify(
-      token,
-      config.auth.jwtSecret,
-    ) as AccessTokenPayload;
-    req.user = {
-      id: payload.userId,
-      walletAddress: payload.walletAddress,
-      subscriptionTier: payload.subscriptionTier,
-    };
+    // Pin algorithm to HS256; use dual-read parser for claim normalization
+    const payload = jwt.verify(token, config.auth.jwtSecret, {
+      algorithms: ["HS256"]
+    });
+    req.user = parseAuthToken(payload, config.auth.jwtIssuer, config.auth.jwtAudience);
     next();
   } catch (error) {
     logger.error("Authentication failed", { error });

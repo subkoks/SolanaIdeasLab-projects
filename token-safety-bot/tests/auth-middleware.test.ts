@@ -85,7 +85,7 @@ describe("authentication middleware valid JWT", () => {
         subscriptionTier: "pro",
       },
       secret,
-      { expiresIn: "1h" },
+      { expiresIn: "1h", algorithm: "HS256" },
     );
 
     const { authMiddleware } =
