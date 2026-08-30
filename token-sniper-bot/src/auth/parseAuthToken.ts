@@ -1,5 +1,12 @@
-import type { JWTPayload } from './auth';
-import type { AuthenticatedUser, SubscriptionTier } from '../token-safety-bot/src/types/auth';
+import type { JWTPayload } from '../middleware/auth';
+
+export type SubscriptionTier = 'free' | 'basic' | 'pro' | 'enterprise';
+
+export interface AuthenticatedUser {
+  id: string;
+  walletAddress: string;
+  subscriptionTier: SubscriptionTier;
+}
 
 /**
  * Normalized JWT payload shape (what we want to accept internally)
@@ -117,6 +124,6 @@ export function parseAuthToken(
   return {
     id: finalId,
     walletAddress: finalWallet,
-    subscriptionTier: finalTier,
+    subscriptionTier: finalTier as SubscriptionTier,
   };
 }
