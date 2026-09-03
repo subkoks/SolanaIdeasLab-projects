@@ -2,37 +2,44 @@
 
 Convention: untracked planning artifact at repo root. Updated at session end.
 
-## Session: 2026-08-30 — JWT Token-Shape Migration (READ-ONLY / PLANNING-ONLY)
+## Session: 2026-08-31 — Web3 Dependency Compatibility Assessment (READ-ONLY / PLANNING-ONLY)
 
-### Repo state reconciled (no branch changes, no destructive commands)
-- Local `main` = fe90873; `origin/main` = e82f60f (15+ commits ahead; fetch only).
-- Working tree clean, no stashes, one worktree (main).
-- Local `security/replay-safe-auth-billing` = f9b88fbe (independent; equals local main).
+### Repo state reconciled (no destructive commands)
+- Local `main` = `bd89f401` (origin/main); `feat/jwt-phase1-safety-bot-dual-read` = `45f499e` + `ae3c95f` (open unmerged PR #231); stash@{0} preserved
+- `origin/main` = `bd89f401` (fetched; no advance since assessment)
+- PR #231 verify blocked by pre-existing `npm audit` (`fast-uri`/`mysql2`) — not by JWT Phase 1
+- Dependabot PRs #232-#234 (fast-uri/mysql2/qs) noted but not merged/modified
+- All branches preserved (see list in WEB3_COMPATIBILITY_PLAN.md §12)
+- Untracked files: `AUTONOMOUS_HANDOFF.md`, `AUTONOMOUS_PROGRESS.md`, `WEB3_COMPATIBILITY_PLAN.md`
 
-### Milestone outcome
-- Completed full read-only discovery of the JWT token lifecycle across both issuing bots
-  and all consumers. Deliverable: `JWT_MIGRATION_PLAN.md` (root).
-- **Key findings:**
-  - token-sniper-bot and token-safety-bot have DIVERGENT JWT contracts:
-    secret defaults differ, access TTL differs (24h hardcoded vs 1h env), refresh-token
-    shape differs (sniper: separate secret + minimal payload; safety: same secret + full
-    payload), and authorization middleware sets differ (sniper has premium/pro/enterprise/
-    optional/rate-limit; safety has scan-limit/admin only).
-  - Neither bot pins `algorithms` in `jwt.verify`, and neither sets `iss`/`aud`/`jti`/
-    `tokenVersion` or uses `sub`. Pre-existing algorithm-confusion exposure.
-  - `shared/` (`wallet-auth.ts`, `api/middleware.ts`) is a SCAFFOLD and NOT in the
-    production path; `shared/auth/wallet-auth.ts` already prototypes a normalized `AuthUser`
-    using `wallet` (the target name). `wallet-tracker-pro` does not verify JWTs in runtime.
-- **Recommended strategy:** versioned normalized issuance (`sub`/`wallet`/`tier`) +
-  dual-read acceptance with deterministic claim precedence and conflict rejection.
-  No DB migration needed (mapping is in code). Rollback = revert issuer only; verifier
-  stays dual-read so in-flight tokens remain valid until natural expiry.
+### Assessment outcome
+- **Completed full read-only inventory** of `@solana/web3.js` usage across 3 packages (token-safety-bot, token-sniper-bot, wallet-tracker-pro)
+- **Direct imports**: 4 files across 3 packages; all read-only (Connection, PublicKey, commitment/types)
+- **No runtime transaction construction, signing, sending, or deployment** found in any project
+- **Advisory reachability**: uuid 9.0.1 CVE-2024-38117 is not reachable from `@solana/web3.js`; uuid ^14.0.2 is patched and independent
+- **Recommended option**: Retain `^1.95.0`; document advisory as non-reachable; no upgrade needed
+- **Risk**: Low — module-format shift to ESM-only in `^1.100+` is the only concern; not relevant for current read-only usage
 
-### Next milestone (blocked on approval — see JWT_MIGRATION_PLAN.md §11)
-- Phase 1 (compatibility parser + alg pin) requires explicit approval of the 6 open
-  decisions. No implementation performed this session (planning-only).
+### Key findings
+- `@solana/web3.js` `^1.95.0` is the direct dependency in all 3 packages
+- Transitive `@solana/web3.js` deps: zero
+- All imports are type-safe, read-only patterns (no Transaction, no sign/send/sendTransaction)
+- Module-format (ESM/CJS) is the only breaking-change vector; not triggered by current usage
+- `tweetnacl` + `bs58` used for wallet auth in token-safety-bot, NOT `@solana/web3.js` at runtime
 
 ### Hard boundaries honored
-- No source/tests/config/lockfile/schema/branch/GitHub changes.
-- No secrets, keys, or credentials read or revealed.
-- No external services, RPC, wallets, or transactions.
+- No source, manifest, lockfile, test, CI, GitHub, database, secret, wallet, or system changes
+- No secrets, keys, or credentials read or revealed
+- No real RPC, devnet, testnet, or mainnet access
+- No staging, cloud, hosting, deployments, wallets, signing, transactions
+
+### Next steps (blocked on explicit approval)
+- Phase 1 (retention): Document recommendation; no code changes required
+- Phase 2 (upgrade): Requires explicit approval per WEB3_COMPATIBILITY_PLAN.md §11
+- Phase 3 (implementation): Deferred until approval
+
+### Rollback method
+- `git reset --hard HEAD` — restores all package.json files to `^1.95.0`
+- `npm install` with original lockfile reinstates `^1.95.0`
+- `tsc --noEmit` and `npm test` confirm no regression
+- No data loss; no state modifications were made during this session
