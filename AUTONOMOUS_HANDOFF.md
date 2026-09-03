@@ -21,7 +21,7 @@ Convention: untracked planning artifact at repo root. Updated after each session
 - Recommendation: retain ^1.95.0; no upgrade needed
 - CI state: all 70 tests pass; tsc --noEmit passes; npm run lint passes
 - Branch state: all branches preserved; no destructive commands
-- Rollback: trivial (no changes to revert)
+- Rollback (reverts both docs commits): git revert cfeb417 181eb2a; git push
 
 ### Branch state
 - `main` = `bd89f401` (origin/main, token-sniper-bot JWT Phase 1 PR #230 merged); `feat/jwt-phase1-safety-bot-dual-read` = `45f499e` + `ae3c95f` (open PR #231, unmerged)
