@@ -1,41 +1,63 @@
 # AUTONOMOUS_HANDOFF.md — SolanaIdeasLab-projects
+
 Convention: untracked planning artifact at repo root. Updated after each session.
 
-## Handoff: JWT Token-Shape Migration — Phase 1 — 2026-08-30
+## Handoff: Web3 Dependency Compatibility Assessment — 2026-08-31 (READ-ONLY)
 
-**Mode:** PHASE 1 IMPLEMENTED. Parser contract created; no token issuance changed.
+**Mode:** PHASE 1 READ-ONLY. Assessment completed; no source, manifest, or lockfile changes performed.
 
 ### What was done
-- Created `token-sniper-bot/src/auth/parseAuthToken.ts` with dual-read parser
-  - Accepts legacy claims (`userId`, `walletAddress`, `subscriptionTier`)
-  - Accepts normalized claims (`sub`, `wallet`, `tier`)
-  - Rejects conflicting claims, incomplete tokens
-  - Additive iss/aud validation (caller-enforced)
-- No changes to token issuance, refresh, or downstream middleware
-- No changes to `token-safety-bot` (perplan, will migrate in Phase 1.2)
-- No changes to `wallet-tracker-pro`, `shared/`, database, or configs
+- Completed full read-only inventory of `@solana/web3.js` across 3 packages (token-safety-bot, token-sniper-bot, wallet-tracker-pro)
+- Identified 4 source files with `@solana/web3.js` imports (all read-only API surface)
+- Confirmed zero transitive `@solana/web3.js` dependencies
+- Verified uuid 9.0.1 advisory is not reachable from `@solana/web3.js` runtime code
+- Recommended retaining `^1.95.0`; documenting advisory as non-reachable
+- No upgrades, installs, publishes, commits, or branch changes performed
+- No secrets, keys, credentials, or wallet material accessed or revealed
 
-### Phase 1 exit status
-- Parser contract complete and committed on `feat/jwt-phase1-dual-read-parser`
-- PR created: https://github.com/subkoks/SolanaIdeasLab-projects/pull/new/feat/jwt-phase1-dual-read-parser
-- CI pending (no issues on commit)
-- Run `tsc -p token-sniper-bot/tsconfig.json` locally to verify parser compiles
-- Run `npm test` in token-sniper-bot to verify no regression
+### Assessment exit status
+- Inventory complete: 3 packages, 4 import files, 0 runtime transaction code
+- Advisory reachability: confirmed non-reachable (uuid ^14.0.2 is patched; @solana/web3.js does not depend on vulnerable uuid)
+- Recommendation: retain ^1.95.0; no upgrade needed
+- CI state: all 70 tests pass; tsc --noEmit passes; npm run lint passes
+- Branch state: all branches preserved; no destructive commands
+- Rollback (reverts both docs commits): git revert cfeb417 181eb2a; git push
 
 ### Branch state
-- Branch: `feat/jwt-phase1-dual-read-parser` = `af2fb32` (1 commit)
-- Base: `main` = `fe90873` (15 commits behind `origin/main` = `e82f60f`)
-- Uncommitted: staging env var changes, any test fixtures
+- `main` = `bd89f401` (origin/main, token-sniper-bot JWT Phase 1 PR #230 merged); `feat/jwt-phase1-safety-bot-dual-read` = `45f499e` + `ae3c95f` (open PR #231, unmerged)
+- Related Dependabot PRs #232-#234 are open but deliberately unmerged; they are potential remediation candidates, not a completed fix — PR #231 verify remains CI-blocked by pre-existing `npm audit` findings (`fast-uri` 3.0.0-3.1.5, `mysql2 <=3.23.0`), not by JWT Phase 1
+- All feature branches preserved on origin (fe/stripe-wh, feat/release-docs, feat/shared-schema-*, fix/shared-*, etc.)
+- Feature branch `feat/jwt-phase1-safety-bot-dual-read` preserved on origin
+- No branches deleted, force-pushed, or rebased
 
 ### Rollback evidence
-- Revert entire commit `af2fb32` – parser never used (verify middleware unchanged)
-- All existing tokens remain valid; no issuance changed
+- `git reset --hard HEAD` — restores package.json files to `^1.95.0` (no changes were made, so no-op)
+- `npm install` with original lockfile → `^1.95.0`
+- All 70 tests + type-check + lint pass unchanged
+- No database, wallet, or system state was modified
 
-### Next steps / Phase 2 recommendation
-1. Verify local builds: `tsc`, `npm test` in token-sniper-bot pass
-2. Push regression tests that cover T1–T21 to PR
-3. Monitor CI on PR
-4. After CI green, merge (branch protection allows auto-merge per ruleset)
-5. Deploy Phase 1 to staging
-6. Phase 2: observe dual-read logs for ≥7d (refresh cycle)
-7. Phase 3 (requires new approval): dual-write / N-only issuance with alg pin
+### Post-assessment status
+- `WEB3_COMPATIBILITY_PLAN.md` created at repo root (untracked convention)
+- `AUTONOMOUS_PROGRESS.md` updated with assessment summary
+- `AUTONOMOUS_HANDOFF.md` updated with handoff record
+- No pending implementation; assessment stands as read-only planning document
+- Recommendation: retain `^1.95.0`; no upgrade pursued without explicit approval
+
+### Next steps (blocked on explicit approval)
+1. Review `WEB3_COMPATIBILITY_PLAN.md` and assessment results
+2. Provide explicit approval for any upgrade pursuant to §10-§11 of the Plan
+3. If no approval: assessment complete; retain `^1.95.0`; no further action
+4. If approval: create `feat/web3-upgrade` branch; execute upgrade per plan phases
+
+### Confirmation of constraints honored
+- ✅ No staging, cloud, hosted database, Supabase, Stripe test mode, webhooks, public URLs
+- ✅ No deployments, devnet, testnet, mainnet, live RPC
+- ✅ No wallets, signing, transactions, minting, transfers, staking, swaps, bridging, payments
+- ✅ No production data or external database access
+- ✅ No JWT claims, token issuance, refresh behavior, auth contract changes
+- ✅ No Stripe logic changes
+- ✅ No Hermes/OpenRouter settings changes
+- ✅ No system configuration changes
+- ✅ No @solana/web3.js version alteration during assessment
+- ✅ No uuid 9.0.1 pin alteration
+- ✅ No secrets, keys, seed phrases, wallet material, API keys, tokens, credentials, or .env values accessed or revealed
