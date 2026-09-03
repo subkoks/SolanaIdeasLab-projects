@@ -25,7 +25,7 @@ Convention: untracked planning artifact at repo root. Updated after each session
 
 ### Branch state
 - `main` = `bd89f401` (origin/main, token-sniper-bot JWT Phase 1 PR #230 merged); `feat/jwt-phase1-safety-bot-dual-read` = `45f499e` + `ae3c95f` (open PR #231, unmerged)
-- PR #231 verify blocked by pre-existing `npm audit` findings (`fast-uri` 3.0.0-3.1.5, `mysql2 <=3.23.0`), not by JWT Phase 1
+- Related Dependabot PRs #232-#234 are open but deliberately unmerged; they are potential remediation candidates, not a completed fix — PR #231 verify remains CI-blocked by pre-existing `npm audit` findings (`fast-uri` 3.0.0-3.1.5, `mysql2 <=3.23.0`), not by JWT Phase 1
 - All feature branches preserved on origin (fe/stripe-wh, feat/release-docs, feat/shared-schema-*, fix/shared-*, etc.)
 - Feature branch `feat/jwt-phase1-safety-bot-dual-read` preserved on origin
 - No branches deleted, force-pushed, or rebased

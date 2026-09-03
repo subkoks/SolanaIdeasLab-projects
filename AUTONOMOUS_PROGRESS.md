@@ -8,7 +8,7 @@ Convention: untracked planning artifact at repo root. Updated at session end.
 - Local `main` = `bd89f401` (origin/main); `feat/jwt-phase1-safety-bot-dual-read` = `45f499e` + `ae3c95f` (open unmerged PR #231); stash@{0} preserved
 - `origin/main` = `bd89f401` (fetched; no advance since assessment)
 - PR #231 verify blocked by pre-existing `npm audit` (`fast-uri`/`mysql2`) — not by JWT Phase 1
-- Dependabot PRs #232-#234 (fast-uri/mysql2/qs) noted but not merged/modified
+- Related Dependabot PRs #232-#234 are open but deliberately unmerged; they are potential remediation candidates, not a completed fix — PR #231 verify remains CI-blocked by these pre-existing `npm audit` (fast-uri 3.0.0-3.1.5, mysql2 <=3.23.0) findings, not by JWT Phase 1
 - All branches preserved (see list in WEB3_COMPATIBILITY_PLAN.md §12)
 - Untracked files: `AUTONOMOUS_HANDOFF.md`, `AUTONOMOUS_PROGRESS.md`, `WEB3_COMPATIBILITY_PLAN.md`
 
