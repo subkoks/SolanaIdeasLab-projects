@@ -1,15 +1,9 @@
 import type { NextFunction, Response } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config/environment";
-import type { AuthenticatedRequest, AuthenticatedUser, SubscriptionTier } from "../types/auth";
+import type { AuthenticatedRequest, AuthenticatedUser } from "../types/auth";
 import { parseAuthToken } from "../auth/parseAuthToken";
 import { logger } from "../utils/logger";
-
-interface AccessTokenPayload {
-  userId: string;
-  walletAddress: string;
-  subscriptionTier: SubscriptionTier;
-}
 
 const getBearerToken = (
   authorizationHeader: string | undefined,
