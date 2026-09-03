@@ -302,7 +302,7 @@ export class PrismaDatabaseService {
   public async refreshToken(
     refreshToken: string,
   ): Promise<{ refreshToken: string; token: string }> {
-    const payload = jwt.verify(refreshToken, config.auth.jwtSecret) as {
+    const payload = jwt.verify(refreshToken, config.auth.jwtSecret, { algorithms: ['HS256'] }) as {
       userId: string
       walletAddress: string
       subscriptionTier: SubscriptionTier
