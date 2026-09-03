@@ -37,8 +37,8 @@
   "author": "SolanaIdeasLab",
   "license": "MIT",
   "dependencies": {
-    "@prisma/adapter-pg": "^7.9.1",
-    "@prisma/client": "^7.9.1",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "@solana/web3.js": "^1.95.0",
     "@solanaideaslab/shared": "file:../shared",
     "bs58": "^6.0.0",
@@ -50,13 +50,13 @@
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.23.0",
-    "prisma": "^7.9.1",
-    "stripe": "^22.5.0",
+    "prisma": "^7.10.0",
+    "stripe": "^22.6.0",
     "telegraf": "^4.16.3",
     "tweetnacl": "^1.0.3",
     "winston": "^3.11.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.6",
@@ -70,14 +70,14 @@
     "@types/supertest": "^7.2.1",
     "@typescript-eslint/eslint-plugin": "^8.67.0",
     "@typescript-eslint/parser": "^8.61.0",
-    "eslint": "^10.8.1",
+    "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
     "jest": "^30.4.2",
     "nodemon": "^3.0.2",
     "prettier": "^3.9.6",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.12",
-    "tsx": "^4.23.12",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3"
   },
   "engines": {
