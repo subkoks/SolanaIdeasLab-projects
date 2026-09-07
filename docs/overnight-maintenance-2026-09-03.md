@@ -11,10 +11,11 @@
 - mysql2: token-safety-bot (3.24.3 via overrides, PR #244) verified; mysql2 HIGH (GHSA-3f6p-5ww8-9rcr, GHSA-rgwj-5xj2-c3m3) resolved at package level
 - Prisma 7.9.1 unchanged; @solana/web3.js ^1.95.0 unchanged; uuid unchanged; no source/auth/Stripe/DB/CI changes
 
-## Unresolved Blockers (explicit — not hidden)
-- CI matrix verifies full bot matrix; #242/#243/#244 all fail verify because other bots still report advisories (token-sniper 3.1.5 in token-safety/wallet-tracker, mysql2 3.15.3 in token-sniper/wallet-tracker, fast-uri 3.1.5 in wallet-tracker)
-- wallet-tracker-pro needs separate fast-uri (3.1.6→3.1.7) and mysql2 fixes
-- No merge permitted until required checks genuinely green (hard boundary; no admin override)
+## Outcome (post-#245 merge 2026-09-03)
+- PR #245 (`978adc2`) merged 2026-09-03 covering all three bots; #242/#243/#244 remain open but are superseded by the combined #245.
+- Patched target versions retained: `fast-uri 3.1.7`, `mysql2 3.24.3` across all three bots.
+- Correction PR `fix/dependency-manifest-lockfile-hygiene` adds the missing `fast-uri` override to token-sniper-bot and normalizes the token-sniper-bot lockfile to `https://registry.npmjs.org/` (removing the `pkgs.safetycli.com` URL).
+- #245 rollback (correct): `git revert 978adc205432238be5b237a3af05a753084c4278` (the previous `git revert 5ac1c99` reference is wrong).
 
 ## Explicit Non-Actions
 - No JWT/auth/web3/uuid/Prisma/Stripe/DB/CI/ruleset changes

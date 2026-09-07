@@ -1,0 +1,45 @@
+/* Solana Lab Console — token-driven visual layer */
+@import "./design-tokens.css";
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: var(--font-stack); color: var(--text-secondary); background: var(--base-bg); line-height: var(--line); }
+body { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* Header / nav */
+.page-header { background: linear-gradient(135deg, var(--elevated) 0%, var(--surface) 100%); border-bottom: var(--border); padding: 1.5rem var(--pad); }
+.page-header-inner { max-width: 900px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--pad-sm); }
+.page-titles { display: flex; flex-direction: column; gap: 0.25rem; }
+.page-titles h1 { font-size: var(--h1); font-weight: 700; letter-spacing: var(--letter); color: var(--text-primary); }
+.subtitle { font-size: var(--small); color: var(--text-muted); }
+.page-nav { display: flex; flex-wrap: wrap; gap: var(--pad-sm); }
+.nav-link { font-size: var(--small); color: var(--text-secondary); text-decoration: none; padding: 0.375rem 0.75rem; border-radius: var(--radius-sm); border: var(--border); }
+.nav-link:hover, .nav-link:focus { color: var(--text-primary); border-color: var(--blue); outline: none; }
+.nav-link:focus-visible { box-shadow: var(--focus); }
+
+/* Status chip */
+.status-chip { display: inline-block; font-size: 0.75rem; font-weight: 600; color: var(--blue); background: rgba(31,111,235,0.12); border-radius: 999px; padding: 0.125rem 0.5rem; margin-top: 0.25rem; align-self: flex-start; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* Main */
+main { flex: 1; max-width: 900px; width: 100%; margin: 0 auto; padding: var(--gap) var(--pad) calc(var(--gap) * 1.5); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--gap); }
+.card { background: var(--surface); border: var(--border); border-radius: var(--radius); padding: var(--pad); display: flex; flex-direction: column; gap: 0.5rem; transition: border-color 0.15s ease; }
+.card:hover { border-color: var(--blue); }
+.card h2 { font-size: var(--h2); font-weight: 600; color: var(--text-primary); }
+.card p { font-size: var(--small); color: var(--text-muted); flex: 1; }
+.button { display: inline-block; margin-top: 0.25rem; padding: 0.5rem 1rem; background: var(--blue); color: #ffffff; border-radius: var(--radius-sm); font-size: var(--small); font-weight: 500; text-decoration: none; text-align: center; transition: background 0.15s ease; }
+.button:hover, .button:focus { background: #388bfd; outline: none; }
+.button:focus-visible { box-shadow: var(--focus); }
+
+/* Footer */
+.page-footer { background: var(--elevated); border-top: var(--border); padding: var(--pad); }
+.page-footer ul { max-width: 900px; margin: 0 auto; list-style: none; display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; }
+.page-footer li { font-size: 0.8125rem; color: var(--text-muted); padding-left: 0.875rem; position: relative; }
+.page-footer li::before { content: '\2014'; position: absolute; left: 0; color: var(--blue); }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .page-header-inner { flex-direction: column; align-items: flex-start; }
+  .page-nav { width: 100%; }
+  .cards { grid-template-columns: 1fr; }
+}
