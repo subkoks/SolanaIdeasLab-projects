@@ -6,6 +6,8 @@ import {
   isFixtureId,
   getFixtureRisk,
   type FixtureId,
+  type FixtureSignalSeverity,
+  type FixtureRiskExplanation,
 } from '../src/services/fixtureRiskAdapter';
 import { SafetyScannerService } from '../src/services/safety-scanner';
 
@@ -214,5 +216,138 @@ describe('normal non-fixture request — getAgentRisk called with correct args',
     expect(res.body).not.toHaveProperty('isSimulated');
     expect(res.body).not.toHaveProperty('source', 'local-fixture');
     spy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Explainable fixture reports (additive only)
+// ---------------------------------------------------------------------------
+
+describe('fixture explanation contract', () => {
+  const validSeverities: FixtureSignalSeverity[] = ["positive", "warning", "critical"];
+
+  it('safe-token: explanation exists with positive signals, non-empty fields', () => {
+    const result = getFixtureRisk('safe-token');
+    expect(result).toHaveProperty('explanation');
+    const exp = result.explanation;
+    expect(typeof exp.summary).toBe('string');
+    expect(exp.summary.length).toBeGreaterThan(0);
+    expect(typeof exp.nextAction).toBe('string');
+    expect(exp.nextAction.length).toBeGreaterThan(0);
+    expect(Array.isArray(exp.signals)).toBe(true);
+    expect(exp.signals.length).toBeGreaterThanOrEqual(2);
+    const ids = exp.signals.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length); // unique
+    for (const s of exp.signals) {
+      expect(typeof s.id).toBe('string');
+      expect(s.id.length).toBeGreaterThan(0);
+      expect(validSeverities).toContain(s.severity);
+      expect(typeof s.title).toBe('string');
+      expect(s.title.length).toBeGreaterThan(0);
+      expect(typeof s.detail).toBe('string');
+      expect(s.detail.length).toBeGreaterThan(0);
+    }
+    const hasPositive = exp.signals.some((s) => s.severity === 'positive');
+    expect(hasPositive).toBe(true);
+    const hasCritical = exp.signals.some((s) => s.severity === 'critical');
+    expect(hasCritical).toBe(false);
+  });
+
+  it('review-token: explanation with at least one warning, non-empty fields', () => {
+    const result = getFixtureRisk('review-token');
+    expect(result).toHaveProperty('explanation');
+    const exp = result.explanation;
+    expect(exp.summary.length).toBeGreaterThan(0);
+    expect(exp.nextAction.length).toBeGreaterThan(0);
+    expect(exp.signals.length).toBeGreaterThanOrEqual(2);
+    const warnings = exp.signals.filter((s) => s.severity === 'warning');
+    expect(warnings.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('blocked-token: explanation with at least two critical signals', () => {
+    const result = getFixtureRisk('blocked-token');
+    expect(result).toHaveProperty('explanation');
+    const exp = result.explanation;
+    expect(exp.summary.length).toBeGreaterThan(0);
+    expect(exp.nextAction.length).toBeGreaterThan(0);
+    expect(exp.signals.length).toBeGreaterThanOrEqual(2);
+    const criticals = exp.signals.filter((s) => s.severity === 'critical');
+    expect(criticals.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('determinism: repeated requests return identical explanation payloads', () => {
+    for (const id of ['safe-token', 'review-token', 'blocked-token'] as FixtureId[]) {
+      const a = getFixtureRisk(id);
+      const b = getFixtureRisk(id);
+      expect(a.explanation).toEqual(b.explanation);
+      expect(a.explanation.signals).toEqual(b.explanation.signals);
+    }
+  });
+
+  it('signal order remains stable', () => {
+    for (const id of ['safe-token', 'review-token', 'blocked-token'] as FixtureId[]) {
+      const ids = getFixtureRisk(id).explanation.signals.map((s) => s.id);
+      const ids2 = getFixtureRisk(id).explanation.signals.map((s) => s.id);
+      expect(ids).toEqual(ids2);
+    }
+  });
+});
+
+describe('fixture explanation under route-level isolation', () => {
+  let originalEnv: string | undefined;
+
+  beforeEach(() => {
+    originalEnv = process.env.NODE_ENV;
+    setEnv('development');
+  });
+
+  afterEach(() => {
+    setEnv((originalEnv as 'development' | 'test' | 'production') ?? 'development');
+  });
+
+  const fixtureIds: FixtureId[] = ['safe-token', 'review-token', 'blocked-token'];
+  for (const id of fixtureIds) {
+    it(`${id}: explanation present in response with valid signal severity`, async () => {
+      const bot = new TokenSafetyBot();
+      const res = await request(bot.getApp()).get(
+        `/api/v1/risk/${VALID_BASE58}?fixture=${id}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.explanation).toBeDefined();
+      expect(typeof res.body.explanation.summary).toBe('string');
+      expect(typeof res.body.explanation.nextAction).toBe('string');
+      expect(Array.isArray(res.body.explanation.signals)).toBe(true);
+      for (const s of res.body.explanation.signals) {
+        expect(['positive', 'warning', 'critical']).toContain(s.severity);
+      }
+    });
+  }
+
+  it('existing isolation preserved: fixture path does not call getAgentRisk', async () => {
+    const spy = jest.spyOn(SafetyScannerService.prototype, 'getAgentRisk');
+    const bot = new TokenSafetyBot();
+    const res = await request(bot.getApp()).get(
+      `/api/v1/risk/${VALID_BASE58}?fixture=safe-token`,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.explanation).toBeDefined();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('production: fixture response does not expose explanation or signal details', async () => {
+    setEnv('production');
+    const spy = jest.spyOn(SafetyScannerService.prototype, 'getAgentRisk');
+    const bot = new TokenSafetyBot();
+    const res = await request(bot.getApp()).get(
+      `/api/v1/risk/${VALID_BASE58}?fixture=safe-token`,
+    );
+    expect(res.status).toBe(404);
+    expect(res.body).not.toHaveProperty('explanation');
+    expect(res.body).not.toHaveProperty('fixtureId');
+    expect(res.body).not.toHaveProperty('signals');
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+    setEnv('development');
   });
 });
