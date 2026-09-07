@@ -81,6 +81,8 @@ export const config = {
     adminWalletAddresses: parseWalletAddresses(
       process.env.ADMIN_WALLET_ADDRESSES,
     ),
+    jwtIssuer: process.env.JWT_ISSUER,
+    jwtAudience: process.env.JWT_AUDIENCE,
     skipWalletSignatureVerify:
       isDevelopmentOrTestRuntime &&
       process.env.SKIP_WALLET_SIGNATURE_VERIFY === "true",
