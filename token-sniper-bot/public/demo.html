@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Token Sniper Bot — Local Fixture Alert Demo</title>
+<link rel="stylesheet" href="/demo.css" />
+</head>
+<body>
+<header>
+  <h1>Token Sniper Bot</h1>
+  <p class="subtitle">Local Fixture Alert Demo</p>
+  <div class="badge">LOCAL ONLY · SIMULATED DATA · NO LIVE MONITORING</div>
+</header>
+<main>
+  <aside aria-label="Fixture selector">
+    <h2>Select Scenario</h2>
+    <div role="radiogroup" aria-label="Fixture scenario">
+      <button class="scenario" data-id="watch-launch" onclick="selectFixture('watch-launch')">
+        <h3>Watch Launch</h3>
+        <p>Low severity · Recommendation: Watch · Positive simulated signal posture</p>
+      </button>
+      <button class="scenario" data-id="review-launch" onclick="selectFixture('review-launch')">
+        <h3>Review Launch</h3>
+        <p>Medium severity · Recommendation: Review · Warning-signal posture</p>
+      </button>
+      <button class="scenario" data-id="suppress-launch" onclick="selectFixture('suppress-launch')">
+        <h3>Suppress Launch</h3>
+        <p>High severity · Recommendation: Suppress · Critical-signal posture</p>
+      </button>
+    </div>
+    <button id="loadBtn" onclick="loadAlert()" disabled>Load Local Alert</button>
+    <p class="hint">Keys 1 / 2 / 3 select; Enter loads.</p>
+  </aside>
+  <section aria-label="Result" id="result" aria-live="polite">
+    <h2>Alert Result</h2>
+    <div id="empty">Select a scenario and load.</div>
+    <div id="loading" hidden>Loading simulated fixture…</div>
+    <div id="success" hidden>
+      <div class="badges">
+        <span id="recBadge"></span>
+        <span id="sevBadge"></span>
+        <span id="confBadge"></span>
+      </div>
+      <dl>
+        <dt>Token label</dt><dd id="label"></dd>
+        <dt>Fixture address</dt><dd id="addr"></dd>
+        <dt>Alert ID</dt><dd id="alertId"></dd>
+        <dt>Fixture ID</dt><dd id="fixtureId"></dd>
+        <dt>Generated</dt><dd id="generated"></dd>
+        <dt>Source</dt><dd id="source"></dd>
+        <dt>Confidence</dt><dd id="conf"></dd>
+      </dl>
+      <h3>Summary</h3><p id="summary"></p>
+      <h3>Next action</h3><p id="nextAction"></p>
+      <h3>Signals</h3>
+      <div id="signals"></div>
+      <details>
+        <summary>View Raw JSON</summary>
+        <pre id="raw"></pre>
+      </details>
+    </div>
+    <div id="error" hidden><p>Local fixture request failed. Try again.</p></div>
+  </section>
+</main>
+<footer>
+  <p>This dashboard uses deterministic local fixture data only. No live monitoring, market data, Solana RPC, wallet, transaction, signing, or external service was used.</p>
+</footer>
+<script src="/demo.js"></script>
+</body>
+</html>
