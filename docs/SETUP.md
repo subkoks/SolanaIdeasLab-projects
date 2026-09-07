@@ -72,6 +72,12 @@ Deterministic simulated demos. No API keys, wallet, live RPC, Redis, or DB requi
 
 Open the Console first; it only links to the module demos (no data aggregation).
 
+When all four servers are running:
+
+```bash
+./scripts/local-lab-smoke.sh
+```
+
 Design tokens (after editing `shared/design/tokens.css`):
 
 ```bash

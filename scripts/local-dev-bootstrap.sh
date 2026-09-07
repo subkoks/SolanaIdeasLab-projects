@@ -6,6 +6,13 @@
 #   scripts/local-dev-bootstrap.sh --check   # type-check only, skip npm ci
 #
 # Does NOT commit .env files. Copy .env.example → .env only when .env is missing.
+#
+# After bootstrap, the local fixture lab (no keys / no live chain) is:
+#   Console  http://localhost:3002/          → cd solana-lab-console && npm run dev
+#   Safety   http://localhost:3000/demo      → cd token-safety-bot && npm run dev
+#   Sniper   http://localhost:8000/demo      → cd token-sniper-bot && npm run dev
+#   Wallet   http://localhost:3001/demo      → cd wallet-tracker-pro && npm run dev
+# Smoke (servers already up): scripts/local-lab-smoke.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -45,4 +52,16 @@ for proj in token-safety-bot token-sniper-bot wallet-tracker-pro; do
   (cd "$dir" && npm run type-check)
 done
 
+log "=== design tokens (read-only drift check) ==="
+(cd "$ROOT" && node shared/design/check-tokens.js)
+
+log "=== solana-lab-console (static launcher; no npm install) ==="
+(cd "$ROOT/solana-lab-console" && npm test)
+
 log "[DONE] SolanaIdeasLab projects bootstrapped."
+log "Fixture lab (start each in its own terminal, then open Console):"
+log "  cd solana-lab-console && npm run dev     → http://localhost:3002/"
+log "  cd token-safety-bot && npm run dev       → http://localhost:3000/demo"
+log "  cd token-sniper-bot && npm run dev       → http://localhost:8000/demo"
+log "  cd wallet-tracker-pro && npm run dev     → http://localhost:3001/demo"
+log "Smoke when servers are up: scripts/local-lab-smoke.sh"

@@ -15,6 +15,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BOTS=(token-safety-bot token-sniper-bot wallet-tracker-pro)
 
+echo "==> Design tokens (read-only drift check + unit tests)"
+cd "$ROOT"
+node shared/design/check-tokens.js
+node --test shared/design/check-tokens.test.js
+
 echo "==> Verifying shared/ (self-contained package, clean isolated install)"
 cd "$ROOT/shared"
 # Never trust a symlinked node_modules — CI uses a real install.
@@ -36,5 +41,9 @@ for bot in "${BOTS[@]}"; do
   npm run type-check
   npm test
 done
+
+echo "==> Verifying solana-lab-console (static launcher; no deps)"
+cd "$ROOT/solana-lab-console"
+npm test
 
 echo "==> All packages type-check + test green (local, no deploy)."
