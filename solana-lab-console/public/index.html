@@ -4,40 +4,55 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Solana Lab Console — Local Fixture Launchpad</title>
+<link rel="stylesheet" href="design-tokens.css">
 <link rel="stylesheet" href="console.css">
 </head>
 <body>
-<header class="banner">
-  <h1>Solana Lab Console</h1>
-  <p class="subtitle">Local fixture-only launchpad. No live wallet connections. No blockchain integration.</p>
+<header class="page-header">
+  <div class="page-header-inner">
+    <div class="page-titles">
+      <h1>Solana Lab Console</h1>
+      <p class="subtitle">Local fixture-only launchpad.</p>
+      <span class="status-chip">Local only</span>
+    </div>
+    <nav class="page-nav" aria-label="Local demo navigation">
+      <a href="http://localhost:3000/" class="nav-link">Console</a>
+      <a href="http://localhost:3000/demo" class="nav-link">Token Safety</a>
+      <a href="http://localhost:8000/demo" class="nav-link">Token Sniper</a>
+      <a href="http://localhost:3001/demo" class="nav-link">Wallet Tracker</a>
+    </nav>
+  </div>
 </header>
 <main>
   <section class="cards">
     <article class="card">
       <h2>Token Safety Bot</h2>
       <p>Fixture-only risk scans. No real contract verification.</p>
-      <a href="http://localhost:3000/demo" target="_blank" rel="noopener noreferrer">Open local demo</a>
+      <a href="http://localhost:3000/demo" target="_blank" rel="noopener noreferrer" class="button">Open local demo</a>
     </article>
     <article class="card">
       <h2>Token Sniper Bot</h2>
       <p>Fixture-only alert demo. No live sniping.</p>
-      <a href="http://localhost:8000/demo" target="_blank" rel="noopener noreferrer">Open local demo</a>
+      <a href="http://localhost:8000/demo" target="_blank" rel="noopener noreferrer" class="button">Open local demo</a>
     </article>
     <article class="card">
       <h2>Wallet Tracker Pro</h2>
       <p>Fixture-only activity demo. No wallet monitoring.</p>
-      <a href="http://localhost:3001/demo" target="_blank" rel="noopener noreferrer">Open local demo</a>
+      <a href="http://localhost:3001/demo" target="_blank" rel="noopener noreferrer" class="button">Open local demo</a>
     </article>
   </section>
-  <section class="notice">
-    <h3>Important</h3>
-    <ul>
-      <li>All data shown in linked demos is synthetic / simulated.</li>
-      <li>No wallet connection, no live RPC, no transactions, no external services.</li>
-      <li>Module must be running separately for the link to resolve.</li>
-    </ul>
-  </section>
 </main>
+<footer class="page-footer">
+  <ul>
+    <li>Local only — no live deployment</li>
+    <li>Deterministic / simulated fixture data</li>
+    <li>No real wallet</li>
+    <li>No live RPC</li>
+    <li>No live blockchain activity</li>
+    <li>No transaction or signing capability</li>
+    <li>No external service dependency</li>
+  </ul>
+</footer>
 <script src="console.js"></script>
 </body>
 </html>

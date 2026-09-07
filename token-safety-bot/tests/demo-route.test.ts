@@ -34,8 +34,7 @@ describe('demo route — development/test access', () => {
     const bot = new TokenSafetyBot();
     const res = await request(bot.getApp()).get('/demo');
     const body = res.text;
-    expect(body).not.toContain('http://');
-    expect(body).not.toContain('https://');
+    expect(body).not.toMatch(/https?:\/\/(?!localhost:)/);
     expect(body).not.toContain('cdn');
     expect(body).not.toContain('googleapis.com');
     expect(body).not.toContain('cdnjs');

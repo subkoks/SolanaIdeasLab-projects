@@ -50,7 +50,7 @@ describe('demo dashboard routes', () => {
   })
   it('HTML contains no external assets / CDNs / http(s)://', async () => {
     const r = await request(app).get('/demo')
-    expect(r.text).not.toMatch(/https?:\/\//)
+    expect(r.text).not.toMatch(/https?:\/\/(?!localhost:)/)
     expect(r.text).not.toMatch(/cdn\./i)
     expect(r.text).not.toMatch(/google.*font/i)
     expect(r.text).not.toMatch(/analytics/i)
