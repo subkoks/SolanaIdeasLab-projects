@@ -447,14 +447,6 @@ export class TokenSafetyBot {
       riskRateLimitMiddleware(),
       async (req, res, next) => {
         try {
-          const tokenAddress = z
-            .string()
-            .min(32)
-            .parse(req.params.tokenAddress);
-          if (!isValidWalletAddress(tokenAddress)) {
-            res.status(400).json({ error: "Invalid Solana token address" });
-            return;
-          }
           const { analysisDepth, fixture: fixtureParam } = z.object({
             analysisDepth: z.enum(["quick", "deep", "full"]).default("quick"),
             fixture: z.string().optional(),
@@ -465,6 +457,18 @@ export class TokenSafetyBot {
               res.status(404).json({ error: "Not found" });
               return;
             }
+          }
+
+          const tokenAddress = z
+            .string()
+            .min(32)
+            .parse(req.params.tokenAddress);
+          if (!isValidWalletAddress(tokenAddress)) {
+            res.status(400).json({ error: "Invalid Solana token address" });
+            return;
+          }
+
+          if (fixtureParam !== undefined) {
             if (typeof fixtureParam !== "string" || fixtureParam.length === 0) {
               res.status(400).json({ error: "Invalid fixture parameter" });
               return;
@@ -473,7 +477,7 @@ export class TokenSafetyBot {
               res.status(400).json({ error: "Unknown fixture" });
               return;
             }
-            res.json(getFixtureRisk(fixtureParam, tokenAddress));
+            res.json(getFixtureRisk(fixtureParam));
             return;
           }
 
