@@ -4,9 +4,17 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Token Sniper Bot — Local Fixture Alert Demo</title>
+<link rel="stylesheet" href="/design-tokens.css" />
+<link rel="stylesheet" href="/demo-nav.css" />
 <link rel="stylesheet" href="/demo.css" />
 </head>
 <body>
+  <nav class="local-nav" aria-label="Local demo navigation" style="padding:1rem 2rem;">
+    <a href="http://localhost:3002/">Console</a>
+    <a href="http://localhost:3000/demo">Token Safety</a>
+    <a href="http://localhost:8000/demo" aria-current="page">Token Sniper</a>
+    <a href="http://localhost:3001/demo">Wallet Tracker</a>
+  </nav>
 <header>
   <h1>Token Sniper Bot</h1>
   <p class="subtitle">Local Fixture Alert Demo</p>
@@ -64,6 +72,15 @@
   </section>
 </main>
 <footer>
+  <ul class="local-footer">
+    <li>Local only</li>
+    <li>Simulated / deterministic fixture data</li>
+    <li>No real wallet</li>
+    <li>No live RPC</li>
+    <li>No live blockchain activity</li>
+    <li>No transaction or signing capability</li>
+    <li>No external service dependency</li>
+  </ul>
   <p>This dashboard uses deterministic local fixture data only. No live monitoring, market data, Solana RPC, wallet, transaction, signing, or external service was used.</p>
 </footer>
 <script src="/demo.js"></script>

@@ -91,6 +91,12 @@ export default function DemoClient() {
         <h1 className={styles.title}>Wallet Tracker Pro</h1>
         <p className={styles.subtitle}>Local Fixture Activity Demo</p>
         <span className={styles.badge}>LOCAL ONLY · SIMULATED DATA · NO WALLET CONNECTION</span>
+        <nav className={styles.localNav} aria-label="Local demo navigation">
+          <a href="http://localhost:3002/">Console</a>
+          <a href="http://localhost:3000/demo">Token Safety</a>
+          <a href="http://localhost:8000/demo">Token Sniper</a>
+          <a href="http://localhost:3001/demo" aria-current="page">Wallet Tracker</a>
+        </nav>
       </header>
       <main className={styles.main}>
         <aside className={styles.panel} aria-label="Fixture selector">
@@ -182,6 +188,15 @@ export default function DemoClient() {
         </section>
       </main>
       <footer className={styles.footer}>
+        <ul className={styles.localFooter}>
+          <li>Local only</li>
+          <li>Simulated / deterministic fixture data</li>
+          <li>No real wallet</li>
+          <li>No live RPC</li>
+          <li>No live blockchain activity</li>
+          <li>No transaction or signing capability</li>
+          <li>No external service dependency</li>
+        </ul>
         <p>
           This dashboard uses deterministic local fixture activity only. No real wallet, wallet
           connection, blockchain activity, Solana RPC, database, queue, WebSocket, transaction,

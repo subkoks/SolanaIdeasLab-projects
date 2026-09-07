@@ -30,6 +30,13 @@ const get = (p, urlPath) => new Promise((resolve, reject) => {
   }).on('error', reject);
 });
 
+describe('default port', () => {
+  it('default development port is 3002', () => {
+    const src = require('node:fs').readFileSync(path.join(__dirname, '../src/server.js'), 'utf8');
+    assert.match(src, /\?\? '3002'/);
+  });
+});
+
 describe('dev mode — fixture static console', () => {
   it('GET / returns 200 with HTML containing all three module names', async () => {
     const { status, body } = await get(port, '/');
@@ -59,8 +66,9 @@ describe('dev mode — fixture static console', () => {
     assert.strictEqual(body, '{"error":"Not found"}');
   });
 
-  it('HTML embeds exactly three confirmed local module links', async () => {
+  it('HTML embeds three confirmed local module links (console at 3002)', async () => {
     const { body } = await get(port, '/');
+    assert.match(body, /http:\/\/localhost:3002\//); // console self-link
     assert.match(body, /http:\/\/localhost:3000\/demo/);
     assert.match(body, /http:\/\/localhost:8000\/demo/);
     assert.match(body, /http:\/\/localhost:3001\/demo/);
