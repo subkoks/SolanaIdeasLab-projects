@@ -6,23 +6,9 @@ import { NextResponse } from 'next/server'
 // Mock next/server first
 jest.mock('next/server', () => ({
   NextResponse: Object.assign(
-    (body?: unknown, init?: { status?: number }) => {
-      const res = new (require('node:http').IncomingMessage as any)()
-      res.statusCode = init?.status ?? 200
-      res.body = body
-      res.json = (b: unknown) => {
-        res.body = b
-        return res
-      }
-      return res
-    },
+    (_body?: unknown, _init?: { status?: number }) => ({ status: 200, body: undefined, json: (_b?: unknown, _i?: { status?: number }) => ({ status: 200, body: undefined }) } as any),
     {
-      json: (body: unknown, init?: { status?: number }) => {
-        const res = new (require('node:http').IncomingMessage as any)() as any
-        res.statusCode = init?.status ?? 200
-        res.body = body
-        return res
-      },
+      json: (body: unknown, init?: { status?: number }) => ({ status: init?.status ?? 200, body }),
     },
   ),
 }))
