@@ -241,11 +241,11 @@ and identical authorization outcome for a token that round-trips L↔N.
   rejection, missing-claim rejection, wrong-algorithm rejection.
 - **Exit gate (§10) must be met before Phase 2.**
 
-### Phase 2 — Dual-read validation (observability)
-- Ship Phase 1 to staging/prod behind no behavior change. Log which format each verified
-  token used (`legacy` vs `normalized`) and precedence outcomes. Monitor for anomalies
-  for >= 1 full refresh cycle (≥7d) to confirm no authorization gaps.
-- No token-writing behavior changes yet.
+### Phase 2 — Dual-read validation (observability) — SHIPPED (code)
+- Log which format each verified token used (`legacy` vs `normalized` vs `dual`)
+  and low-cardinality reject reasons (`conflict` / `incomplete` / `iss` / `aud` /
+  `verify_failed`). No token-writing behavior changes.
+- Ops gate before Phase 3: run ≥1 full refresh cycle (≥7d) with conflict≈0.
 
 ### Phase 3 — Versioned issuance (optional dual-write or N-only issuance)
 - Begin emitting tokens with normalized claims (`sub`/`wallet`/`tier`) AND keep legacy

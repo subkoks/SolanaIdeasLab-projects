@@ -2,7 +2,11 @@ import type { NextFunction, Response } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config/environment";
 import type { AuthenticatedRequest, AuthenticatedUser } from "../types/auth";
-import { parseAuthToken } from "../auth/parseAuthToken";
+import {
+  classifyAuthTokenRejection,
+  detectAuthTokenFormat,
+  parseAuthToken,
+} from "../auth/parseAuthToken";
 import { logger } from "../utils/logger";
 
 const getBearerToken = (
@@ -44,10 +48,20 @@ export const authMiddleware = (
     const payload = jwt.verify(token, config.auth.jwtSecret, {
       algorithms: ["HS256"]
     });
+    const format = detectAuthTokenFormat(payload);
     req.user = parseAuthToken(payload, config.auth.jwtIssuer, config.auth.jwtAudience);
+    logger.info("jwt_verified", {
+      event: "jwt_verified",
+      format,
+      bot: "token-safety-bot",
+    });
     next();
   } catch (error) {
-    logger.error("Authentication failed", { error });
+    logger.warn("jwt_rejected", {
+      event: "jwt_rejected",
+      reason: classifyAuthTokenRejection(error),
+      bot: "token-safety-bot",
+    });
     res.status(401).json({ error: "Invalid or expired token" });
   }
 };
