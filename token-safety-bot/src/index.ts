@@ -3,6 +3,8 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import type { Server } from "node:http";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { Context, Telegraf, session } from "telegraf";
 import { z } from "zod";
 import { config } from "./config/environment";
@@ -35,6 +37,10 @@ import {
 import { logger } from "./utils/logger";
 import { assertProductionConfig, isProductionRuntime } from "./utils/production-guard";
 import { isValidWalletAddress } from "./utils/wallet-signature";
+import {
+  isFixtureId,
+  getFixtureRisk,
+} from "./services/fixtureRiskAdapter";
 
 const localDevCorsOrigins = [
   "http://localhost:3000",
@@ -67,10 +73,6 @@ const refreshTokenSchema = z.object({
 const scanSchema = z.object({
   analysisDepth: z.enum(["quick", "deep", "full"]).optional(),
   tokenAddress: z.string().min(32).max(64),
-});
-
-const riskQuerySchema = z.object({
-  analysisDepth: z.enum(["quick", "deep", "full"]).default("quick"),
 });
 
 const contractAnalysisSchema = z.object({
@@ -447,6 +449,18 @@ export class TokenSafetyBot {
       riskRateLimitMiddleware(),
       async (req, res, next) => {
         try {
+          const { analysisDepth, fixture: fixtureParam } = z.object({
+            analysisDepth: z.enum(["quick", "deep", "full"]).default("quick"),
+            fixture: z.string().optional(),
+          }).parse(req.query);
+
+          if (fixtureParam !== undefined) {
+            if (isProductionRuntime()) {
+              res.status(404).json({ error: "Not found" });
+              return;
+            }
+          }
+
           const tokenAddress = z
             .string()
             .min(32)
@@ -455,7 +469,20 @@ export class TokenSafetyBot {
             res.status(400).json({ error: "Invalid Solana token address" });
             return;
           }
-          const { analysisDepth } = riskQuerySchema.parse(req.query);
+
+          if (fixtureParam !== undefined) {
+            if (typeof fixtureParam !== "string" || fixtureParam.length === 0) {
+              res.status(400).json({ error: "Invalid fixture parameter" });
+              return;
+            }
+            if (!isFixtureId(fixtureParam)) {
+              res.status(400).json({ error: "Unknown fixture" });
+              return;
+            }
+            res.json(getFixtureRisk(fixtureParam));
+            return;
+          }
+
           res.json(
             await this.safetyScannerService.getAgentRisk(
               tokenAddress,
@@ -824,6 +851,47 @@ export class TokenSafetyBot {
       } catch (error) {
         next(error);
       }
+    });
+
+    // -------------------------------------------------------------------
+    // Development/test-only local fixture dashboard (not available in production)
+    // -------------------------------------------------------------------
+    const demoPublicDir = path.join(__dirname, "..", "public");
+
+    const sendAsset = (fileName: string) => (res: express.Response) => {
+      res
+        .type(
+          fileName.endsWith(".css")
+            ? "text/css"
+            : fileName.endsWith(".js")
+            ? "application/javascript"
+            : "text/html",
+        )
+        .send(fs.readFileSync(path.join(demoPublicDir, fileName), "utf-8"));
+    };
+
+    this.app.get("/demo", (req, res) => {
+      if (isProductionRuntime()) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      sendAsset("demo.html")(res);
+    });
+
+    this.app.get("/demo.css", (req, res) => {
+      if (isProductionRuntime()) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      sendAsset("demo.css")(res);
+    });
+
+    this.app.get("/demo.js", (req, res) => {
+      if (isProductionRuntime()) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      sendAsset("demo.js")(res);
     });
   }
 

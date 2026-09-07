@@ -18,7 +18,8 @@ import { QueueService } from "./services/queue";
 import { RiskScoringService } from "./services/risk-scoring";
 import { TelegramBotService } from "./services/telegram-bot";
 import { logger } from "./utils/logger";
-import { assertProductionConfig } from "./utils/production-guard";
+import { assertProductionConfig, isProductionRuntime } from "./utils/production-guard";
+import { isFixtureAlertId, getFixtureAlert } from "./services/fixtureAlertAdapter";
 import {
   BILLING_TIERS,
   getBillingStatus,
@@ -165,6 +166,47 @@ export class TokenSniperBot {
 
   private setupRoutes(): void {
     this.setupDashboardRoutes();
+
+    // Local-only demo dashboard. Production-gated BEFORE any file read or service access.
+    this.app.get("/demo", (_req, res) => {
+      if (isProductionRuntime()) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      res.sendFile(path.join(process.cwd(), "public", "demo.html"));
+    });
+    this.app.get("/demo.css", (_req, res) => {
+      if (isProductionRuntime()) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      res.type("text/css").sendFile(path.join(process.cwd(), "public", "demo.css"));
+    });
+    this.app.get("/demo.js", (_req, res) => {
+      if (isProductionRuntime()) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      res.type("application/javascript").sendFile(path.join(process.cwd(), "public", "demo.js"));
+    });
+
+    // Local-only demo fixture alerts. Production-gated before any parsing/service access.
+    this.app.get("/api/v1/demo/alerts", (_req, res) => {
+      if (isProductionRuntime()) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const raw = _req.query.fixture;
+      if (typeof raw !== "string" || raw.trim() === "") {
+        res.status(400).json({ error: "fixture query param required" });
+        return;
+      }
+      if (!isFixtureAlertId(raw)) {
+        res.status(400).json({ error: "Unknown fixture id" });
+        return;
+      }
+      res.json(getFixtureAlert(raw));
+    });
 
     // Health check
     this.app.get("/health", async (_req, res) => {
