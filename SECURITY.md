@@ -36,6 +36,14 @@ same-origin absolute URLs or same-origin relative paths beginning with `/`;
 everything else falls back to an application-controlled path. This prevents
 open-redirect (`//evil.com`, scheme-less, or cross-origin) attacks.
 
+## Dependency advisories
+
+- Transitive `uuid` in `shared/` is pinned via npm `overrides` to `>=11.1.1`
+  (GHSA-w5hq-g745-h8pq). Consumers `jayson` / `rpc-websockets` do not use the
+  vulnerable `buf`-writing v3/v5/v6 path in this package’s runtime.
+- Fixture-lab demos remain local-only; do not wire live RPC, wallets, or secrets
+  into demo surfaces.
+
 ## Reporting a Vulnerability
 
 - **Do not** open a public GitHub issue for security reports.
