@@ -35,6 +35,10 @@ import {
 import { logger } from "./utils/logger";
 import { assertProductionConfig, isProductionRuntime } from "./utils/production-guard";
 import { isValidWalletAddress } from "./utils/wallet-signature";
+import {
+  isFixtureId,
+  getFixtureRisk,
+} from "./services/fixtureRiskAdapter";
 
 const localDevCorsOrigins = [
   "http://localhost:3000",
@@ -67,10 +71,6 @@ const refreshTokenSchema = z.object({
 const scanSchema = z.object({
   analysisDepth: z.enum(["quick", "deep", "full"]).optional(),
   tokenAddress: z.string().min(32).max(64),
-});
-
-const riskQuerySchema = z.object({
-  analysisDepth: z.enum(["quick", "deep", "full"]).default("quick"),
 });
 
 const contractAnalysisSchema = z.object({
@@ -455,7 +455,28 @@ export class TokenSafetyBot {
             res.status(400).json({ error: "Invalid Solana token address" });
             return;
           }
-          const { analysisDepth } = riskQuerySchema.parse(req.query);
+          const { analysisDepth, fixture: fixtureParam } = z.object({
+            analysisDepth: z.enum(["quick", "deep", "full"]).default("quick"),
+            fixture: z.string().optional(),
+          }).parse(req.query);
+
+          if (fixtureParam !== undefined) {
+            if (isProductionRuntime()) {
+              res.status(404).json({ error: "Not found" });
+              return;
+            }
+            if (typeof fixtureParam !== "string" || fixtureParam.length === 0) {
+              res.status(400).json({ error: "Invalid fixture parameter" });
+              return;
+            }
+            if (!isFixtureId(fixtureParam)) {
+              res.status(400).json({ error: "Unknown fixture" });
+              return;
+            }
+            res.json(getFixtureRisk(fixtureParam, tokenAddress));
+            return;
+          }
+
           res.json(
             await this.safetyScannerService.getAgentRisk(
               tokenAddress,
