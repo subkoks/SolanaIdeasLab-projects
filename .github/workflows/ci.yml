@@ -120,3 +120,25 @@ jobs:
           else
             echo "No DATABASE_URL-gated test files in ${{ matrix.project }}"
           fi
+
+  local-lab:
+    name: local-lab (tokens + console)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Design token drift check
+        run: node shared/design/check-tokens.js
+
+      - name: Design token unit tests
+        run: node --test shared/design/check-tokens.test.js
+
+      - name: Solana Lab Console tests
+        working-directory: solana-lab-console
+        run: npm test

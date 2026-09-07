@@ -27,4 +27,5 @@ cd ~/Projects/SolanaIdeasLab-projects
 ./scripts/local-dev-bootstrap.sh
 ```
 
-Then open [SETUP.md](./SETUP.md) → **Run locally** and [USAGE.md](./USAGE.md).
+Then open [SETUP.md](./SETUP.md) → **Run locally — fixture lab** and [USAGE.md](./USAGE.md).
+With servers up: `./scripts/local-lab-smoke.sh`.

@@ -56,8 +56,9 @@ For the fixture lab only, start Console + the three apps’ `npm run dev`, then 
 
 | Script | Purpose |
 |---|---|
-| `scripts/local-dev-bootstrap.sh` | DBs, `.env`, deps, migrations, type-check |
-| `scripts/test-all.sh` | Local regression: type-check + tests for shared + all 3 bots (no network/deploy/secrets) |
+| `scripts/local-dev-bootstrap.sh` | DBs, `.env`, deps, migrations, type-check; prints fixture-lab URLs |
+| `scripts/local-lab-smoke.sh` | HTTP 200 checks for Console + three `/demo` routes (servers must be up) |
+| `scripts/test-all.sh` | Local regression: design tokens + shared + bots + console (no network/deploy/secrets) |
 | `scripts/deploy-smoke.sh` | Health checks for all three apps |
 | `scripts/production-deploy-checklist.sh` | Pre-deploy steps + smoke |
 | `scripts/safety-prod-check.sh` | Safety `/ready` + `/health` only |
