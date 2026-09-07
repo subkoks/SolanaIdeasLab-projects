@@ -2,7 +2,26 @@
 
 How to use each app in **dev/mock mode** (no Stripe or Helius required).
 
+## Local fixture demos (first path)
+
+Simulated data only. Hidden in production (`NODE_ENV=production` → 404).
+
+| Demo | URL | Fixture API |
+|---|---|---|
+| Console launcher | http://localhost:3002/ | None (static links) |
+| Token Safety | http://localhost:3000/demo | Fixture-backed risk UI |
+| Token Sniper | http://localhost:8000/demo | `GET /api/v1/demo/alerts?fixture=…` |
+| Wallet Tracker | http://localhost:3001/demo | `GET /api/demo/activity?fixture=…` |
+
+Start each module with `npm run dev`, then use the Console or open a `/demo` URL directly. These paths do **not** connect a wallet, call live RPC, sign transactions, or write to Postgres/Redis.
+
+---
+
 ## token-safety-bot
+
+### Fixture demo
+
+http://localhost:3000/demo — local simulated risk reports.
 
 ### HTTP API (port 3000)
 
@@ -12,6 +31,7 @@ How to use each app in **dev/mock mode** (no Stripe or Helius required).
 | `GET /ready` | 503 until DB, queue, Solana checks pass |
 | `GET /api/v1/billing/status` | Billing mode (mock when Stripe unset) |
 | `POST /api/v1/scan` | Token safety scan (auth required) |
+| `GET /demo` | Local fixture risk dashboard (non-production) |
 
 Example:
 
@@ -28,6 +48,10 @@ Admin chat IDs: `TELEGRAM_ADMIN_CHAT_IDS` (comma-separated).
 ---
 
 ## token-sniper-bot
+
+### Fixture demo
+
+http://localhost:8000/demo — local simulated launch alerts (`GET /api/v1/demo/alerts`).
 
 ### Alert dashboard (no Telegram)
 
@@ -79,6 +103,10 @@ Requires `TELEGRAM_BOT_TOKEN` in `token-sniper-bot/.env`.
 ---
 
 ## wallet-tracker-pro
+
+### Fixture demo
+
+http://localhost:3001/demo — local simulated wallet activity (`GET /api/demo/activity`).
 
 ### Web dashboard (port 3001)
 

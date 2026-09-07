@@ -59,9 +59,29 @@ Each project has its own `.env` — **never commit them**.
 
 Defaults work for local dev. See [API-KEYS.md](./API-KEYS.md) when you add real services.
 
-## Run locally
+## Run locally — fixture lab (recommended first)
 
-Open **three terminals** (or run only what you need):
+Deterministic simulated demos. No API keys, wallet, live RPC, Redis, or DB required for the demo UIs.
+
+| Surface | URL | Command |
+|---|---|---|
+| Solana Lab Console | http://localhost:3002/ | `cd solana-lab-console && npm run dev` |
+| Token Safety demo | http://localhost:3000/demo | `cd token-safety-bot && npm run dev` |
+| Token Sniper demo | http://localhost:8000/demo | `cd token-sniper-bot && npm run dev` |
+| Wallet Tracker demo | http://localhost:3001/demo | `cd wallet-tracker-pro && npm run dev` |
+
+Open the Console first; it only links to the module demos (no data aggregation).
+
+Design tokens (after editing `shared/design/tokens.css`):
+
+```bash
+node shared/design/sync-tokens.js
+node shared/design/check-tokens.js
+```
+
+## Run locally — full apps
+
+Open **three terminals** (or run only what you need). Postgres/Redis matter for full paths; demos still work in non-production without them.
 
 ### token-safety-bot (port 3000)
 
@@ -70,8 +90,9 @@ cd token-safety-bot
 npm run dev
 ```
 
-Health: `curl http://localhost:3000/health`  
+Health: `curl http://localhost:3000/health`
 Ready: `curl http://localhost:3000/ready`
+Fixture demo: http://localhost:3000/demo
 
 ### token-sniper-bot (port 8000)
 
@@ -80,8 +101,9 @@ cd token-sniper-bot
 npm run dev
 ```
 
-Health: `curl http://localhost:8000/health`  
+Health: `curl http://localhost:8000/health`
 Alert dashboard: http://localhost:8000/dashboard/alerts
+Fixture demo: http://localhost:8000/demo
 
 ### wallet-tracker-pro (port 3001)
 
@@ -93,6 +115,7 @@ npm run dev
 ```
 
 Open http://localhost:3001
+Fixture demo: http://localhost:3001/demo
 
 Telegram bot (separate terminal):
 
@@ -102,6 +125,15 @@ npm run bot:dev
 ```
 
 Health: `curl http://localhost:3001/api/health`
+
+### solana-lab-console (port 3002)
+
+```bash
+cd solana-lab-console
+npm run dev
+```
+
+Open http://localhost:3002/
 
 ## Verify your install (no keys, no deploy)
 
