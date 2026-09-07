@@ -33,6 +33,10 @@ Convention: untracked planning artifact at repo root. Updated at session end.
 - No real RPC, devnet, testnet, or mainnet access
 - No staging, cloud, hosting, deployments, wallets, signing, transactions
 
+### Post-#245 correction (2026-09-07)
+- Separate correction PR `fix/dependency-manifest-lockfile-hygiene` addresses manifest/lockfile hygiene from #245 (see AUTONOMOUS_HANDOFF.md for details).
+- #245 rollback (correct): `git revert 978adc205432238be5b237a3af05a753084c4278`
+
 ### Next steps (blocked on explicit approval)
 - Phase 1 (retention): Document recommendation; no code changes required
 - Phase 2 (upgrade): Requires explicit approval per WEB3_COMPATIBILITY_PLAN.md §11

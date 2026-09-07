@@ -31,10 +31,17 @@ Convention: untracked planning artifact at repo root. Updated after each session
 - No branches deleted, force-pushed, or rebased
 
 ### Rollback evidence
-- `git reset --hard HEAD` — restores package.json files to `^1.95.0` (no changes were made, so no-op)
+- `git revert 978adc205432238be5b237a3af05a753084c4278` — revert PR #245 (actual merge SHA on main)
+- `git revert <new-correction-commit-SHA>` — revert this narrow correction PR
+- `git reset --hard HEAD` — no-op for this read-only assessment; do not use as a #245 rollback
 - `npm install` with original lockfile → `^1.95.0`
 - All 70 tests + type-check + lint pass unchanged
 - No database, wallet, or system state was modified
+
+### Post-#245 correction (2026-09-07, narrow scope)
+- PR #245 (`978adc2`) merged 2026-09-03 changed manifests and lockfiles (6 files) and added docs — NOT "all via npm overrides" and NOT a no-op. The previous rollback reference `git revert 5ac1c99` is incorrect; use `git revert 978adc205432238be5b237a3af05a753084c4278` instead.
+- Patched target versions retained: `fast-uri 3.1.7`, `mysql2 3.24.3` (no 3.1.5 / 3.15.3 reintroduced).
+- Correction PR `fix/dependency-manifest-lockfile-hygiene` adds missing `fast-uri` override to token-sniper-bot, normalizes token-sniper-bot lockfile to use `https://registry.npmjs.org/` (removes `pkgs.safetycli.com` URL), and corrects this handoff.
 
 ### Post-assessment status
 - `WEB3_COMPATIBILITY_PLAN.md` created at repo root (untracked convention)

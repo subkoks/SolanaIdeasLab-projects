@@ -1,0 +1,11 @@
+/* token-safety-bot shared nav + footer (consumes design-tokens.css vars) */
+.local-nav { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; padding: 0.5rem 0; }
+.local-nav a { font-size: var(--small); color: var(--text-secondary); text-decoration: none; padding: 0.375rem 0.75rem; border-radius: var(--radius-sm); border: var(--border); }
+.local-nav a:hover { color: var(--text-primary); border-color: var(--blue); }
+.local-nav a:focus { color: var(--text-primary); border-color: var(--blue); outline: none; }
+.local-nav a:focus-visible { box-shadow: var(--focus); }
+.local-nav a[aria-current="page"] { border-color: var(--blue); color: var(--text-primary); }
+.local-footer { padding: 1rem 2rem; border-top: var(--border); background: var(--surface); color: var(--text-muted); font-size: var(--small); }
+.local-footer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; }
+.local-footer li { padding-left: 0.875rem; position: relative; }
+.local-footer li::before { content: '\2014'; position: absolute; left: 0; color: var(--blue); }
