@@ -2,7 +2,11 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config/environment";
 import { logger } from "../utils/logger";
-import { parseAuthToken } from "../auth/parseAuthToken";
+import {
+  classifyAuthTokenRejection,
+  detectAuthTokenFormat,
+  parseAuthToken,
+} from "../auth/parseAuthToken";
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -48,11 +52,21 @@ export const authMiddleware = async (
     const decoded = jwt.verify(token, config.jwt.secret, {
       algorithms: ["HS256"]
     }) as JWTPayload;
+    const format = detectAuthTokenFormat(decoded);
     req.user = parseAuthToken(decoded, config.jwt.issuer, config.jwt.audience);
+    logger.info("jwt_verified", {
+      event: "jwt_verified",
+      format,
+      bot: "token-sniper-bot",
+    });
 
     next();
   } catch (error) {
-    logger.error("Auth middleware error:", error);
+    logger.warn("jwt_rejected", {
+      event: "jwt_rejected",
+      reason: classifyAuthTokenRejection(error),
+      bot: "token-sniper-bot",
+    });
     res.status(401).json({ error: "Invalid or expired token" });
   }
 };
@@ -195,11 +209,24 @@ export const optionalAuthMiddleware = async (
       const decoded = jwt.verify(token, config.jwt.secret, {
         algorithms: ["HS256"]
       }) as JWTPayload;
+      const format = detectAuthTokenFormat(decoded);
       req.user = parseAuthToken(decoded, config.jwt.issuer, config.jwt.audience);
+      logger.info("jwt_verified", {
+        event: "jwt_verified",
+        format,
+        bot: "token-sniper-bot",
+        optional: true,
+      });
     }
 
     next();
   } catch (error) {
+    logger.warn("jwt_rejected", {
+      event: "jwt_rejected",
+      reason: classifyAuthTokenRejection(error),
+      bot: "token-sniper-bot",
+      optional: true,
+    });
     // Continue without authentication for optional auth
     next();
   }

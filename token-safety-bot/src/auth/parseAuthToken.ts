@@ -31,6 +31,58 @@ export interface NormalizedJWTPayload {
   exp?: number;           // maintained
 }
 
+/** Claim-format labels for Phase 2 dual-read observability (no PII). */
+export type AuthTokenFormat = 'legacy' | 'normalized' | 'dual';
+
+export type AuthTokenRejectReason =
+  | 'conflict'
+  | 'incomplete'
+  | 'iss'
+  | 'aud'
+  | 'invalid_payload'
+  | 'verify_failed'
+  | 'other';
+
+const hasLegacyClaims = (decoded: object): boolean =>
+  'userId' in decoded && 'walletAddress' in decoded && 'subscriptionTier' in decoded;
+
+const hasNormalizedClaims = (decoded: object): boolean =>
+  'sub' in decoded && 'wallet' in decoded && 'tier' in decoded;
+
+/**
+ * Detect which claim format a verified JWT payload uses.
+ * Returns null when neither complete legacy nor complete normalized set is present.
+ */
+export function detectAuthTokenFormat(decoded: unknown): AuthTokenFormat | null {
+  if (decoded === null || typeof decoded !== 'object') {
+    return null;
+  }
+  const legacy = hasLegacyClaims(decoded);
+  const normalized = hasNormalizedClaims(decoded);
+  if (legacy && normalized) return 'dual';
+  if (normalized) return 'normalized';
+  if (legacy) return 'legacy';
+  return null;
+}
+
+/** Map parse/verify failures to low-cardinality reject reasons (no claim values). */
+export function classifyAuthTokenRejection(error: unknown): AuthTokenRejectReason {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/Conflicting claims/i.test(message)) return 'conflict';
+  if (/Incomplete token/i.test(message)) return 'incomplete';
+  if (/Invalid issuer/i.test(message)) return 'iss';
+  if (/Invalid audience/i.test(message)) return 'aud';
+  if (/Invalid token payload/i.test(message)) return 'invalid_payload';
+  if (
+    /jwt expired|invalid signature|invalid token|jwt malformed|unexpected token/i.test(
+      message,
+    )
+  ) {
+    return 'verify_failed';
+  }
+  return 'other';
+}
+
 /**
  * Parse a JWT payload (either legacy or normalized) into an AuthenticatedUser
  * following the precedence rules from JWT_MIGRATION_PLAN.md §4.
@@ -53,28 +105,24 @@ export function parseAuthToken(
     throw new Error('Invalid token payload: expected object, got ' + typeof decoded);
   }
   // Extract legacy claims if present
-  const hasLegacyClaims = (
-    'userId' in decoded &&
-    'walletAddress' in decoded &&
-    'subscriptionTier' in decoded
-  );
-  const legacyUserId = hasLegacyClaims ? (decoded as LegacyJWTPayload).userId : undefined;
-  const legacyWalletAddress = hasLegacyClaims ? (decoded as LegacyJWTPayload).walletAddress : undefined;
-  const legacySubscriptionTier = hasLegacyClaims ? (decoded as LegacyJWTPayload).subscriptionTier : undefined;
+  const legacyPresent = hasLegacyClaims(decoded);
+  const legacyUserId = legacyPresent ? (decoded as LegacyJWTPayload).userId : undefined;
+  const legacyWalletAddress = legacyPresent ? (decoded as LegacyJWTPayload).walletAddress : undefined;
+  const legacySubscriptionTier = legacyPresent
+    ? (decoded as LegacyJWTPayload).subscriptionTier
+    : undefined;
 
   // Extract normalized claims if present
-  const hasNormalizedClaims = (
-    'sub' in decoded &&
-    'wallet' in decoded &&
-    'tier' in decoded
-  );
-  const normalizedSub = hasNormalizedClaims ? (decoded as NormalizedJWTPayload).sub : undefined;
-  const normalizedWallet = hasNormalizedClaims ? (decoded as NormalizedJWTPayload).wallet : undefined;
-  const normalizedTier = hasNormalizedClaims ? (decoded as NormalizedJWTPayload).tier : undefined;
+  const normalizedPresent = hasNormalizedClaims(decoded);
+  const normalizedSub = normalizedPresent ? (decoded as NormalizedJWTPayload).sub : undefined;
+  const normalizedWallet = normalizedPresent
+    ? (decoded as NormalizedJWTPayload).wallet
+    : undefined;
+  const normalizedTier = normalizedPresent ? (decoded as NormalizedJWTPayload).tier : undefined;
 
   // Apply precedence rules (§4)
   // 1. If BOTH sub and userId are present, check for agreement
-  if (hasLegacyClaims && hasNormalizedClaims) {
+  if (legacyPresent && normalizedPresent) {
     // Check if they agree on all authorization-relevant fields
     const idAgrees = legacyUserId === normalizedSub;
     const walletAgrees = legacyWalletAddress === normalizedWallet;
@@ -95,12 +143,12 @@ export function parseAuthToken(
   }
 
   // 2. If only normalized claims present, use them
-  if (hasNormalizedClaims && !hasLegacyClaims) {
+  if (normalizedPresent && !legacyPresent) {
     // Use normalized values directly
   }
 
   // 3. If only legacy claims present, map them
-  if (hasLegacyClaims && !hasNormalizedClaims) {
+  if (legacyPresent && !normalizedPresent) {
     // Map legacy to normalized space for consistency
   }
 
