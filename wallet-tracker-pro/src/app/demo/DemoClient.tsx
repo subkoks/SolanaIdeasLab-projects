@@ -64,7 +64,7 @@ export default function DemoClient() {
     setView('loading');
     setData(null);
     try {
-      const r = await fetch('/api/v1/demo/activity?fixture=' + encodeURIComponent(selected), {
+      const r = await fetch('/api/demo/activity?fixture=' + encodeURIComponent(selected), {
         method: 'GET',
         headers: { Accept: 'application/json' },
       });

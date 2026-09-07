@@ -1,14 +1,27 @@
 # SolanaIdeasLab Projects — Build Status
 
-Last updated: 2026-08-21 (phase 23)
+Last updated: 2026-09-07 (local fixture lab docs + demo path audit)
 
 ## Summary
 
 | Project | Status | Next milestone |
 |---|---|---|
-| **token-safety-bot** | Canonical risk API + provenance + guarded local dev bypass | Production migration + API smoke |
-| **token-sniper-bot** | Replay-safe auth + guarded local dev bypass | Production Redis/DB smoke |
-| **wallet-tracker-pro** | Dev-only billing + same-origin checkout returns | Authenticated subscriber identity |
+| **solana-lab-console** | Local static launcher on `:3002` | Keep launcher-only (no aggregation) |
+| **token-safety-bot** | Fixture `/demo` + canonical risk API + provenance + guarded local dev bypass | Production migration + API smoke |
+| **token-sniper-bot** | Fixture `/demo` + replay-safe auth + guarded local dev bypass | Production Redis/DB smoke |
+| **wallet-tracker-pro** | Fixture `/demo` + dev-only billing + same-origin checkout returns | Authenticated subscriber identity |
+
+
+## Local fixture lab (merged)
+
+**Done**
+- Local fixture risk / alert / activity demos for the three apps (`/demo`).
+- Solana Lab Console static launcher (`http://localhost:3002/`).
+- Shared design tokens (`shared/design/tokens.css`) with sync + drift check.
+- Production concealment: demo routes 404 when `NODE_ENV=production`.
+
+**Ports (fixed)**
+- Console `3002/` · Safety `3000/demo` · Sniper `8000/demo` · Wallet `3001/demo`
 
 ## Phase 23 — Agent-readable risk surface
 
@@ -90,6 +103,7 @@ Keys guide: `~/Desktop/SolanaIdeasLab-API-Keys-Guide.md`
 ./scripts/local-dev-bootstrap.sh
 ./scripts/production-deploy-checklist.sh
 ./scripts/deploy-smoke.sh
+# Fixture lab: http://localhost:3002/
 # Sniper alert dashboard: http://localhost:8000/dashboard/alerts
 ```
 

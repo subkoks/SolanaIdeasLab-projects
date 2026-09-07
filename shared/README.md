@@ -32,6 +32,15 @@ weaken) security-critical logic.
 - The `jwtSecret` must be provided by the consuming service (env/config). The
   library refuses to start with a secret shorter than 16 characters.
 
+## Design tokens (local demos)
+
+Canonical CSS custom properties: [`design/tokens.css`](./design/tokens.css).
+
+```bash
+node shared/design/sync-tokens.js   # write generated outputs into bot/console packages
+node shared/design/check-tokens.js  # read-only drift check (also covered by check-tokens.test.js)
+```
+
 ## Local development (self-contained)
 
 `shared/` is a **self-contained package** with its own `package.json`,

@@ -51,7 +51,7 @@ describe('dev mode — fixture static console', () => {
     const { status, headers, body } = await get(port, '/console.css');
     assert.strictEqual(status, 200);
     assert.match(headers['content-type'], /text\/css/);
-    assert.match(body, /solana-lab/);
+    assert.match(body, /design-tokens\.css/);
   });
 
   it('GET /console.js returns 200 with JS', async () => {

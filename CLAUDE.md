@@ -9,10 +9,22 @@ own `package.json`, lockfile, and `node_modules` — there is no root workspace.
 
 | Dir | What | Stack |
 |-----|------|-------|
-| `token-safety-bot/` | Token safety analysis — rug detection, contract scanning, risk scoring | TS + jest |
-| `token-sniper-bot/` | Real-time launch detection, risk scoring, whale alerts | TS + jest + Prisma |
-| `wallet-tracker-pro/` | Wallet tracking, behavioral analytics, copy-trading insights, portfolio | Next.js + Prisma + jest |
-| `shared/` | Cross-project library: auth, db schemas, API patterns, UI primitives, deployment | docs/templates |
+| `token-safety-bot/` | Token safety analysis — rug detection, contract scanning, risk scoring; local `/demo` fixtures | TS + jest |
+| `token-sniper-bot/` | Real-time launch detection, risk scoring, whale alerts; local `/demo` fixtures | TS + jest + Prisma |
+| `wallet-tracker-pro/` | Wallet tracking, behavioral analytics, copy-trading insights, portfolio; local `/demo` fixtures | Next.js + Prisma + jest |
+| `solana-lab-console/` | Static local launcher for fixture demos (`http://localhost:3002/`) | Node (no deps) |
+| `shared/` | Cross-project library: auth, db schemas, API patterns; `shared/design` tokens | TS + design CSS |
+
+### Local fixture ports
+
+| Surface | URL |
+|---|---|
+| Console | http://localhost:3002/ |
+| Token Safety demo | http://localhost:3000/demo |
+| Token Sniper demo | http://localhost:8000/demo |
+| Wallet Tracker demo | http://localhost:3001/demo |
+
+Design tokens: `node shared/design/sync-tokens.js` / `node shared/design/check-tokens.js`. Fixture demos are local/CI-only; do not add live wallet, RPC, signing, Redis, or external-API behavior to them.
 
 ## Working in a subproject
 

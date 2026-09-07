@@ -1,17 +1,19 @@
 # SolanaIdeasLab Projects — Documentation
 
-User-facing guides for the three built apps in this repo. **Verification and production keys can wait** — everything below supports **mock/dev mode** first.
+User-facing guides for this repo. **Verification and production keys can wait** — start with the **local fixture lab**, then full mock/dev app paths.
 
 ## Start here
 
 | Doc | What it covers |
 |---|---|
-| [OVERVIEW.md](./OVERVIEW.md) | What each project does, ports, architecture |
-| [SETUP.md](./SETUP.md) | Prerequisites, bootstrap, databases, first run |
-| [USAGE.md](./USAGE.md) | Dashboards, Telegram commands, HTTP APIs, billing flows |
+| [OVERVIEW.md](./OVERVIEW.md) | Fixture lab + full apps, ports, architecture |
+| [SETUP.md](./SETUP.md) | Prerequisites, bootstrap, fixture lab run, full apps |
+| [USAGE.md](./USAGE.md) | Fixture demos, dashboards, Telegram, HTTP APIs, billing mocks |
 | [API-KEYS.md](./API-KEYS.md) | Where to get keys and which `.env` vars to set (**later**) |
 | [DEPLOY.md](./DEPLOY.md) | Production checklist, smoke tests, Stripe webhooks |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Common local dev issues |
+
+**Fixture lab ports:** Console `http://localhost:3002/` · Safety `…:3000/demo` · Sniper `…:8000/demo` · Wallet `…:3001/demo`
 
 ## Build / engineering
 
