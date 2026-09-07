@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token Safety Bot — Local Fixture Risk Demo</title>
+  <link rel="stylesheet" href="demo.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-titles">
+        <h1 class="site-title">Token Safety Bot</h1>
+        <p class="site-subtitle">Local Fixture Risk Demo</p>
+      </div>
+      <div class="status-badge">
+        <span class="badge-dot"></span>
+        LOCAL ONLY &middot; SIMULATED DATA &middot; NO LIVE RPC
+      </div>
+    </div>
+  </header>
+
+  <main class="main-grid">
+
+    <!-- Left panel: scenario selector -->
+    <section class="panel panel-left" aria-label="Scenario selector">
+      <h2 class="panel-heading">Select Scenario</h2>
+
+      <div class="scenario-list" role="radiogroup" aria-label="Fixture scenarios">
+        <div class="scenario-card" data-fixture="safe-token" tabindex="0" role="radio" aria-checked="false" aria-label="Safe Token scenario">
+          <div class="scenario-card-inner">
+            <div class="scenario-icon positive-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                <path d="M8 12l3 3 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="scenario-info">
+              <span class="scenario-name">Safe Token</span>
+              <span class="scenario-desc">Low-risk fixture for demo</span>
+              <span class="scenario-expected">Expected: Allow</span>
+            </div>
+            <div class="scenario-score safe-score">92</div>
+          </div>
+        </div>
+
+        <div class="scenario-card" data-fixture="review-token" tabindex="0" role="radio" aria-checked="false" aria-label="Review Token scenario">
+          <div class="scenario-card-inner">
+            <div class="scenario-icon warning-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                <path d="M12 7v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="12" cy="16" r="1" fill="currentColor"/>
+              </svg>
+            </div>
+            <div class="scenario-info">
+              <span class="scenario-name">Review Token</span>
+              <span class="scenario-desc">Mixed-risk fixture for demo</span>
+              <span class="scenario-expected">Expected: Review</span>
+            </div>
+            <div class="scenario-score review-score">55</div>
+          </div>
+        </div>
+
+        <div class="scenario-card" data-fixture="blocked-token" tabindex="0" role="radio" aria-checked="false" aria-label="Blocked Token scenario">
+          <div class="scenario-card-inner">
+            <div class="scenario-icon critical-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                <path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="scenario-info">
+              <span class="scenario-name">Blocked Token</span>
+              <span class="scenario-desc">High-risk fixture for demo</span>
+              <span class="scenario-expected">Expected: Block</span>
+            </div>
+            <div class="scenario-score block-score">12</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="run-btn" id="runBtn" disabled aria-describedby="run-hint">
+        Run Local Analysis
+      </button>
+      <p class="run-hint" id="run-hint">Select a scenario to begin</p>
+
+      <p class="kbd-hint">
+        <kbd>1</kbd> Safe &nbsp;&middot;&nbsp; <kbd>2</kbd> Review &nbsp;&middot;&nbsp; <kbd>3</kbd> Block &nbsp;&middot;&nbsp; <kbd>Enter</kbd> Run
+      </p>
+    </section>
+
+    <!-- Right panel: result area -->
+    <section class="panel panel-right" aria-label="Analysis result">
+
+      <!-- Initial state -->
+      <div id="state-initial" class="result-state">
+        <div class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="empty-icon">
+            <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          <p>Select a local scenario and run a simulated analysis.</p>
+        </div>
+      </div>
+
+      <!-- Loading state -->
+      <div id="state-loading" class="result-state hidden" aria-live="polite" aria-label="Loading">
+        <div class="loading-indicator" aria-label="Loading analysis">
+          <div class="loading-ring"></div>
+          <p>Running local fixture analysis&hellip;</p>
+        </div>
+      </div>
+
+      <!-- Result state -->
+      <div id="state-result" class="result-state hidden" aria-live="polite" aria-label="Analysis result">
+        <div id="result-content"></div>
+      </div>
+
+      <!-- Error state -->
+      <div id="state-error" class="result-state hidden" aria-live="assertive" aria-label="Error">
+        <div class="error-card">
+          <div class="error-header">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+              <path d="M12 7v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="12" cy="16" r="1" fill="currentColor"/>
+            </svg>
+            <span>Analysis Error</span>
+          </div>
+          <p id="error-message">An unexpected error occurred.</p>
+          <button class="retry-btn" id="retryBtn">Retry</button>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p class="footer-disclaimer">
+      This is deterministic local fixture data. No live Solana RPC, wallet, transaction, or blockchain analysis was used.
+    </p>
+    <p class="footer-dev">
+      <button class="raw-json-toggle" id="rawJsonToggle" aria-expanded="false" aria-controls="rawJsonPanel">
+        View Raw JSON
+      </button>
+    </p>
+    <div id="rawJsonPanel" class="raw-json-panel hidden" aria-hidden="true">
+      <div class="raw-json-header">
+        <span>API Response</span>
+        <button class="close-btn" id="closeJsonBtn" aria-label="Close JSON panel">&times;</button>
+      </div>
+      <pre class="raw-json-body"><code id="rawJsonCode"></code></pre>
+    </div>
+  </footer>
+
+  <script src="demo.js"></script>
+</body>
+</html>

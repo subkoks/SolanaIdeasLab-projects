@@ -3,6 +3,8 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import type { Server } from "node:http";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { Context, Telegraf, session } from "telegraf";
 import { z } from "zod";
 import { config } from "./config/environment";
@@ -849,6 +851,47 @@ export class TokenSafetyBot {
       } catch (error) {
         next(error);
       }
+    });
+
+    // -------------------------------------------------------------------
+    // Development/test-only local fixture dashboard (not available in production)
+    // -------------------------------------------------------------------
+    const demoPublicDir = path.join(__dirname, "..", "public");
+
+    const sendAsset = (fileName: string) => (res: express.Response) => {
+      res
+        .type(
+          fileName.endsWith(".css")
+            ? "text/css"
+            : fileName.endsWith(".js")
+            ? "application/javascript"
+            : "text/html",
+        )
+        .send(fs.readFileSync(path.join(demoPublicDir, fileName), "utf-8"));
+    };
+
+    this.app.get("/demo", (req, res) => {
+      if (isProductionRuntime()) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      sendAsset("demo.html")(res);
+    });
+
+    this.app.get("/demo.css", (req, res) => {
+      if (isProductionRuntime()) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      sendAsset("demo.css")(res);
+    });
+
+    this.app.get("/demo.js", (req, res) => {
+      if (isProductionRuntime()) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      sendAsset("demo.js")(res);
     });
   }
 
