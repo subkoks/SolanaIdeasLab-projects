@@ -1,0 +1,20 @@
+/* shared/design/tokens.css — source of truth, only CSS custom properties */
+:root {
+  /* Base */
+  --base-bg: #0b0d13; --surface: #161b22; --elevated: #1a1d27; --border: #21262d;
+  /* Text */
+  --text-primary: #e6edf3; --text-secondary: #c9d1d9; --text-muted: #8b949e;
+  --font-stack: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Semantic colors */
+  --green: #2ea043; --amber: #d29922; --red: #cf222e; --blue: #1f6feb;
+  /* Typography scale */
+  --h1: 1.75rem; --h2: 1.25rem; --body: 0.9375rem; --small: 0.875rem; --mono-sm: 0.8125rem;
+  --line: 1.6; --letter: -0.01em;
+  /* Spacing */
+  --gap: 1.25rem; --pad: 1.5rem; --pad-sm: 0.75rem;
+  /* Radius / borders / shadows */
+  --radius: 8px; --radius-sm: 6px; --border: 1px solid #21262d;
+  /* Focus */
+  --focus: 0 0 0 2px rgba(31,111,235,0.35);
+}
