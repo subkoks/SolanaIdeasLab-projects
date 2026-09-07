@@ -92,7 +92,7 @@ export default function DemoClient() {
         <p className={styles.subtitle}>Local Fixture Activity Demo</p>
         <span className={styles.badge}>LOCAL ONLY · SIMULATED DATA · NO WALLET CONNECTION</span>
         <nav className={styles.localNav} aria-label="Local demo navigation">
-          <a href="http://localhost:3000/">Console</a>
+          <a href="http://localhost:3002/">Console</a>
           <a href="http://localhost:3000/demo">Token Safety</a>
           <a href="http://localhost:8000/demo">Token Sniper</a>
           <a href="http://localhost:3001/demo" aria-current="page">Wallet Tracker</a>

@@ -4,7 +4,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const PORT = Number.parseInt(process.env.PORT ?? '3000', 10);
+const PORT = Number.parseInt(process.env.PORT ?? '3002', 10);
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
 
 // __dirname is available in CJS modules
