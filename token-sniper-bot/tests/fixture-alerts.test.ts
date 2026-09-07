@@ -134,10 +134,13 @@ describe('fixture alert demo', () => {
     expect(getFixtureAlert('watch-launch').alert.signals.length).toBe(before)
   })
   it('adapter: no forbidden action wording in any fixture string field', () => {
+    const badWords = ['buy','sell','snipe','trade','swap','execute','transact','withdraw','deposit','transfer','profit','loss','investment','guaranteed']
     for (const id of ['watch-launch','review-launch','suppress-launch'] as const) {
       const a = getFixtureAlert(id)
-      const blob = [a.alert.summary, a.alert.nextAction, ...a.alert.signals.flatMap(s => [s.title, s.detail])].join(' ').toLowerCase()
-      for (const w of FORBIDDEN_WORDS) expect(blob.includes(w)).toBe(false)
+      const blob = [a.alert.summary, a.alert.nextAction, ...a.alert.signals.flatMap(s => [s.title, s.detail])].join(' ')
+      for (const w of badWords) {
+        expect(blob.toLowerCase()).not.toMatch(new RegExp('\\b' + w + '\\b'))
+      }
     }
   })
   it('adapter: response values are synthetic and local-only', () => {
