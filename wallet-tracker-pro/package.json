@@ -142,7 +142,7 @@
   "overrides": {
     "uuid": "$uuid",
     "postcss": "$postcss",
-    "js-yaml": "^4.3.1",
+    "js-yaml": "^4.3.2",
     "@hono/node-server": "^1.19.13",
     "deepmerge-ts": "^8.0.0",
     "fast-uri": "3.1.7",
