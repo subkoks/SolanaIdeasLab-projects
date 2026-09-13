@@ -104,7 +104,7 @@
   "homepage": "https://github.com/solana-ideas-lab/token-sniper-bot#readme",
   "overrides": {
     "uuid": "$uuid",
-    "js-yaml": "^4.3.1",
+    "js-yaml": "^4.3.2",
     "@hono/node-server": "^1.19.13",
     "deepmerge-ts": "^8.0.0",
     "mysql2": "3.24.3",
