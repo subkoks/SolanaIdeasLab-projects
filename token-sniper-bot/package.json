@@ -50,7 +50,7 @@
     "joi": "^18.2.8",
     "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
-    "moment": "^2.29.4",
+    "moment": "^2.31.0",
     "node-cron": "^4.6.0",
     "redis": "^6.2.1",
     "stripe": "^22.6.2",
