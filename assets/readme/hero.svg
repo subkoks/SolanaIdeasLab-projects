@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="300" viewBox="0 0 960 300" role="img" aria-labelledby="title">
+<title id="title">Solana Lab. The projects. — Implementation</title>
+<rect width="960" height="300" rx="8" fill="#111110"/>
+<circle cx="48" cy="32" r="4" fill="#FF7F0E"/>
+<text x="62" y="37" fill="#B5B0A8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400" letter-spacing="1.5">BLACK.TERMINAL</text>
+<text x="916" y="37" fill="#B5B0A8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400" text-anchor="end" letter-spacing="1.2">IMPLEMENTATION</text>
+<text x="44" y="130" fill="#F3F0EB" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="60" font-weight="600" letter-spacing="-1.5">Solana Lab.</text>
+<text x="44" y="196" fill="#F3F0EB" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="60" font-weight="600" letter-spacing="-1.5">The projects.</text>
+<path d="M44 249H916" stroke="#393632"/>
+<text x="44" y="275" fill="#B5B0A8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400" letter-spacing="0.5">SAFETY / ALERTS / TELEMETRY</text>
+<g transform="translate(732 93)" fill="none" stroke="#393632" stroke-width="1.5"><path d="M0 0h142v104H0Z M0 34h142M0 69h142M40 0v104"/>
+<path d="M57 18h59M57 52h42M57 86h69" stroke="#FF7F0E" stroke-width="2"/></g>
+</svg>

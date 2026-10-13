@@ -1,6 +1,15 @@
-# SolanaIdeasLab Projects
+<a id="solanaideaslab-projects"></a>
 
-Implementation repo for Solana tools. Planning and architecture live in [SolanaIdeasLab](https://github.com/subkoks/SolanaIdeasLab).
+<h1>
+  <picture>
+    <source media="(max-width: 600px)" srcset="assets/readme/hero-mobile.svg">
+    <img src="assets/readme/hero.svg" width="100%" alt="SolanaIdeasLab Projects — implementation repository">
+  </picture>
+</h1>
+
+**SolanaIdeasLab Projects** is the implementation repo for Solana tools. Planning and architecture live in [SolanaIdeasLab](https://github.com/subkoks/SolanaIdeasLab).
+
+[Fixture lab](#local-fixture-lab-no-keys-no-live-chain) · [Quick start](#quick-start) · [Documentation](#documentation) · [Engineering](#engineering)
 
 **GitHub:** [subkoks/SolanaIdeasLab-projects](https://github.com/subkoks/SolanaIdeasLab-projects)
 
