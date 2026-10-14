@@ -577,7 +577,7 @@ export class TokenSniperBot {
         try {
           const userId = req.user!.id;
           const { alertId } = req.params;
-          await this.db.deleteAlert(userId, alertId);
+          await this.db.deleteAlert(userId, String(alertId));
           res.json({ success: true });
         } catch (error) {
           res.status(404).json({ error: "Alert not found" });
