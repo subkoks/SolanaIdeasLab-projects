@@ -40,7 +40,7 @@
     "@radix-ui/react-tooltip": "^1.4.1",
     "@solana/wallet-adapter-base": "^0.9.28",
     "@solana/wallet-adapter-react": "^0.15.40",
-    "@solana/web3.js": "^1.99.0",
+    "@solana/web3.js": "^3.1.1",
     "axios": "^1.20.0",
     "bcryptjs": "^3.0.3",
     "bull": "^4.12.2",
