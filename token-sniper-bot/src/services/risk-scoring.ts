@@ -1,8 +1,14 @@
 import { logger } from "../utils/logger";
 import { DatabaseService } from "./database";
 import { HeliusService } from "./helius";
+import type { TokenLaunchData } from "./helius";
+import { calculateDistribution } from "../utils/distribution-observations";
+import type { DistributionEvidence } from "../utils/distribution-observations";
+
+const riskCacheKey = (address: string, depth: string): string => `risk_score_v3_${address}_${depth}`;
 
 export interface RiskScore {
+  distributionEvidence?: DistributionEvidence;
   total: number;
   riskLevel: "low" | "medium" | "high" | "critical";
   categories: {
@@ -14,7 +20,8 @@ export interface RiskScore {
   };
   factors: {
     renouncedMint: boolean;
-    liquidityLocked: boolean;
+    liquidityLocked: boolean | null;
+    freezeAuthorityRevoked: boolean;
     top10Holding: number;
     socialSentiment: number;
     developerReputation: number;
@@ -66,7 +73,7 @@ export class RiskScoringService {
       logger.info(`Analyzing token: ${tokenAddress} (${analysisDepth})`);
 
       // Check cache first
-      const cacheKey = `risk_score_${tokenAddress}_${analysisDepth}`;
+      const cacheKey = riskCacheKey(tokenAddress, analysisDepth);
       const cached = await this.db.getCache(cacheKey);
       if (cached) {
         return cached;
@@ -77,6 +84,9 @@ export class RiskScoringService {
         throw new Error("Token not found");
       }
 
+      const largestAccounts = await this.helius.getTokenLargestAccounts(tokenAddress, 20);
+      const distribution = calculateDistribution(metadata.supply, largestAccounts);
+
       const [
         contractScore,
         liquidityScore,
@@ -85,8 +95,8 @@ export class RiskScoringService {
         developerScore,
       ] = await Promise.all([
         this.analyzeContract(tokenAddress, metadata),
-        this.analyzeLiquidity(tokenAddress, metadata),
-        this.analyzeDistribution(tokenAddress, metadata),
+        this.analyzeLiquidity(distribution.evidence),
+        this.analyzeDistribution(distribution.percentage),
         this.analyzeSocialSignals(tokenAddress, metadata),
         this.analyzeDeveloper(tokenAddress, metadata),
       ]);
@@ -101,15 +111,18 @@ export class RiskScoringService {
       );
       const riskLevel = this.determineRiskLevel(totalScore);
       const factors = {
-        renouncedMint: !metadata.mintAuthority,
-        liquidityLocked: metadata.freezeAuthority === null,
-        top10Holding: await this.getTop10Holding(tokenAddress),
+        renouncedMint: metadata.mintAuthority === null,
+        freezeAuthorityRevoked: metadata.freezeAuthority === null,
+        // A mint account's freeze authority does not establish any LP lock.
+        liquidityLocked: null,
+        top10Holding: distribution.percentage,
         socialSentiment: await this.getSocialSentiment(tokenAddress),
         developerReputation: await this.getDeveloperReputation(tokenAddress),
         suspiciousFunctions: await this.hasSuspiciousFunctions(tokenAddress),
       };
 
       const riskScore: RiskScore = {
+        distributionEvidence: distribution.evidence,
         total: totalScore,
         riskLevel,
         categories: {
@@ -140,7 +153,7 @@ export class RiskScoringService {
 
   async getRiskScore(tokenAddress: string): Promise<RiskScore> {
     try {
-      const cacheKey = `risk_score_${tokenAddress}_quick`;
+      const cacheKey = riskCacheKey(tokenAddress, "quick");
       let score = await this.db.getCache(cacheKey);
 
       if (!score) {
@@ -176,13 +189,13 @@ export class RiskScoringService {
 
   private async analyzeContract(
     tokenAddress: string,
-    metadata: any,
+    metadata: TokenLaunchData,
   ): Promise<number> {
     let score = 100;
 
     // Check for renounced authorities
-    if (!metadata.mintAuthority) score -= 30;
-    if (!metadata.freezeAuthority) score -= 20;
+    if (metadata.mintAuthority !== null) score -= 30;
+    if (metadata.freezeAuthority !== null) score -= 20;
 
     // Check for suspicious functions
     if (await this.hasSuspiciousFunctions(tokenAddress)) {
@@ -199,53 +212,18 @@ export class RiskScoringService {
     return Math.max(0, score);
   }
 
-  private async analyzeLiquidity(
-    tokenAddress: string,
-    _metadata: any,
-  ): Promise<number> {
-    let score = 100;
-
-    try {
-      const supply = await this.helius.getTokenSupply(tokenAddress);
-      const holders = await this.helius.getTokenHolders(tokenAddress, 50);
-
-      if (!supply || parseFloat(supply) === 0) {
-        return 0; // No supply = no liquidity
-      }
-
-      // Check holder count
-      if (holders.length < 10) score -= 30;
-      else if (holders.length < 50) score -= 15;
-
-      // Check for liquidity pools (would use DEX APIs in production)
-      const hasLiquidity = await this.hasLiquidityPools(tokenAddress);
-      if (!hasLiquidity) score -= 40;
-    } catch (error) {
-      logger.error("Liquidity analysis failed:", error);
-      return 50; // Default to medium risk
-    }
-
-    return Math.max(0, score);
+  private analyzeLiquidity(evidence: DistributionEvidence): number {
+    // Retained account-count heuristic; this does not establish a DEX pool.
+    const count = evidence.positiveSampledAccountCount;
+    return Math.max(0, 100 - (count < 10 ? 30 : 15) - (count < 3 ? 40 : 0));
   }
 
-  private async analyzeDistribution(
-    tokenAddress: string,
-    _metadata: any,
-  ): Promise<number> {
-    try {
-      const top10Holding = await this.getTop10Holding(tokenAddress);
-
-      // High concentration is risky
-      if (top10Holding > 80) return 20;
-      if (top10Holding > 60) return 40;
-      if (top10Holding > 40) return 60;
-      if (top10Holding > 20) return 80;
-
-      return 90;
-    } catch (error) {
-      logger.error("Distribution analysis failed:", error);
-      return 50;
-    }
+  private analyzeDistribution(top10Holding: number): number {
+    if (top10Holding > 80) return 20;
+    if (top10Holding > 60) return 40;
+    if (top10Holding > 40) return 60;
+    if (top10Holding > 20) return 80;
+    return 90;
   }
 
   private async analyzeSocialSignals(
@@ -313,21 +291,25 @@ export class RiskScoringService {
       );
     }
 
-    if (!riskScore.factors.liquidityLocked) {
+    if (!riskScore.factors.freezeAuthorityRevoked) {
       recommendations.push(
-        "🔒 Freeze authority not renounced - team can mint more tokens",
+        "🔒 Freeze authority is active - the issuer can freeze token accounts",
       );
+    }
+    if (riskScore.factors.liquidityLocked === null) {
+      recommendations.push("Liquidity lock status has not been verified");
+      recommendations.push("Liquidity category uses sampled token-account counts; DEX liquidity has not been verified");
     }
 
     if (riskScore.factors.top10Holding > 60) {
       recommendations.push(
-        "📊 High concentration - few wallets control most tokens",
+        "📊 High concentration - largest visible token accounts hold most reported supply",
       );
     }
 
     if (riskScore.categories.liquidity < 50) {
       recommendations.push(
-        "💧 Low liquidity - difficult to sell large amounts",
+        "💧 Sparse visible token-account sample - verify DEX liquidity separately",
       );
     }
 
@@ -348,34 +330,6 @@ export class RiskScoringService {
     }
 
     return recommendations;
-  }
-
-  private async getTop10Holding(tokenAddress: string): Promise<number> {
-    try {
-      const accounts = await this.helius.getTokenLargestAccounts(
-        tokenAddress,
-        10,
-      );
-
-      if (accounts.length === 0) {
-        return 50;
-      }
-
-      const top10UiAmount = accounts.reduce(
-        (total, account) => total + account.uiAmount,
-        0,
-      );
-      const supplyUi = await this.helius.getTokenSupplyUi(tokenAddress);
-
-      if (supplyUi <= 0) {
-        return Math.min(100, top10UiAmount);
-      }
-
-      return Math.min(100, (top10UiAmount / supplyUi) * 100);
-    } catch (error) {
-      logger.error("Failed to get top 10 holding:", error);
-      return 50;
-    }
   }
 
   private async getSocialSentiment(_tokenAddress: string): Promise<number> {
@@ -421,26 +375,6 @@ export class RiskScoringService {
     } catch (error) {
       logger.error("Failed to get contract age:", error);
       return Date.now();
-    }
-  }
-
-  private async hasLiquidityPools(tokenAddress: string): Promise<boolean> {
-    try {
-      const holders = await this.helius.getTokenHolders(tokenAddress, 20);
-      const supply = await this.helius.getTokenSupplyUi(tokenAddress);
-
-      if (holders.length >= 15 && supply > 0) {
-        return true;
-      }
-
-      const largest = await this.helius.getTokenLargestAccounts(
-        tokenAddress,
-        5,
-      );
-      return largest.length >= 3;
-    } catch (error) {
-      logger.error("Failed to check liquidity pools:", error);
-      return false;
     }
   }
 

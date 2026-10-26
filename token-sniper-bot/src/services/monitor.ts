@@ -8,7 +8,11 @@ import {
   LaunchDetectionService,
 } from "./launch-detection";
 import { RiskScoringService } from "./risk-scoring";
+import type { RiskScore } from "./risk-scoring";
 import type { TelegramBotService } from "./telegram-bot";
+
+const MAX_PENDING_LAUNCH_ANALYSES = 100;
+const MAX_LAUNCH_ANALYSIS_ATTEMPTS = 3;
 
 export interface MonitoringAlert {
   id: string;
@@ -61,6 +65,9 @@ export interface BundleDetection {
 }
 
 export class MonitorService {
+  private readonly pendingLaunchAnalyses = new Map<string, { launch: DetectedLaunch; attempts: number }>();
+  private readonly launchesInFlight = new Set<string>();
+  private launchPollInFlight = false;
   private db: DatabaseService;
   private helius: HeliusService;
   private riskScoring: RiskScoringService;
@@ -222,18 +229,21 @@ export class MonitorService {
   }
 
   private async checkForNewTokenLaunches(): Promise<void> {
-    if (!config.features.riskScoring) {
+    if (!config.features.riskScoring || this.launchPollInFlight) {
       return;
     }
 
+    this.launchPollInFlight = true;
     try {
-      const launches = await this.launchDetection.pollPumpFunLaunches();
-
-      for (const launch of launches) {
-        await this.processLaunch(launch);
+      const work = new Map(Array.from(this.pendingLaunchAnalyses, ([mint, entry]) => [mint, entry.launch]));
+      try {
+        for (const launch of await this.launchDetection.pollPumpFunLaunches()) work.set(launch.mint, launch);
+      } catch {
+        logger.warn("Token launch poll unavailable; retrying retained analyses");
       }
-    } catch (error) {
-      logger.error("Token launch monitoring error:", error);
+      for (const launch of work.values()) await this.analyzeAndProcessLaunch(launch);
+    } finally {
+      this.launchPollInFlight = false;
     }
   }
 
@@ -251,16 +261,48 @@ export class MonitorService {
         return false;
       }
 
-      await this.processLaunch(launch);
-      return true;
+      return await this.analyzeAndProcessLaunch(launch);
     } catch (error) {
       logger.error("Failed to ingest launch signature:", error);
       return false;
     }
   }
 
-  private async processLaunch(launch: DetectedLaunch): Promise<void> {
-    const riskScore = await this.safeAnalyzeLaunch(launch.mint);
+  private async analyzeAndProcessLaunch(launch: DetectedLaunch): Promise<boolean> {
+    if (this.launchesInFlight.has(launch.mint)) return false;
+    this.launchesInFlight.add(launch.mint);
+    try {
+      let riskScore: RiskScore;
+      try {
+        riskScore = await this.safeAnalyzeLaunch(launch.mint);
+      } catch {
+        const attempts = (this.pendingLaunchAnalyses.get(launch.mint)?.attempts ?? 0) + 1;
+        // Retain failed analyses before any recording/notification side effects.
+        if (attempts < MAX_LAUNCH_ANALYSIS_ATTEMPTS &&
+            (this.pendingLaunchAnalyses.has(launch.mint) || this.pendingLaunchAnalyses.size < MAX_PENDING_LAUNCH_ANALYSES)) {
+          this.pendingLaunchAnalyses.set(launch.mint, { launch, attempts });
+          logger.warn("Launch analysis retained for retry", { mint: launch.mint, attempts });
+        } else {
+          this.pendingLaunchAnalyses.delete(launch.mint);
+          logger.warn("Launch analysis unavailable; retry budget or capacity exhausted", { mint: launch.mint, attempts });
+        }
+        return false;
+      }
+      this.pendingLaunchAnalyses.delete(launch.mint);
+      // Do not retry publication failures here: a notification may already have succeeded.
+      try {
+        await this.processLaunch(launch, riskScore);
+        return true;
+      } catch {
+        logger.warn("Launch publication failed after completed analysis", { mint: launch.mint });
+        return false;
+      }
+    } finally {
+      this.launchesInFlight.delete(launch.mint);
+    }
+  }
+
+  private async processLaunch(launch: DetectedLaunch, riskScore: RiskScore): Promise<void> {
     const assetMetadata = await this.helius.getAssetMetadata(launch.mint);
 
     await this.db.recordDetectedLaunch({
@@ -303,29 +345,8 @@ export class MonitorService {
     try {
       return await this.riskScoring.analyzeToken(tokenAddress, "quick");
     } catch (error) {
-      logger.warn("Launch risk analysis fallback", { tokenAddress, error });
-      return {
-        total: 50,
-        riskLevel: "medium" as const,
-        categories: {
-          contract: 50,
-          liquidity: 50,
-          distribution: 50,
-          social: 50,
-          developer: 50,
-        },
-        factors: {
-          renouncedMint: false,
-          liquidityLocked: false,
-          top10Holding: 50,
-          socialSentiment: 0.5,
-          developerReputation: 50,
-          suspiciousFunctions: false,
-        },
-        recommendations: [
-          "New launch with limited metadata — verify manually before trading.",
-        ],
-      };
+      logger.warn("Launch risk analysis unavailable", { tokenAddress });
+      throw error;
     }
   }
 
