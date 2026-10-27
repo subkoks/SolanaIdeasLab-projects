@@ -1,6 +1,5 @@
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-# npm only — the repo has no GitHub Actions workflows, so a github-actions
-# ecosystem entry would fail with dependency_file_not_found.
+# Track each independent npm package and the pinned CI actions.
 version: 2
 updates:
   - package-ecosystem: "npm"
@@ -61,4 +60,18 @@ updates:
     groups:
       npm-minor-patch:
         applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      actions-minor-patch:
         update-types: ["minor", "patch"]
