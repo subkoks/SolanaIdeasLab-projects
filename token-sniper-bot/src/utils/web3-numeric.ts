@@ -17,7 +17,9 @@ export function bigintToSafeNumber(value: bigint, label: string): number {
 export function lamportsToSafeNumber(lamports: bigint | number): number {
   if (typeof lamports === "number") {
     if (!Number.isSafeInteger(lamports) || lamports < 0) {
-      throw new RangeError("Lamports number is not a safe non-negative integer");
+      throw new RangeError(
+        "Lamports number is not a safe non-negative integer",
+      );
     }
     return lamports;
   }
@@ -31,14 +33,22 @@ export function unixSecondsToMillis(
   value: bigint | number | null | undefined,
   fallbackUnixSeconds: number = Math.floor(Date.now() / 1000),
 ): number {
-  if (value == null) {
-    return unixSecondsToMillis(fallbackUnixSeconds, fallbackUnixSeconds);
+  const timestamp = value ?? fallbackUnixSeconds;
+  const seconds =
+    typeof timestamp === "bigint"
+      ? bigintToSafeNumber(timestamp, "Unix timestamp")
+      : timestamp;
+
+  if (!Number.isSafeInteger(seconds)) {
+    throw new RangeError("Unix timestamp is not a safe integer");
   }
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
-      throw new RangeError("Unix timestamp is not finite");
-    }
-    return value * 1000;
+
+  const milliseconds = seconds * 1000;
+  if (!Number.isSafeInteger(milliseconds)) {
+    throw new RangeError(
+      "Unix timestamp in milliseconds is not a safe integer",
+    );
   }
-  return bigintToSafeNumber(value, "Unix timestamp") * 1000;
+
+  return milliseconds;
 }

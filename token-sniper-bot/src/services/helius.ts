@@ -2,6 +2,7 @@ import type { AccountInfo, Commitment } from "@solana/web3.js";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { config } from "../config/environment";
 import { logger } from "../utils/logger";
+import { lamportsToSafeNumber } from "../utils/web3-numeric";
 
 export interface TokenLargestAccount {
   address: string;
@@ -285,7 +286,7 @@ export class HeliusService {
 
   async subscribeToAccount(
     accountAddress: string,
-    callback: (accountInfo: AccountInfo<Buffer>) => void,
+    callback: (accountInfo: AccountInfo<Uint8Array>) => void,
   ): Promise<void> {
     try {
       const publicKey = new PublicKey(accountAddress);
@@ -303,7 +304,10 @@ export class HeliusService {
 
   async subscribeToProgram(
     programId: string,
-    callback: (accountInfo: AccountInfo<Buffer>, accountKey: string) => void,
+    callback: (
+      accountInfo: AccountInfo<Uint8Array>,
+      accountKey: string,
+    ) => void,
   ): Promise<void> {
     try {
       const programPublicKey = new PublicKey(programId);
@@ -346,10 +350,10 @@ export class HeliusService {
       const balance = await this.connection.getBalance(
         new PublicKey(accountAddress),
       );
-      return balance;
+      return lamportsToSafeNumber(balance);
     } catch (error) {
       logger.error(`Failed to get balance for ${accountAddress}:`, error);
-      return 0;
+      throw error;
     }
   }
 
@@ -390,7 +394,7 @@ export class HeliusService {
   }
 
   private parseTokenMetadata(
-    accountInfo: AccountInfo<Buffer>,
+    accountInfo: AccountInfo<Uint8Array>,
     tokenAddress: string,
   ): TokenLaunchData {
     // This is a simplified parser - in production, use actual Helius API
