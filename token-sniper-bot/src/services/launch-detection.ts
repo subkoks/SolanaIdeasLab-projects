@@ -1,6 +1,7 @@
 import { Connection, PublicKey, type ConfirmedSignatureInfo } from '@solana/web3.js'
 import { config } from '../config/environment'
 import { logger } from '../utils/logger'
+import { unixSecondsToMillis } from '../utils/web3-numeric'
 
 export const PUMP_FUN_PROGRAM_ID = new PublicKey(
   '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P',
@@ -83,7 +84,7 @@ export class LaunchDetectionService {
           mint,
           signature: item.signature,
           creator: parsed.creator,
-          timestampMs: (item.blockTime ?? Math.floor(Date.now() / 1000)) * 1000,
+          timestampMs: unixSecondsToMillis(item.blockTime),
         })
       }
     }
@@ -113,7 +114,7 @@ export class LaunchDetectionService {
         mint,
         signature,
         creator: parsed.creator,
-        timestampMs: (blockTime ?? Math.floor(Date.now() / 1000)) * 1000,
+        timestampMs: unixSecondsToMillis(blockTime),
       }
     }
 
