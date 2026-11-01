@@ -306,8 +306,8 @@ Let's find some gems! 🎯
 
 **Key Factors:**
 • Mint Authority: ${riskScore.factors.renouncedMint ? "✅ Renounced" : "⚠️ Active"}
-• Freeze Authority: ${riskScore.factors.liquidityLocked ? "✅ Locked" : "⚠️ Active"}
-• Top 10 Holding: ${riskScore.factors.top10Holding}%
+• Freeze Authority: ${riskScore.factors.freezeAuthorityRevoked ? "✅ Revoked" : "⚠️ Active"}
+• Top 10 Accounts: ${riskScore.factors.top10Holding}%
 
 ${riskScore.recommendations[0] || "No major concerns detected"}
       `;
@@ -766,8 +766,8 @@ ${emoji} **Token Analysis Report**
 
 **Key Factors:**
 • Mint Authority: ${riskScore.factors.renouncedMint ? "✅ Renounced" : "⚠️ Active"}
-• Freeze Authority: ${riskScore.factors.liquidityLocked ? "✅ Locked" : "⚠️ Active"}
-• Top 10 Holding: ${riskScore.factors.top10Holding}%
+• Freeze Authority: ${riskScore.factors.freezeAuthorityRevoked ? "✅ Revoked" : "⚠️ Active"}
+• Top 10 Accounts: ${riskScore.factors.top10Holding}%
 
 **Recommendations:**
 ${riskScore.recommendations.map((rec) => `• ${rec}`).join("\n")}
@@ -797,7 +797,7 @@ ${emoji} **Risk Assessment Report**
 **Critical Factors:**
 ${riskScore.factors.suspiciousFunctions ? "⚠️ Suspicious functions detected" : "✅ No suspicious functions"}
 ${riskScore.factors.renouncedMint ? "✅ Mint authority renounced" : "⚠️ Mint authority active"}
-${riskScore.factors.liquidityLocked ? "✅ Freeze authority locked" : "⚠️ Freeze authority active"}
+${riskScore.factors.freezeAuthorityRevoked ? "✅ Freeze authority revoked" : "⚠️ Freeze authority active"}
 
 ${riskScore.recommendations.join("\n")}
     `;

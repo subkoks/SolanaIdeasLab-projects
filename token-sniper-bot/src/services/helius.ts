@@ -2,6 +2,10 @@ import type { AccountInfo, Commitment } from "@solana/web3.js";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { config } from "../config/environment";
 import { logger } from "../utils/logger";
+import { parseMintObservation } from "../utils/mint-observations";
+import type { TokenProgramType } from "../utils/mint-observations";
+import { TokenObservationUnavailableError } from "../utils/token-observation-error";
+import { parseSupplyObservation, parseLargestObservations } from "../utils/balance-observations";
 
 export interface TokenLargestAccount {
   address: string;
@@ -29,8 +33,9 @@ export interface TokenLaunchData {
   decimals: number;
   supply: string;
   creator: string;
-  mintAuthority: string;
-  freezeAuthority: string;
+  mintAuthority: string | null;
+  freezeAuthority: string | null;
+  tokenProgram: TokenProgramType;
   metadata: {
     description?: string;
     image?: string;
@@ -164,33 +169,28 @@ export class HeliusService {
     tokenAddress: string,
   ): Promise<TokenLaunchData | null> {
     try {
-      const accountInfo = await this.connection.getAccountInfo(
+      const accountInfo = await this.connection.getParsedAccountInfo(
         new PublicKey(tokenAddress),
       );
 
-      if (!accountInfo || !accountInfo.data) {
-        return null;
-      }
-
-      // Parse token metadata (this would use actual Helius API in production)
-      const metadata = this.parseTokenMetadata(accountInfo, tokenAddress);
-
-      return metadata;
-    } catch (error) {
-      logger.error(`Failed to get token metadata for ${tokenAddress}:`, error);
-      return null;
+      if (accountInfo?.value === null) return null;
+      const mint = parseMintObservation(accountInfo?.value, tokenAddress);
+      if (!mint) return null;
+      // Mint accounts do not establish names, creators, social links or liquidity locks.
+      return { tokenAddress, ...mint, name: "Unknown Token", symbol: "UNKNOWN", creator: "", metadata: {} };
+    } catch {
+      throw new TokenObservationUnavailableError();
     }
   }
 
-  async getTokenSupply(tokenAddress: string): Promise<string | null> {
+  async getTokenSupply(tokenAddress: string): Promise<string> {
     try {
       const supply = await this.connection.getTokenSupply(
         new PublicKey(tokenAddress),
       );
-      return supply.value.amount;
-    } catch (error) {
-      logger.error(`Failed to get token supply for ${tokenAddress}:`, error);
-      return null;
+      return parseSupplyObservation(supply?.value).amount;
+    } catch {
+      throw new TokenObservationUnavailableError();
     }
   }
 
@@ -199,33 +199,26 @@ export class HeliusService {
       const supply = await this.connection.getTokenSupply(
         new PublicKey(tokenAddress),
       );
-      return supply.value.uiAmount ?? 0;
-    } catch (error) {
-      logger.error(`Failed to get token supply UI for ${tokenAddress}:`, error);
-      return 0;
+      const observation = parseSupplyObservation(supply?.value);
+      return Number(observation.amount) / 10 ** observation.decimals;
+    } catch {
+      throw new TokenObservationUnavailableError();
     }
   }
 
   async getTokenLargestAccounts(
     tokenAddress: string,
     limit: number = 10,
-  ): Promise<TokenLargestAccount[]> {
+  ): Promise<Array<TokenLargestAccount>> {
     try {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new TokenObservationUnavailableError();
       const largestAccounts = await this.connection.getTokenLargestAccounts(
         new PublicKey(tokenAddress),
       );
 
-      return largestAccounts.value.slice(0, limit).map((account) => ({
-        address: account.address.toBase58(),
-        amount: account.amount,
-        uiAmount: account.uiAmount ?? 0,
-      }));
-    } catch (error) {
-      logger.error(
-        `Failed to get largest accounts for ${tokenAddress}:`,
-        error,
-      );
-      return [];
+      return parseLargestObservations(largestAccounts?.value).slice(0, limit);
+    } catch {
+      throw new TokenObservationUnavailableError();
     }
   }
 
@@ -236,11 +229,10 @@ export class HeliusService {
     try {
       const accounts = await this.getTokenLargestAccounts(tokenAddress, limit);
       return accounts
-        .filter((account) => account.uiAmount > 0)
+        .filter((account) => BigInt(account.amount) > 0n)
         .map((account) => account.address);
-    } catch (error) {
-      logger.error(`Failed to get token holders for ${tokenAddress}:`, error);
-      return [];
+    } catch {
+      throw new TokenObservationUnavailableError();
     }
   }
 
@@ -387,30 +379,6 @@ export class HeliusService {
       );
       return 0;
     }
-  }
-
-  private parseTokenMetadata(
-    accountInfo: AccountInfo<Buffer>,
-    tokenAddress: string,
-  ): TokenLaunchData {
-    // This is a simplified parser - in production, use actual Helius API
-    const data = accountInfo.data as any;
-
-    return {
-      tokenAddress,
-      name: data.name || "Unknown Token",
-      symbol: data.symbol || "UNKNOWN",
-      decimals: data.decimals || 9,
-      supply: data.supply || "0",
-      creator: data.creator || "",
-      mintAuthority: data.mintAuthority || "",
-      freezeAuthority: data.freezeAuthority || "",
-      metadata: {
-        description: data.description,
-        image: data.image,
-        external: data.external || {},
-      },
-    };
   }
 
   async createWebhook(webhookConfig: any): Promise<string> {

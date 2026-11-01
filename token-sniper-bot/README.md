@@ -1,5 +1,8 @@
 # Token Sniper Alert Bot
 
+Mint validation, exact concentration evidence, unavailable responses and launch retry limits:
+[Sniper risk observations](../docs/SNIPER-RISK.md).
+
 > **Reference TypeScript/Node service scaffold.** Real-time token launch detection with intelligent risk scoring and whale alerts.
 
 ---
