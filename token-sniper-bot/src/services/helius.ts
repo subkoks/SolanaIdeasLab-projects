@@ -7,6 +7,8 @@ import type { TokenProgramType } from "../utils/mint-observations";
 import { TokenObservationUnavailableError } from "../utils/token-observation-error";
 import { parseSupplyObservation, parseLargestObservations } from "../utils/balance-observations";
 
+type Lamports = Awaited<ReturnType<Connection["getBalance"]>>;
+
 export interface TokenLargestAccount {
   address: string;
   amount: string;
@@ -277,7 +279,7 @@ export class HeliusService {
 
   async subscribeToAccount(
     accountAddress: string,
-    callback: (accountInfo: AccountInfo<Buffer>) => void,
+    callback: (accountInfo: AccountInfo<Uint8Array>) => void,
   ): Promise<void> {
     try {
       const publicKey = new PublicKey(accountAddress);
@@ -295,7 +297,7 @@ export class HeliusService {
 
   async subscribeToProgram(
     programId: string,
-    callback: (accountInfo: AccountInfo<Buffer>, accountKey: string) => void,
+    callback: (accountInfo: AccountInfo<Uint8Array>, accountKey: string) => void,
   ): Promise<void> {
     try {
       const programPublicKey = new PublicKey(programId);
@@ -333,7 +335,7 @@ export class HeliusService {
     }
   }
 
-  async getAccountBalance(accountAddress: string): Promise<number> {
+  async getAccountBalance(accountAddress: string): Promise<Lamports> {
     try {
       const balance = await this.connection.getBalance(
         new PublicKey(accountAddress),
@@ -341,7 +343,7 @@ export class HeliusService {
       return balance;
     } catch (error) {
       logger.error(`Failed to get balance for ${accountAddress}:`, error);
-      return 0;
+      return BigInt(0) as Lamports;
     }
   }
 
