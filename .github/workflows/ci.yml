@@ -112,7 +112,7 @@ jobs:
           # Run only the DATABASE_URL-gated Prisma suites (explicit files so
           # the JSON-fallback HTTP suite is never loaded under DATABASE_URL).
           DB_FILES=()
-          for f in tests/database-prisma.test.ts tests/database-analytics.test.ts tests/database-behavior.test.ts tests/database-breakdown.test.ts; do
+          for f in tests/database-prisma.test.ts tests/database-analytics.test.ts tests/database-behavior.test.ts tests/database-breakdown.test.ts tests/database-watcher-outbox.test.ts; do
             [ -f "$f" ] && DB_FILES+=("$f")
           done
           if [ ${#DB_FILES[@]} -gt 0 ]; then

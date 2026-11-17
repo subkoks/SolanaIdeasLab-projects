@@ -35,6 +35,10 @@ export const config = {
     pollIntervalMs: parseNumber(process.env.WATCHER_POLL_INTERVAL_MS, 30_000),
     maxWatchesPerSubscriber: parseNumber(process.env.MAX_WATCHES_PER_USER, 10),
     signatureBatchSize: parseNumber(process.env.WATCHER_SIGNATURE_BATCH, 10),
+    signatureMaxPages: Math.max(
+      1,
+      Math.trunc(parseNumber(process.env.WATCHER_SIGNATURE_MAX_PAGES, 100)),
+    ),
   },
   analytics: {
     mockSolUsdPrice: parseNumber(process.env.MOCK_SOL_USD_PRICE, 150),
