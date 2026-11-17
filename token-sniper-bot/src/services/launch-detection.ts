@@ -18,6 +18,15 @@ interface ParsedLaunchTx {
   mints: string[]
 }
 
+function timestampSecondsToMs(
+  blockTime: bigint | number | null | undefined,
+): number {
+  if (blockTime !== null && blockTime !== undefined) {
+    return Number(blockTime) * 1000
+  }
+  return Math.floor(Date.now() / 1000) * 1000
+}
+
 export class LaunchDetectionService {
   private readonly connection: Connection
   private readonly seenMints = new Set<string>()
@@ -83,7 +92,7 @@ export class LaunchDetectionService {
           mint,
           signature: item.signature,
           creator: parsed.creator,
-          timestampMs: (item.blockTime ?? Math.floor(Date.now() / 1000)) * 1000,
+          timestampMs: timestampSecondsToMs(item.blockTime),
         })
       }
     }
@@ -113,7 +122,7 @@ export class LaunchDetectionService {
         mint,
         signature,
         creator: parsed.creator,
-        timestampMs: (blockTime ?? Math.floor(Date.now() / 1000)) * 1000,
+        timestampMs: timestampSecondsToMs(blockTime),
       }
     }
 
