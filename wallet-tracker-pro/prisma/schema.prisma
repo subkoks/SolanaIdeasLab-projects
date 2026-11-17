@@ -18,15 +18,16 @@ model TelegramSubscriber {
 }
 
 model WalletWatch {
-  id             String             @id @default(cuid())
-  subscriberId   String
-  walletAddress  String
-  label          String?
-  lastSignature  String?
-  active         Boolean            @default(true)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  subscriber     TelegramSubscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  id            String               @id @default(cuid())
+  subscriberId  String
+  walletAddress String
+  label         String?
+  lastSignature String?
+  active        Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  subscriber    TelegramSubscriber   @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  notifications WalletNotification[]
 
   @@unique([subscriberId, walletAddress])
   @@index([walletAddress])
@@ -44,4 +45,19 @@ model WalletActivityEvent {
   observedAt    DateTime @default(now())
 
   @@index([walletAddress, observedAt])
+}
+
+model WalletNotification {
+  id          String      @id @default(cuid())
+  watchId     String
+  signature   String
+  message     String
+  deliveredAt DateTime?
+  claimedAt   DateTime?
+  claimToken  String?
+  createdAt   DateTime    @default(now())
+  watch       WalletWatch @relation(fields: [watchId], references: [id], onDelete: Cascade)
+
+  @@unique([watchId, signature])
+  @@index([watchId, deliveredAt, claimedAt, createdAt])
 }

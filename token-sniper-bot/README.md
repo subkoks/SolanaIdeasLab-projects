@@ -63,7 +63,7 @@ Telegram bot that provides **actionable intelligence** on new token launches:
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 24+
 - PostgreSQL 15+
 - Redis 7+
 - Helius API key
@@ -164,7 +164,7 @@ Month 6: 500 users × $45/mo avg = $22,500/mo
 
 ### Core Technologies
 
-- **Runtime:** Node.js 18+ with TypeScript
+- **Runtime:** Node.js 24+ with TypeScript
 - **Framework:** Express.js + Telegraf.js
 - **Database:** PostgreSQL + Prisma ORM
 - **Cache:** Redis for real-time data
@@ -493,12 +493,12 @@ app.get("/health", async (req, res) => {
 ### Docker Configuration
 
 ```dockerfile
-FROM node:18-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 
-FROM node:18-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
