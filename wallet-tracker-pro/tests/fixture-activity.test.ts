@@ -27,7 +27,7 @@ import { DatabaseService } from '../src/services/database'
 
 const FORBIDDEN_WORDS = ['buy','sell','trade','swap','execute','transact','sign','send','transfer','withdraw','deposit','balance','profit','loss','investment']
 const FORBIDDEN_SOURCES = ['fixtureId','isSimulated','generatedAt','wallet','activity','local-fixture']
-const FORBIDDEN_SERVICE_LEAKS = ['SolanaWatcherService','DatabaseService','pollWatchlist','fetchNewMovements','listActiveWatches','recordActivity','WalletTrackerTelegramBot','notifyChat','prisma','redis','rpcUrl']
+const FORBIDDEN_SERVICE_LEAKS = ['SolanaWatcherService','DatabaseService','pollWatchlist','fetchNewMovements','listActiveWatches','recordActivity','commitWatchProgress','claimPendingNotifications','releaseNotificationClaim','markNotificationDelivered','WalletTrackerTelegramBot','notifyChat','prisma','redis','rpcUrl']
 
 type LiveSpy = { calls: unknown[][] }
 const liveSpies: LiveSpy[] = []
@@ -41,6 +41,10 @@ const installLiveServiceSpies = (): void => {
     [DatabaseService.prototype, 'listActiveWatches'],
     [DatabaseService.prototype, 'recordActivity'],
     [DatabaseService.prototype, 'updateWatchCursor'],
+    [DatabaseService.prototype, 'commitWatchProgress'],
+    [DatabaseService.prototype, 'claimPendingNotifications'],
+    [DatabaseService.prototype, 'releaseNotificationClaim'],
+    [DatabaseService.prototype, 'markNotificationDelivered'],
     [DatabaseService.prototype, 'connect'],
     [DatabaseService.prototype, 'disconnect'],
     [DatabaseService.prototype, 'healthCheck'],

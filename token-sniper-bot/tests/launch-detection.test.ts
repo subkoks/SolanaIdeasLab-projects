@@ -56,4 +56,67 @@ describe('LaunchDetectionService bootstrap', () => {
 
     await expect(service.ingestSignature('sig-webhook-2', 1_700_000_200)).resolves.toBeNull()
   })
+
+  it('converts a bigint web3.js blockTime without mixing BigInt and number', async () => {
+    const initialSignatures = [
+      {
+        signature: 'sig-bootstrap',
+        blockTime: BigInt(1_700_000_000),
+      },
+    ]
+    const nextSignatures = [
+      {
+        signature: 'sig-launch',
+        blockTime: BigInt(1_700_000_123),
+      },
+      ...initialSignatures,
+    ]
+    const transactions = new Map([
+      [
+        'sig-bootstrap',
+        {
+          meta: { postTokenBalances: [{ mint: 'mint-seeded' }] },
+          transaction: {
+            message: {
+              accountKeys: [{ pubkey: { toBase58: () => 'creator-1' } }],
+            },
+          },
+        },
+      ],
+      [
+        'sig-launch',
+        {
+          meta: { postTokenBalances: [{ mint: 'mint-bigint' }] },
+          transaction: {
+            message: {
+              accountKeys: [{ pubkey: { toBase58: () => 'creator-2' } }],
+            },
+          },
+        },
+      ],
+    ])
+    const mockConnection = {
+      getSignaturesForAddress: jest
+        .fn()
+        .mockResolvedValueOnce(initialSignatures)
+        .mockResolvedValueOnce(nextSignatures),
+      getParsedTransaction: jest
+        .fn()
+        .mockImplementation((signature: string) =>
+          Promise.resolve(transactions.get(signature)),
+        ),
+    }
+    const service = new LaunchDetectionService(mockConnection as never)
+
+    await service.pollPumpFunLaunches()
+
+    await expect(service.pollPumpFunLaunches()).resolves.toEqual([
+      {
+        mint: 'mint-bigint',
+        signature: 'sig-launch',
+        creator: 'creator-2',
+        timestampMs: 1_700_000_123_000,
+      },
+    ])
+  })
 })
