@@ -44,7 +44,7 @@
 .empty { color: #8892a8; font-size: 14px; padding: 12px 0; }
 .errorBox { background: rgba(255,93,108,.08); border: 1px solid rgba(255,93,108,.25); color: #ff5d6c; padding: 12px; border-radius: 8px; font-size: 14px; }
 .footer { padding: 16px 32px; border-top: 1px solid #222a37; color: #8892a8; font-size: 11px; }
-@media (max-width: 780px) { .main { grid-template-columns: 1fr; } .panel { padding: 14px; } header, .main, .footer { padding-left: 16px; padding-right: 16px; } }
+@media (max-width: 780px) { .main { grid-template-columns: 1fr; } .panel { padding: 14px; } .header, .main, .footer { padding-left: 16px; padding-right: 16px; } }
 .localNav { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; padding: 0.5rem 0; }
 .localNav a { font-size: var(--small); color: var(--text-secondary); text-decoration: none; padding: 0.375rem 0.75rem; border-radius: var(--radius-sm); border: var(--border); }
 .localNav a:hover, .localNav a:focus { color: var(--text-primary); border-color: var(--blue); outline: none; }

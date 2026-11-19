@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
+import { randomUUID } from 'node:crypto'
 import { config } from '../lib/config'
 import { estimateUsdFromSol, lamportsToSol } from '../lib/portfolio'
 import { getSolUsdPrice } from '../lib/sol-price'
@@ -47,6 +48,15 @@ export class DatabaseService {
       )
     }
 
+    const existing = await this.prisma.walletWatch.findUnique({
+      where: {
+        subscriberId_walletAddress: {
+          subscriberId: subscriber.id,
+          walletAddress,
+        },
+      },
+    })
+
     return this.prisma.walletWatch.upsert({
       where: {
         subscriberId_walletAddress: {
@@ -54,7 +64,11 @@ export class DatabaseService {
           walletAddress,
         },
       },
-      update: { label, active: true },
+      update: {
+        label,
+        active: true,
+        ...(existing && !existing.active ? { lastSignature: null } : {}),
+      },
       create: {
         subscriberId: subscriber.id,
         walletAddress,
@@ -111,6 +125,13 @@ export class DatabaseService {
     })
   }
 
+  public async resetWatchCursor(watchId: string) {
+    return this.prisma.walletWatch.update({
+      where: { id: watchId },
+      data: { lastSignature: null },
+    })
+  }
+
   public async recordActivity(input: {
     walletAddress: string
     signature: string
@@ -119,19 +140,120 @@ export class DatabaseService {
     tokenMint?: string
     summary?: string
   }) {
-    try {
-      return await this.prisma.walletActivityEvent.create({
-        data: input,
-      })
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes('Unique constraint')
-      ) {
-        return null
+    return this.prisma.walletActivityEvent.upsert({
+      where: { signature: input.signature },
+      update: {},
+      create: input,
+    })
+  }
+
+  public async commitWatchProgress(input: {
+    watchId: string
+    cursor: string
+    movements: Array<{
+      walletAddress: string
+      signature: string
+      direction: string
+      lamports?: bigint
+      tokenMint?: string
+      summary?: string
+    }>
+    notifications: Array<{
+      signature: string
+      message: string
+    }>
+  }) {
+    return this.prisma.$transaction(async (transaction) => {
+      if (input.movements.length > 0) {
+        await transaction.walletActivityEvent.createMany({
+          data: input.movements,
+          skipDuplicates: true,
+        })
       }
-      throw error
+      if (input.notifications.length > 0) {
+        await transaction.walletNotification.createMany({
+          data: input.notifications.map((notification) => ({
+            watchId: input.watchId,
+            ...notification,
+          })),
+          skipDuplicates: true,
+        })
+      }
+      return transaction.walletWatch.update({
+        where: { id: input.watchId },
+        data: { lastSignature: input.cursor },
+      })
+    })
+  }
+
+  public async claimPendingNotifications(
+    watchId: string,
+    leaseMs = 5 * 60 * 1000,
+    limit = 20,
+  ) {
+    const now = new Date()
+    const staleBefore = new Date(now.getTime() - Math.max(1, leaseMs))
+    const claimable = {
+      deliveredAt: null,
+      OR: [{ claimedAt: null }, { claimedAt: { lt: staleBefore } }],
     }
+
+    return this.prisma.$transaction(async (transaction) => {
+      const candidates = await transaction.walletNotification.findMany({
+        where: { watchId, ...claimable },
+        orderBy: { createdAt: 'asc' },
+        take: Math.max(1, limit),
+      })
+      const claimed = []
+
+      for (const notification of candidates) {
+        const claimToken = randomUUID()
+        const result = await transaction.walletNotification.updateMany({
+          where: { id: notification.id, ...claimable },
+          data: { claimedAt: now, claimToken },
+        })
+        if (result.count === 1) {
+          claimed.push({ ...notification, claimedAt: now, claimToken })
+        }
+      }
+
+      return claimed
+    })
+  }
+
+  public async markNotificationDelivered(
+    notificationId: string,
+    claimToken: string,
+  ) {
+    return this.prisma.walletNotification.updateMany({
+      where: {
+        id: notificationId,
+        claimToken,
+        deliveredAt: null,
+      },
+      data: {
+        deliveredAt: new Date(),
+        claimedAt: null,
+        claimToken: null,
+      },
+    })
+  }
+
+  public async releaseNotificationClaim(
+    notificationId: string,
+    claimToken: string,
+  ) {
+    return this.prisma.walletNotification.updateMany({
+      where: {
+        id: notificationId,
+        claimToken,
+        deliveredAt: null,
+      },
+      data: {
+        claimedAt: null,
+        claimToken: null,
+      },
+    })
   }
 
   public async getRecentActivity(walletAddress: string, limit = 5) {

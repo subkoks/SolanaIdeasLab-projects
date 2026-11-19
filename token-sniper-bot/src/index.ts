@@ -16,6 +16,7 @@ import { HeliusLaserStreamService } from "./services/helius-laserstream";
 import { MonitorService } from "./services/monitor";
 import { QueueService } from "./services/queue";
 import { RiskScoringService } from "./services/risk-scoring";
+import { TokenObservationUnavailableError } from "./utils/token-observation-error";
 import { TelegramBotService } from "./services/telegram-bot";
 import { logger } from "./utils/logger";
 import { assertProductionConfig, isProductionRuntime } from "./utils/production-guard";
@@ -396,6 +397,10 @@ export class TokenSniperBot {
         );
         res.json(analysis);
       } catch (error) {
+        if (error instanceof TokenObservationUnavailableError) {
+          res.status(503).json({ error: "Token observations unavailable", code: "TOKEN_OBSERVATIONS_UNAVAILABLE" });
+          return;
+        }
         res.status(500).json({ error: "Token analysis failed" });
       }
     });
@@ -410,6 +415,10 @@ export class TokenSniperBot {
         const score = await this.riskScorer.getRiskScore(tokenAddress);
         res.json(score);
       } catch (error) {
+        if (error instanceof TokenObservationUnavailableError) {
+          res.status(503).json({ error: "Token observations unavailable", code: "TOKEN_OBSERVATIONS_UNAVAILABLE" });
+          return;
+        }
         res.status(404).json({ error: "Token not found" });
       }
     });

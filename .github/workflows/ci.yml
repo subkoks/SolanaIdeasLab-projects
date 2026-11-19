@@ -58,9 +58,29 @@ jobs:
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: 22
+          node-version: ${{ matrix.project == 'token-sniper-bot' && 24 || 22 }}
           cache: npm
           cache-dependency-path: ${{ matrix.project }}/package-lock.json
+
+      - name: Require public npm lockfile URLs
+        # Check before npm install can silently rewrite committed mirror URLs.
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          const invalid = Object.entries(lock.packages ?? {}).filter(([, entry]) => {
+            if (!entry.resolved || entry.link === true) return false;
+            try {
+              const url = new URL(entry.resolved);
+              return url.protocol !== 'https:' || url.hostname !== 'registry.npmjs.org' ||
+                url.port !== '' || url.username !== '' || url.password !== '';
+            } catch { return true; }
+          }).map(([name]) => name);
+          if (invalid.length) {
+            console.error('Lockfile must use public npm URLs; invalid package entries:', invalid);
+            process.exit(1);
+          }
+          NODE
 
       - name: Install dependencies
         # shared is developed on macOS; its committed lockfile pins the darwin
@@ -115,7 +135,7 @@ jobs:
           # Run only the DATABASE_URL-gated Prisma suites (explicit files so
           # the JSON-fallback HTTP suite is never loaded under DATABASE_URL).
           DB_FILES=()
-          for f in tests/database-prisma.test.ts tests/database-analytics.test.ts tests/database-behavior.test.ts tests/database-breakdown.test.ts; do
+          for f in tests/database-prisma.test.ts tests/database-analytics.test.ts tests/database-behavior.test.ts tests/database-breakdown.test.ts tests/database-watcher-outbox.test.ts; do
             [ -f "$f" ] && DB_FILES+=("$f")
           done
           if [ ${#DB_FILES[@]} -gt 0 ]; then
