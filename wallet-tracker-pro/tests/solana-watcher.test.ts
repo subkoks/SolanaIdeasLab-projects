@@ -26,7 +26,10 @@ import {
   type TokenBalance,
 } from '@solana/web3.js'
 import { config } from '../src/lib/config'
-import { SolanaWatcherService } from '../src/services/solana-watcher'
+import {
+  CursorUnavailableError,
+  SolanaWatcherService,
+} from '../src/services/solana-watcher'
 
 const WALLET = '11111111111111111111111111111112'
 const MINT = 'So11111111111111111111111111111111111111112'
@@ -304,7 +307,7 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     }
   })
 
-  it('fails without advancing when a confirmed transaction is unavailable', async () => {
+  it('skips an unavailable confirmed transaction and advances past it', async () => {
     const connection = {
       async getSignaturesForAddress() {
         return [signature('missing', 2)]
@@ -318,12 +321,13 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     >
     const watcher = new SolanaWatcherService(connection)
 
-    await expect(
-      watcher.fetchNewMovementsWithCursor(WALLET, null),
-    ).rejects.toThrow('Confirmed transaction is not yet available: missing')
+    const result = await watcher.fetchNewMovementsWithCursor(WALLET, null)
+
+    expect(result.movements).toEqual([])
+    expect(result.cursor).toBe('missing')
   })
 
-  it('does not advance watchlist state after an unavailable transaction', async () => {
+  it('advances the cursor past an unavailable transaction without notifying', async () => {
     const connection = {
       async getSignaturesForAddress() {
         return [signature('missing', 2)]
@@ -360,9 +364,16 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     const notify = jest.fn()
 
     await watcher.pollWatchlist(database as never, notify)
-    await watcher.pollWatchlist(database as never, notify)
 
-    expect(commitWatchProgress).not.toHaveBeenCalled()
+    expect(commitWatchProgress).toHaveBeenCalledTimes(1)
+    expect(commitWatchProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        watchId: 1,
+        cursor: 'missing',
+        movements: [],
+        notifications: [],
+      }),
+    )
     expect(notify).not.toHaveBeenCalled()
   })
 
@@ -468,6 +479,34 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
       expect.objectContaining({ watchId: 'watch-1', cursor: 'newer' }),
     )
     expect(watch.lastSignature).toBe('newer')
+  })
+
+  it('rebases when the saved cursor falls outside the signature page budget', async () => {
+    const originalMaxPages = config.watcher.signatureMaxPages
+    config.watcher.signatureMaxPages = 1
+    try {
+      const connection = {
+        async getSignaturesForAddress() {
+          return [signature('newer', 2), signature('older', 1)]
+        },
+        async getParsedTransaction() {
+          return parsedTransaction({
+            preLamports: BigInt(10),
+            postLamports: BigInt(10),
+          })
+        },
+      } satisfies Pick<
+        Connection,
+        'getSignaturesForAddress' | 'getParsedTransaction'
+      >
+      const watcher = new SolanaWatcherService(connection)
+
+      await expect(
+        watcher.fetchNewMovementsWithCursor(WALLET, 'ancient'),
+      ).rejects.toBeInstanceOf(CursorUnavailableError)
+    } finally {
+      config.watcher.signatureMaxPages = originalMaxPages
+    }
   })
 
   it('rejects duplicate signatures after the saved cursor before advancing', async () => {

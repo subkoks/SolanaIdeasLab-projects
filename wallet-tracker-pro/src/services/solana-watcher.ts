@@ -22,13 +22,6 @@ export interface NewMovementsResult {
   cursor: string | null
 }
 
-export class TransactionUnavailableError extends Error {
-  constructor(signature: string) {
-    super(`Confirmed transaction is not yet available: ${signature}`)
-    this.name = 'TransactionUnavailableError'
-  }
-}
-
 export class SignatureContinuityError extends Error {
   constructor(message: string) {
     super(message)
@@ -268,7 +261,7 @@ export class SolanaWatcherService {
       }
       before = nextBefore
       if (pageNumber === maxPages - 1) {
-        throw new SignatureContinuityError(
+        throw new CursorUnavailableError(
           'Signature history exceeded the configured page limit before reaching the saved cursor',
         )
       }
@@ -286,7 +279,10 @@ export class SolanaWatcherService {
     const parsed = await this.fetchParsedTransactions(items)
 
     for (const [index, item] of items.entries()) {
-      const transaction = parsed[index]!
+      const transaction = parsed[index]
+      if (!transaction) {
+        continue
+      }
       movements.push(
         ...this.parseMovements(walletAddress, item.signature, transaction),
       )
@@ -297,14 +293,14 @@ export class SolanaWatcherService {
 
   private async fetchParsedTransactions(
     items: ConfirmedSignatureInfo[],
-  ): Promise<ParsedTransactionWithMeta[]> {
+  ): Promise<Array<ParsedTransactionWithMeta | null>> {
     const config = {
       commitment: 'confirmed' as const,
       maxSupportedTransactionVersion: 1 as const,
     }
 
     if (this.connection.getParsedTransactions) {
-      const transactions: ParsedTransactionWithMeta[] = []
+      const transactions: Array<ParsedTransactionWithMeta | null> = []
       for (let start = 0; start < items.length; start += TRANSACTION_BATCH_SIZE) {
         const batch = items.slice(start, start + TRANSACTION_BATCH_SIZE)
         const parsed = await this.connection.getParsedTransactions(
@@ -318,7 +314,11 @@ export class SolanaWatcherService {
         }
         for (const [index, transaction] of parsed.entries()) {
           if (!transaction?.meta) {
-            throw new TransactionUnavailableError(batch[index]!.signature)
+            logger.warn('Skipping unavailable confirmed transaction', {
+              signature: batch[index]!.signature,
+            })
+            transactions.push(null)
+            continue
           }
           transactions.push(transaction)
         }
@@ -331,14 +331,18 @@ export class SolanaWatcherService {
         'Wallet connection does not support parsed transactions',
       )
     }
-    const transactions: ParsedTransactionWithMeta[] = []
+    const transactions: Array<ParsedTransactionWithMeta | null> = []
     for (const item of items) {
       const transaction = await this.connection.getParsedTransaction(
         item.signature,
         config,
       )
       if (!transaction?.meta) {
-        throw new TransactionUnavailableError(item.signature)
+        logger.warn('Skipping unavailable confirmed transaction', {
+          signature: item.signature,
+        })
+        transactions.push(null)
+        continue
       }
       transactions.push(transaction)
     }
