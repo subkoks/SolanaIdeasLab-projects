@@ -59,6 +59,26 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ matrix.project }}/package-lock.json
 
+      - name: Require public npm lockfile URLs
+        # Check before npm install can silently rewrite committed mirror URLs.
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          const invalid = Object.entries(lock.packages ?? {}).filter(([, entry]) => {
+            if (!entry.resolved || entry.link === true) return false;
+            try {
+              const url = new URL(entry.resolved);
+              return url.protocol !== 'https:' || url.hostname !== 'registry.npmjs.org' ||
+                url.port !== '' || url.username !== '' || url.password !== '';
+            } catch { return true; }
+          }).map(([name]) => name);
+          if (invalid.length) {
+            console.error('Lockfile must use public npm URLs; invalid package entries:', invalid);
+            process.exit(1);
+          }
+          NODE
+
       - name: Install dependencies
         # shared is developed on macOS; its committed lockfile pins the darwin
         # esbuild optional dep, which `npm ci` rejects on the Linux runner
