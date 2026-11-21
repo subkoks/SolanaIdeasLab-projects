@@ -25,8 +25,8 @@ function mockReqRes(headers: Record<string, string> = {}, ip = '1.2.3.4') {
   return { req: req as Request, res: res as Response, next: jest.fn() }
 }
 
-function makeUser(tier: AuthUser['subscriptionTier'] = 'free'): AuthUser {
-  const kp = Keypair.generate()
+async function makeUser(tier: AuthUser['subscriptionTier'] = 'free'): Promise<AuthUser> {
+  const kp = await Keypair.generate()
   return {
     id: kp.publicKey.toBase58(),
     wallet: kp.publicKey.toBase58(),
@@ -57,7 +57,7 @@ describe('ApiMiddleware.authMiddleware', () => {
   })
 
   it('calls next and sets req.user for a valid token', async () => {
-    const user = makeUser('pro')
+    const user = await makeUser('pro')
     const token = auth.createJWT(user)
     const { req, res, next } = mockReqRes({ authorization: `Bearer ${token}` })
     const mw = ApiMiddleware.authMiddleware((t) => auth.verifyToken(t))
@@ -69,16 +69,16 @@ describe('ApiMiddleware.authMiddleware', () => {
 })
 
 describe('ApiMiddleware.subscriptionMiddleware', () => {
-  it('allows when user tier meets requirement', () => {
-    const user = makeUser('pro')
+  it('allows when user tier meets requirement', async () => {
+    const user = await makeUser('pro')
     const { req, res, next } = mockReqRes({})
     ;(req as AuthenticatedRequest).user = user
     ApiMiddleware.subscriptionMiddleware('basic')(req as AuthenticatedRequest, res, next)
     expect(next).toHaveBeenCalled()
   })
 
-  it('returns 403 when user tier is below requirement', () => {
-    const user = makeUser('free')
+  it('returns 403 when user tier is below requirement', async () => {
+    const user = await makeUser('free')
     const { req, res, next } = mockReqRes({})
     ;(req as AuthenticatedRequest).user = user
     ApiMiddleware.subscriptionMiddleware('pro')(req as AuthenticatedRequest, res, next)
@@ -92,8 +92,8 @@ describe('ApiMiddleware.subscriptionMiddleware', () => {
     expect(res.statusCode).toBe(401)
   })
 
-  it('allows when required tier exactly matches user tier (free/free)', () => {
-    const user = makeUser('free')
+  it('allows when required tier exactly matches user tier (free/free)', async () => {
+    const user = await makeUser('free')
     const { req, res, next } = mockReqRes({})
     ;(req as AuthenticatedRequest).user = user
     ApiMiddleware.subscriptionMiddleware('free')(req as AuthenticatedRequest, res, next)
@@ -101,8 +101,8 @@ describe('ApiMiddleware.subscriptionMiddleware', () => {
     expect(res.statusCode).toBe(0)
   })
 
-  it('rejects unknown tier gracefully', () => {
-    const user = makeUser('free')
+  it('rejects unknown tier gracefully', async () => {
+    const user = await makeUser('free')
     const { req, res, next } = mockReqRes({})
     ;(req as AuthenticatedRequest).user = user
     ApiMiddleware.subscriptionMiddleware('platinum')(req as AuthenticatedRequest, res, next)
