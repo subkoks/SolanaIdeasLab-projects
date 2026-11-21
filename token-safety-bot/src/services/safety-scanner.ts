@@ -1,7 +1,7 @@
 import { config } from '../config/environment'
 import { DatabaseService } from './database'
 import { SolanaService } from './solana'
-import type { TokenProgramType } from './solana'
+import type { SignatureActivity, TokenProgramType } from './solana'
 import { toAgentRiskResponse } from '../utils/risk-response'
 import type { AgentRiskResponse } from '../utils/risk-response'
 
@@ -352,13 +352,14 @@ export class SafetyScannerService {
   }
 
   private detectBundleActivity(
-    signatures: Array<{ blockTime: number | null; signature: string }>,
+    signatures: ReadonlyArray<SignatureActivity>,
   ): { count: number; detected: boolean; windowSeconds: number } {
     const windowSeconds = 120
+    const windowSecondsBigInt = BigInt(windowSeconds)
     const blockTimes = signatures
       .map((entry) => entry.blockTime)
-      .filter((value): value is number => value !== null)
-      .sort((left, right) => right - left)
+      .filter((value): value is bigint => value !== null)
+      .sort((left, right) => (left === right ? 0 : left > right ? -1 : 1))
 
     if (blockTimes.length < 8) {
       return { detected: false, count: blockTimes.length, windowSeconds }
@@ -366,7 +367,7 @@ export class SafetyScannerService {
 
     const newest = blockTimes[0]!
     const burstCount = blockTimes.filter(
-      (blockTime) => newest - blockTime <= windowSeconds,
+      (blockTime) => newest - blockTime <= windowSecondsBigInt,
     ).length
 
     return {

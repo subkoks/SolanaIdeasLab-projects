@@ -71,10 +71,7 @@ for proj in token-safety-bot token-sniper-bot wallet-tracker-pro; do
   dir="$ROOT/$proj"
   [ -d "$dir" ] || continue
   log "=== $proj ==="
-  case "$proj" in
-    token-sniper-bot|wallet-tracker-pro) select_node 24 ;;
-    *) select_node 22 ;;
-  esac
+  select_node 24
   if [ ! -f "$dir/.env" ] && [ -f "$dir/.env.example" ]; then
     cp "$dir/.env.example" "$dir/.env"
     log "  .env copied from .env.example (edit secrets before prod)"
@@ -84,7 +81,7 @@ for proj in token-safety-bot token-sniper-bot wallet-tracker-pro; do
   fi
   if [ -f "$dir/prisma/schema.prisma" ] || [ -f "$dir/prisma.config.ts" ]; then
     (cd "$dir" && npm run db:generate)
-    if [ -d "$dir/prisma/migrations" ] && [ "$(ls -A "$dir/prisma/migrations" 2>/dev/null | grep -v migration_lock.toml || true)" ]; then
+    if [ -d "$dir/prisma/migrations" ] && [ -n "$(find "$dir/prisma/migrations" -mindepth 1 -maxdepth 1 ! -name migration_lock.toml -print -quit)" ]; then
       (cd "$dir" && npm run db:migrate:deploy 2>/dev/null) || log "  prisma migrate deploy skipped (DB unavailable)"
     fi
   fi
@@ -92,7 +89,7 @@ for proj in token-safety-bot token-sniper-bot wallet-tracker-pro; do
 done
 
 log "=== design tokens (read-only drift check) ==="
-select_node 22
+select_node 24
 (cd "$ROOT" && node shared/design/check-tokens.js)
 
 log "=== solana-lab-console (static launcher; no npm install) ==="

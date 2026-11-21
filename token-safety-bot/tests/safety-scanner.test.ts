@@ -36,7 +36,7 @@ const createSolanaStub = (): jest.Mocked<
   getRecentSignatures: jest.fn().mockResolvedValue(
     Array.from({ length: 12 }, (_, index) => ({
       signature: `sig-${index}`,
-      blockTime: 1_700_000_000 - index,
+      blockTime: BigInt(1_700_000_000 - index),
     })),
   ),
   getTokenHolderCount: jest.fn().mockResolvedValue(8),
@@ -92,6 +92,9 @@ describe('SafetyScannerService', () => {
       )
       expect(result.redFlags).toContain(
         'Token uses Token-2022 extensions that require manual review',
+      )
+      expect(result.redFlags).toContain(
+        'Possible coordinated buying detected (12 txs in 120s)',
       )
     } finally {
       await databaseService.disconnect()
