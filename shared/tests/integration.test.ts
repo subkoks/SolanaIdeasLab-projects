@@ -32,7 +32,7 @@ describe('Shared auth middleware — Express integration (supertest)', () => {
   it('accepts a valid token and reaches the protected handler', async () => {
     const auth = new WalletAuth({} as any, TEST_SECRET)
     const app = appFor(auth)
-    const kp = Keypair.generate()
+    const kp = await Keypair.generate()
     const user: AuthUser = {
       id: kp.publicKey.toBase58(),
       wallet: kp.publicKey.toBase58(),

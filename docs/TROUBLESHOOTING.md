@@ -31,7 +31,9 @@ cd <project> && npm install
 # commit package-lock.json ONLY if you are intentionally changing dependencies
 ```
 
-CI uses Node 22 — regenerate lockfile with Node 22 if local Node differs.
+CI uses Node 24 for token-sniper-bot and wallet-tracker-pro, and Node 22 for
+shared and token-safety-bot. Regenerate a package lockfile with that package's
+matching Node/npm version if local versions differ.
 
 ### `prisma migrate deploy skipped (DB unavailable)`
 
