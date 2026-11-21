@@ -25,10 +25,39 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 # shellcheck disable=SC1091
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
+MISE_NODE_BIN=""
+
 select_node() {
-  if type nvm >/dev/null 2>&1; then
-    nvm use "$1" >/dev/null 2>&1 || log "Node $1 is not available through nvm; using $(node --version)"
+  local major="$1"
+  local mise_node
+  local path_without_mise
+
+  if [ -n "$MISE_NODE_BIN" ]; then
+    path_without_mise=":$PATH:"
+    path_without_mise="${path_without_mise//:"$MISE_NODE_BIN":/:}"
+    path_without_mise="${path_without_mise#:}"
+    export PATH="${path_without_mise%:}"
+    MISE_NODE_BIN=""
+    hash -r
   fi
+
+  if type nvm >/dev/null 2>&1 && nvm use "$major" >/dev/null 2>&1; then
+    hash -r
+    return 0
+  fi
+
+  if command -v mise >/dev/null 2>&1 &&
+    mise_node="$(mise where "node@$major" 2>/dev/null)" &&
+    [ -x "$mise_node/bin/node" ]; then
+    MISE_NODE_BIN="$mise_node/bin"
+    export PATH="$MISE_NODE_BIN:$PATH"
+    hash -r
+    log "using Node $(node --version) for major $major via mise"
+    return 0
+  fi
+
+  log "Node $major is required but is unavailable through nvm or mise"
+  return 1
 }
 
 if command -v createdb >/dev/null 2>&1; then
