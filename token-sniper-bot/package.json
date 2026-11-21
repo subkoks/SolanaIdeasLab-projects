@@ -111,6 +111,9 @@
     "fast-uri": "3.1.9",
     "browserslist": "4.28.9",
     "qs": "6.16.1",
-    "stream-json": ">=3.5.0"
+    "stream-json": ">=3.5.0",
+    "@prisma/config": {
+      "effect": "3.22.1"
+    }
   }
 }
