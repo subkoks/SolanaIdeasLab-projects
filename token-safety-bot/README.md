@@ -60,7 +60,7 @@ Telegram bot that provides **complete token safety analysis**:
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 24+
 - Solana RPC endpoint
 - Telegram bot token (optional for chat mode)
 
@@ -150,7 +150,7 @@ Month 6: 400 users × $45/mo avg = $18,000/mo
 
 ### Core Technologies
 
-- **Runtime:** Node.js 18+ with TypeScript
+- **Runtime:** Node.js 24+ with TypeScript
 - **Framework:** Express.js + Telegraf.js
 - **Blockchain:** Solana Web3.js
 - **Persistence:** Local JSON-backed persistent store (PostgreSQL/Redis integration still optional next step)
@@ -163,7 +163,7 @@ Month 6: 400 users × $45/mo avg = $18,000/mo
   "dependencies": {
     "express": "^4.18.2",
     "telegraf": "^4.16.3",
-    "@solana/web3.js": "^1.95.0",
+    "@solana/web3.js": "^3.2.1",
     "zod": "^3.24.2",
     "winston": "^3.11.0",
     "jsonwebtoken": "^9.0.2"
@@ -509,12 +509,12 @@ class PerformanceMonitor {
 ### Docker Configuration
 
 ```dockerfile
-FROM node:18-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 
-FROM node:18-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .

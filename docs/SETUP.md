@@ -6,15 +6,14 @@ Get all three projects running locally **without API keys**. Add keys later usin
 
 | Tool | Version | Needed for |
 |---|---|---|
-| **Node.js** | 22.x and 24.x | 24.x for token-sniper-bot and wallet-tracker-pro; 22.x for token-safety-bot and shared design checks |
-| **npm** | 10+ | Comes with Node 22 and Node 24 |
+| **Node.js** | 24.x | Required by `@solana/web3.js` v3 dependency paths in the service packages |
+| **npm** | 10+ | Comes with Node 24 |
 | **PostgreSQL** | 14+ | Running the bots with a real DB (optional for most tests) |
 | **Redis** | 6+ | token-sniper-bot queues (optional for basic API) |
 
-The one-command bootstrap switches between both Node majors. Install both, for
-example with `nvm install 22 && nvm install 24` or
-`mise install node@22 node@24`; the script also finds already-installed `mise`
-versions when `nvm` cannot supply the required major.
+Install Node 24, for example with `nvm install 24` or `mise install node@24`;
+the script also finds an already-installed `mise` version when `nvm` cannot
+supply the required major.
 
 > **Local validation does not require Postgres or Redis.** All unit/type/lint
 > checks run without a database. DB-backed tests (`describeIfDatabase`) are

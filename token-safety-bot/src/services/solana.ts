@@ -1,5 +1,10 @@
 import { Connection, PublicKey } from '@solana/web3.js'
-import type { Commitment, ParsedAccountData, TokenAmount } from '@solana/web3.js'
+import type {
+  Commitment,
+  ConfirmedSignatureInfo,
+  ParsedAccountData,
+  TokenAmount,
+} from '@solana/web3.js'
 import { config } from '../config/environment'
 
 const LEGACY_TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
@@ -25,9 +30,22 @@ export interface TokenInfo {
 }
 
 export interface SignatureActivity {
-  blockTime: number | null
+  blockTime: bigint | null
   signature: string
 }
+
+export type SignatureActivityRecord = Pick<
+  ConfirmedSignatureInfo,
+  'blockTime' | 'signature'
+>
+
+export const toSignatureActivity = (
+  signatures: ReadonlyArray<SignatureActivityRecord>,
+): Array<SignatureActivity> =>
+  signatures.map((entry) => ({
+    signature: entry.signature,
+    blockTime: entry.blockTime,
+  }))
 
 const getTokenProgramType = (programAddress: string): TokenProgramType => {
   if (programAddress === LEGACY_TOKEN_PROGRAM) {
@@ -138,10 +156,7 @@ export class SolanaService {
         new PublicKey(address),
         { limit },
       )
-      return signatures.map((entry) => ({
-        signature: entry.signature,
-        blockTime: entry.blockTime ?? null,
-      }))
+      return toSignatureActivity(signatures)
     } catch {
       return []
     }
