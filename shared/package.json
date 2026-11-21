@@ -16,21 +16,21 @@
     "security-check": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.95.0",
+    "@solana/web3.js": "^3.2.1",
     "express": "^4.19.2"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.12",
-    "@types/node": "^20.12.7",
+    "@types/node": "^26.6.6",
     "@types/supertest": "^6.0.2",
-    "@typescript-eslint/eslint-plugin": "^8.67.0",
-    "@typescript-eslint/parser": "^8.60.1",
-    "express-rate-limit": "^8.6.2",
+    "@typescript-eslint/eslint-plugin": "^8.73.0",
+    "@typescript-eslint/parser": "^8.73.0",
+    "express-rate-limit": "^8.7.4",
     "jest": "^29.7.0",
     "pg-mem": "^2.9.1",
     "supertest": "^6.3.4",
-    "ts-jest": "^29.1.2",
+    "ts-jest": "^29.4.15",
     "tweetnacl": "^1.0.3",
     "typescript": "6.0.3"
   },

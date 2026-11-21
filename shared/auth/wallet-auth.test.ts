@@ -15,7 +15,7 @@ function makeWallet(keypair: Keypair) {
 
 describe('WalletAuth — Ed25519 challenge verification (real crypto)', () => {
   it('accepts a valid signature produced by the claimed wallet', async () => {
-    const kp = Keypair.generate()
+    const kp = await Keypair.generate()
     const auth = new WalletAuth({} as any, TEST_SECRET)
     const wallet = makeWallet(kp)
     const session = await auth.authenticateWallet(wallet)
@@ -24,8 +24,8 @@ describe('WalletAuth — Ed25519 challenge verification (real crypto)', () => {
   })
 
   it('rejects when the signature does not match the public key', async () => {
-    const honest = Keypair.generate()
-    const attacker = Keypair.generate()
+    const honest = await Keypair.generate()
+    const attacker = await Keypair.generate()
     const auth = new WalletAuth({} as any, TEST_SECRET)
     // Attacker signs a challenge for honest's address; verified against honest's key -> false
     const message = auth.buildChallenge(honest.publicKey.toBase58())
@@ -46,8 +46,8 @@ describe('WalletAuth — Ed25519 challenge verification (real crypto)', () => {
 })
 
 describe('WalletAuth — JWT HS256 sign/verify (real crypto)', () => {
-  it('round-trips a token and recovers the user', () => {
-    const kp = Keypair.generate()
+  it('round-trips a token and recovers the user', async () => {
+    const kp = await Keypair.generate()
     const auth = new WalletAuth({} as any, TEST_SECRET)
     const user: AuthUser = {
       id: kp.publicKey.toBase58(),
@@ -66,8 +66,8 @@ describe('WalletAuth — JWT HS256 sign/verify (real crypto)', () => {
     expect(recovered!.subscriptionTier).toBe('pro')
   })
 
-  it('returns null for a tampered token', () => {
-    const kp = Keypair.generate()
+  it('returns null for a tampered token', async () => {
+    const kp = await Keypair.generate()
     const auth = new WalletAuth({} as any, TEST_SECRET)
     const user: AuthUser = {
       id: kp.publicKey.toBase58(),
@@ -82,8 +82,8 @@ describe('WalletAuth — JWT HS256 sign/verify (real crypto)', () => {
     expect(auth.verifyToken(tampered)).toBeNull()
   })
 
-  it('returns null for an expired token', () => {
-    const kp = Keypair.generate()
+  it('returns null for an expired token', async () => {
+    const kp = await Keypair.generate()
     const auth = new WalletAuth({} as any, TEST_SECRET)
     const user: AuthUser = {
       id: kp.publicKey.toBase58(),
@@ -97,8 +97,8 @@ describe('WalletAuth — JWT HS256 sign/verify (real crypto)', () => {
     expect(auth.verifyToken(token)).toBeNull()
   })
 
-  it('returns null for a token signed with a different secret', () => {
-    const kp = Keypair.generate()
+  it('returns null for a token signed with a different secret', async () => {
+    const kp = await Keypair.generate()
     const authA = new WalletAuth({} as any, TEST_SECRET)
     const authB = new WalletAuth({} as any, 'a-different-secret-also-16+')
     const user: AuthUser = {
@@ -116,7 +116,7 @@ describe('WalletAuth — JWT HS256 sign/verify (real crypto)', () => {
 
 describe('WalletAuth — integration: challenge then verify', () => {
   it('produces a token that verifyToken accepts (full happy path)', async () => {
-    const kp = Keypair.generate()
+    const kp = await Keypair.generate()
     const auth = new WalletAuth({} as any, TEST_SECRET)
     const session = await auth.authenticateWallet(makeWallet(kp))
     const verified = auth.verifyToken(session.token)
