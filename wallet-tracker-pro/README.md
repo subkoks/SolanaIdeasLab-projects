@@ -60,7 +60,7 @@ Professional wallet tracking platform with **advanced analytics**:
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 24+
 - PostgreSQL 15+
 - Redis 7+
 - TimescaleDB (for time series)
@@ -145,7 +145,7 @@ Month 6: 300 users × $120/mo avg = $36,000/mo
 
 ### Core Technologies
 
-- **Runtime:** Node.js 18+ with TypeScript
+- **Runtime:** Node.js 24+ with TypeScript
 - **Framework:** Next.js 14 (App Router)
 - **Database:** PostgreSQL + TimescaleDB + Prisma ORM
 - **Cache:** Redis for analytics cache
@@ -542,12 +542,12 @@ class AnalyticsCache {
 ### Docker Configuration
 
 ```dockerfile
-FROM node:18-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 
-FROM node:18-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
