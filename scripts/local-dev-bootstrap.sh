@@ -23,7 +23,13 @@ log() { printf '[bootstrap] %s\n' "$*"; }
 
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 # shellcheck disable=SC1091
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use 22 >/dev/null 2>&1 || true
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+select_node() {
+  if type nvm >/dev/null 2>&1; then
+    nvm use "$1" >/dev/null 2>&1 || log "Node $1 is not available through nvm; using $(node --version)"
+  fi
+}
 
 if command -v createdb >/dev/null 2>&1; then
   createdb token_sniper 2>/dev/null || true
@@ -36,6 +42,10 @@ for proj in token-safety-bot token-sniper-bot wallet-tracker-pro; do
   dir="$ROOT/$proj"
   [ -d "$dir" ] || continue
   log "=== $proj ==="
+  case "$proj" in
+    token-sniper-bot|wallet-tracker-pro) select_node 24 ;;
+    *) select_node 22 ;;
+  esac
   if [ ! -f "$dir/.env" ] && [ -f "$dir/.env.example" ]; then
     cp "$dir/.env.example" "$dir/.env"
     log "  .env copied from .env.example (edit secrets before prod)"
@@ -53,6 +63,7 @@ for proj in token-safety-bot token-sniper-bot wallet-tracker-pro; do
 done
 
 log "=== design tokens (read-only drift check) ==="
+select_node 22
 (cd "$ROOT" && node shared/design/check-tokens.js)
 
 log "=== solana-lab-console (static launcher; no npm install) ==="

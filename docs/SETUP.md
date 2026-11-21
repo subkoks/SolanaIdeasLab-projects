@@ -6,8 +6,8 @@ Get all three projects running locally **without API keys**. Add keys later usin
 
 | Tool | Version | Needed for |
 |---|---|---|
-| **Node.js** | 22.x (repo CI target) | Everything — `nvm use 22` recommended |
-| **npm** | 10.x | Comes with Node 22 |
+| **Node.js** | 24.x | token-sniper-bot and wallet-tracker-pro; other CI jobs use Node 22 |
+| **npm** | 10+ | Comes with Node 24 |
 | **PostgreSQL** | 14+ | Running the bots with a real DB (optional for most tests) |
 | **Redis** | 6+ | token-sniper-bot queues (optional for basic API) |
 
