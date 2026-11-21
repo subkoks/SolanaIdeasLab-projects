@@ -1,9 +1,9 @@
 name: auto-merge
 
-# Enables GitHub auto-merge on same-repo PRs so they merge automatically once all
-# required checks and independent review pass. This workflow never submits reviews.
-# Safe by design: this workflow never checks out PR code (it only calls the API), and
-# it skips PRs from external forks, so untrusted code never runs with the write token.
+# Reconciles GitHub auto-merge on same-repo PRs so it is enabled only while the
+# owner's explicit approval label and exact current-head marker are both present.
+# This workflow never submits reviews or checks out PR code; it only calls the API.
+# External forks are skipped, so untrusted code never runs with the write token.
 
 on:
   pull_request_target:
@@ -13,26 +13,72 @@ permissions:
   contents: write
   pull-requests: write
 
-# Explicit opt-in: owner adds automerge-approved and the PR body marker
-# Automerge-approved-head: <full current head SHA>. New commits invalidate it.
-# Removing the label stops future enable requests; cancel already-armed auto-merge
-# manually in GitHub. Required checks/reviews still apply.
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number }}
+
+# Explicit opt-in: the owner adds automerge-approved and the PR body marker
+# Automerge-approved-head: <full current head SHA>. A synchronized head, label
+# removal, body edit, or draft transition that leaves the marker invalid revokes
+# any existing server-side auto-merge request. Required checks/reviews still apply.
 
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    # Only same-repo branches (owner/collaborator PRs + Dependabot); external forks are skipped.
+    timeout-minutes: 5
+    # Only same-repo PRs targeting main; external forks are skipped.
     if: >-
-      github.actor == github.repository_owner &&
       github.event.pull_request.base.ref == 'main' &&
-      contains(github.event.pull_request.labels.*.name, 'automerge-approved') &&
-      contains(github.event.pull_request.body, format('Automerge-approved-head: {0}', github.event.pull_request.head.sha)) &&
-      github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - name: Enable auto-merge
-        run: gh pr merge --auto --squash --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
+      - name: Reconcile auto-merge with current opt-in
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Pull request head is not a full lowercase commit SHA"
+            exit 1
+          fi
+
+          marker="Automerge-approved-head: $PR_HEAD_SHA"
+          read -r label_current marker_current ready_current < <(
+            jq -r --arg marker "$marker" '
+              [
+                (.pull_request.labels | any(.name == "automerge-approved")),
+                ((.pull_request.body // "") |
+                  split("\n") |
+                  map(gsub("\\s+$"; "")) |
+                  any(. == $marker)),
+                (.pull_request.draft == false)
+              ] | map(tostring) | @tsv
+            ' "$GITHUB_EVENT_PATH"
+          )
+
+          read -r pr_state auto_enabled < <(
+            gh pr view "$PR_URL" \
+              --json state,autoMergeRequest \
+              --jq '[.state, (.autoMergeRequest != null)] | @tsv'
+          )
+          if [[ "$pr_state" != "OPEN" ]]; then
+            exit 0
+          fi
+
+          if [[
+            "$PR_ACTOR" == "$REPOSITORY_OWNER" &&
+            "$label_current" == "true" &&
+            "$marker_current" == "true" &&
+            "$ready_current" == "true"
+          ]]; then
+            if [[ "$auto_enabled" != "true" ]]; then
+              gh pr merge --auto --squash \
+                --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
+            fi
+          elif [[ "$auto_enabled" == "true" ]]; then
+            gh pr merge --disable-auto "$PR_URL"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_ACTOR: ${{ github.actor }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
