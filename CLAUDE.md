@@ -57,6 +57,12 @@ npm run security-check
 
 ## CI
 
-`@claude` mentions invoke the agent; every PR gets an automatic Claude review.
-Same-repo PRs auto-merge once required checks pass. Dependabot enabled
-(`.github/dependabot.yml`). `node_modules/`, `dist/`, and `.env*` are gitignored.
+GitHub Actions runs each package's type-check, lint, production dependency audit,
+tests, and PostgreSQL suites. Managed CodeQL analyzes Actions and TypeScript.
+Codex provides pull-request review through the repository's GitHub integration;
+no Claude workflow or `@claude` trigger is configured.
+
+Auto-merge is explicit opt-in through the `automerge-approved` label and a
+current-head body marker. Dependabot is enabled (`.github/dependabot.yml`);
+TypeScript major updates are ignored until `@typescript-eslint` supports them.
+`node_modules/`, `dist/`, and `.env*` are gitignored.

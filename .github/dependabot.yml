@@ -16,6 +16,10 @@ updates:
       npm-minor-patch:
         applies-to: version-updates
         update-types: ["minor", "patch"]
+    ignore:
+      # @typescript-eslint currently supports TypeScript <6.1.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/token-safety-bot"
@@ -31,6 +35,9 @@ updates:
       npm-minor-patch:
         applies-to: version-updates
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/wallet-tracker-pro"
@@ -46,6 +53,9 @@ updates:
       npm-minor-patch:
         applies-to: version-updates
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/shared"
@@ -61,6 +71,9 @@ updates:
       npm-minor-patch:
         applies-to: version-updates
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
