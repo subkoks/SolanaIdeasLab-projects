@@ -150,6 +150,22 @@
     "stream-json": ">=3.5.0",
     "@prisma/config": {
       "effect": "3.22.1"
+    },
+    "glob": "14.0.6",
+    "@eslint/config-array": {
+      "minimatch": "11.0.9"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "11.0.9"
+    },
+    "eslint": {
+      "minimatch": "11.0.9"
+    },
+    "nodemon": {
+      "minimatch": "11.0.9"
+    },
+    "test-exclude": {
+      "minimatch": "11.0.9"
     }
   }
 }
