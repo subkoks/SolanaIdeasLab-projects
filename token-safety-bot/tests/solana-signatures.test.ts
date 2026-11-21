@@ -1,11 +1,9 @@
-import {
-  toSignatureActivity,
-  type SignatureActivityRecord,
-} from '../src/services/solana'
+import type { ConfirmedSignatureInfo } from '@solana/web3.js'
+import { toSignatureActivity } from '../src/services/solana'
 
 describe('Solana signature migration', () => {
   it('preserves web3.js v3 bigint block times without precision loss', () => {
-    const rpcSignatures = [
+    const rpcSignatures: ReadonlyArray<ConfirmedSignatureInfo> = [
       {
         blockTime: 1_700_000_001n,
         confirmationStatus: 'finalized',
@@ -22,7 +20,7 @@ describe('Solana signature migration', () => {
         signature: 'signature-2',
         slot: 124n,
       },
-    ] as unknown as Array<SignatureActivityRecord>
+    ]
 
     expect(toSignatureActivity(rpcSignatures)).toEqual([
       { blockTime: 1_700_000_001n, signature: 'signature-1' },
