@@ -159,4 +159,37 @@ describe('one-time durable dispatch', () => {
     expect(ledger.markSent).toHaveBeenCalledTimes(1)
     expect(ledger.markUncertain).toHaveBeenCalledTimes(1)
   })
+
+  it('applies a Telegram retry window to every pending delivery in the chat', async () => {
+    const ledger = deliveryStore()
+    ledger.listPendingIds.mockResolvedValue(['one', 'two'])
+    ledger.claim.mockImplementation(async (id: string) => ({
+      id,
+      claimToken: `claim-${id}`,
+      chatId: '101',
+      message: id,
+    }))
+    const notify = jest.fn()
+      .mockRejectedValueOnce({ code: 429, parameters: { retry_after: 7 } })
+      .mockResolvedValueOnce({ messageId: '42' })
+    const waits: number[] = []
+    const chatLastSentAt = new Map<string, number>()
+
+    await dispatchPendingDeliveries(ledger, notify, {
+      minChatIntervalMs: 1_000,
+      now: () => 1_000,
+      wait: jest.fn(async (milliseconds: number) => {
+        waits.push(milliseconds)
+      }),
+      chatLastSentAt,
+    })
+
+    expect(ledger.markRateLimited).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'one' }),
+      7_000,
+    )
+    expect(waits).toEqual([8_000])
+    expect(notify).toHaveBeenCalledTimes(2)
+    expect(chatLastSentAt.get('101')).toBe(9_000)
+  })
 })

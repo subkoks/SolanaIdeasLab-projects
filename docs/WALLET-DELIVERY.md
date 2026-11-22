@@ -30,7 +30,8 @@ deploying it or applying the draft migration.
 - The dispatcher claims each pending row before attempting a send. An ambiguous
   Telegram response or an interrupted claim is retained for reconciliation.
   Sends to one chat are paced, and an explicit Telegram 429 returns the row to
-  pending with `nextAttemptAt` set from `retry_after`. Ambiguous outcomes remain
+  pending with `nextAttemptAt` set from `retry_after`; the same retry window also
+  blocks every other pending delivery in that chat. Ambiguous outcomes remain
   outside the automatic retry queue.
 
 ## Cutover and rollback

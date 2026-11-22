@@ -530,6 +530,13 @@ export const dispatchPendingDeliveries = async (
     } catch (error) {
       const retryAfterMs = telegramRetryAfterMs(error)
       if (retryAfterMs !== null) {
+        chatLastSentAt.set(
+          claim.chatId,
+          Math.max(
+            chatLastSentAt.get(claim.chatId) ?? 0,
+            now() + retryAfterMs,
+          ),
+        )
         await ledger.markRateLimited(claim, retryAfterMs)
         continue
       }
