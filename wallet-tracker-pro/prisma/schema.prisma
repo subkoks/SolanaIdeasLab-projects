@@ -46,11 +46,12 @@ model WalletActivityEvent {
   lamports        BigInt?
   tokenMint       String?
   summary         String?
+  transactionOrder Int      @default(0)
   observedAt      DateTime @default(now())
   deliveries      WalletDelivery[]
 
   @@unique([walletAddress, signature, movementKey])
-  @@index([walletAddress, observedAt])
+  @@index([walletAddress, observedAt, transactionOrder])
   @@index([walletAddress, signature, identityVersion])
 }
 
@@ -62,6 +63,7 @@ model WalletDelivery {
   activityId        String
   signature         String
   movementKey       String
+  transactionOrder  Int      @default(0)
   chatId            String
   message           String
   status            String   @default("pending")
@@ -71,13 +73,14 @@ model WalletDelivery {
   uncertainAt       DateTime?
   failureCode       String?
   telegramMessageId String?
+  nextAttemptAt     DateTime @default(now())
   createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  updatedAt         DateTime @default(now()) @updatedAt
   watch             WalletWatch @relation(fields: [watchId], references: [id], onDelete: Restrict)
   activity          WalletActivityEvent @relation(fields: [activityId], references: [id], onDelete: Restrict)
 
   @@unique([watchId, signature, movementKey])
-  @@index([status, createdAt, id])
+  @@index([status, nextAttemptAt, createdAt, transactionOrder, id])
   @@index([status, claimedAt])
   @@index([activityId])
   @@index([watchId, status])

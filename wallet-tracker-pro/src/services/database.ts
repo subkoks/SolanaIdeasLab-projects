@@ -21,6 +21,7 @@ const movementKeyFor = (input: {
 export class DatabaseService {
   private readonly prisma: PrismaClient
   public readonly deliveryLedger: WalletDeliveryLedger
+  private transactionOrderSupport: Promise<boolean> | undefined
 
   constructor(prisma?: PrismaClient) {
     this.prisma = prisma ?? new PrismaClient({ adapter: new PrismaPg({ connectionString: config.database.url }) })
@@ -239,6 +240,32 @@ export class DatabaseService {
     })
   }
   public async getRecentActivity(walletAddress: string, limit = 5) {
+    this.transactionOrderSupport ??= this.prisma.$queryRaw<Array<{ present: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'WalletActivityEvent'
+          AND column_name = 'transactionOrder'
+      ) AS "present"`
+      .then((rows) => rows[0]?.present === true)
+    if (await this.transactionOrderSupport) {
+      return this.prisma.$queryRaw<Array<{
+        id: string
+        walletAddress: string
+        signature: string
+        direction: string
+        lamports: bigint | null
+        tokenMint: string | null
+        summary: string | null
+        observedAt: Date
+        transactionOrder: number
+      }>>`
+        SELECT "id", "walletAddress", "signature", "direction", "lamports",
+          "tokenMint", "summary", "observedAt", "transactionOrder"
+        FROM "WalletActivityEvent"
+        WHERE "walletAddress" = ${walletAddress}
+        ORDER BY "observedAt" DESC, "transactionOrder" DESC, "id" ASC
+        LIMIT ${limit}`
+    }
     return this.prisma.walletActivityEvent.findMany({
       where: { walletAddress },
       select: { id: true, walletAddress: true, signature: true, direction: true, lamports: true,
@@ -377,12 +404,17 @@ export class DatabaseService {
     let outLamports = BigInt(0)
 
     for (const event of events) {
+      const lamports = event.lamports === null
+        ? BigInt(0)
+        : event.lamports < BigInt(0)
+          ? -event.lamports
+          : event.lamports
       if (event.direction === 'in') {
         inCount += 1
-        inLamports += event.lamports ?? BigInt(0)
+        inLamports += lamports
       } else if (event.direction === 'out') {
         outCount += 1
-        outLamports += event.lamports ?? BigInt(0)
+        outLamports += lamports
       }
     }
 

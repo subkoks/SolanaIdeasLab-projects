@@ -6,6 +6,7 @@ BEGIN;
 ALTER TABLE "WalletWatch" ADD COLUMN "revision" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "WalletActivityEvent" ADD COLUMN "movementKey" TEXT;
 ALTER TABLE "WalletActivityEvent" ADD COLUMN "identityVersion" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "WalletActivityEvent" ADD COLUMN "transactionOrder" INTEGER NOT NULL DEFAULT 0;
 UPDATE "WalletActivityEvent" SET "movementKey" = 'legacy:' || "id";
 ALTER TABLE "WalletActivityEvent" ALTER COLUMN "movementKey" SET NOT NULL;
 ALTER TABLE "WalletActivityEvent" ALTER COLUMN "identityVersion" SET DEFAULT 1;
@@ -14,6 +15,8 @@ CREATE UNIQUE INDEX "WalletActivityEvent_walletAddress_signature_movementKey_key
   ON "WalletActivityEvent" ("walletAddress", "signature", "movementKey");
 CREATE INDEX "WalletActivityEvent_walletAddress_signature_identityVersion_idx"
   ON "WalletActivityEvent" ("walletAddress", "signature", "identityVersion");
+CREATE INDEX "WalletActivityEvent_walletAddress_observedAt_transactionOrder_idx"
+  ON "WalletActivityEvent" ("walletAddress", "observedAt", "transactionOrder");
 ALTER TABLE "WalletActivityEvent" ADD CONSTRAINT "WalletActivityEvent_identityVersion_check"
   CHECK ("identityVersion" IN (0, 1));
 
@@ -24,6 +27,7 @@ CREATE TABLE "WalletDelivery" (
   "activityId" TEXT NOT NULL,
   "signature" TEXT NOT NULL,
   "movementKey" TEXT NOT NULL,
+  "transactionOrder" INTEGER NOT NULL DEFAULT 0,
   "chatId" TEXT NOT NULL,
   "message" TEXT NOT NULL,
   "status" TEXT NOT NULL DEFAULT 'pending',
@@ -33,6 +37,7 @@ CREATE TABLE "WalletDelivery" (
   "uncertainAt" TIMESTAMP(3),
   "failureCode" TEXT,
   "telegramMessageId" TEXT,
+  "nextAttemptAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "WalletDelivery_status_check"
@@ -54,7 +59,8 @@ CREATE TABLE "WalletDelivery" (
 );
 CREATE UNIQUE INDEX "WalletDelivery_watchId_signature_movementKey_key"
   ON "WalletDelivery" ("watchId", "signature", "movementKey");
-CREATE INDEX "WalletDelivery_status_createdAt_id_idx" ON "WalletDelivery" ("status", "createdAt", "id");
+CREATE INDEX "WalletDelivery_status_nextAttemptAt_createdAt_transactionOrder_id_idx"
+  ON "WalletDelivery" ("status", "nextAttemptAt", "createdAt", "transactionOrder", "id");
 CREATE INDEX "WalletDelivery_status_claimedAt_idx" ON "WalletDelivery" ("status", "claimedAt");
 CREATE INDEX "WalletDelivery_activityId_idx" ON "WalletDelivery" ("activityId");
 CREATE INDEX "WalletDelivery_watchId_status_idx" ON "WalletDelivery" ("watchId", "status");

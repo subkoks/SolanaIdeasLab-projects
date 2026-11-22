@@ -19,14 +19,10 @@ describe('Wallet runtime activation gate', () => {
   })
 
   it('fails bot startup before constructing or connecting any service', async () => {
-    const exit = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never)
-    try {
-      require('../src/bot/index')
-      await Promise.resolve()
-      expect(exit).toHaveBeenCalledWith(1)
-      expect(DatabaseService).not.toHaveBeenCalled()
-      expect(SolanaWatcherService).not.toHaveBeenCalled()
-      expect(Telegraf).not.toHaveBeenCalled()
-    } finally { exit.mockRestore() }
+    const { main } = require('../src/bot/index') as typeof import('../src/bot/index')
+    await expect(main()).rejects.toThrow('reviewed migration and runtime activation')
+    expect(DatabaseService).not.toHaveBeenCalled()
+    expect(SolanaWatcherService).not.toHaveBeenCalled()
+    expect(Telegraf).not.toHaveBeenCalled()
   })
 })

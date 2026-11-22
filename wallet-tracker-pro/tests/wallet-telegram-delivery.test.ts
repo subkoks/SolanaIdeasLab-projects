@@ -5,6 +5,13 @@ jest.mock('../src/lib/logger', () => ({
 }))
 
 import { WalletTrackerTelegramBot, walletMutationErrorMessage } from '../src/services/telegram-bot'
+import {
+  dispatchPendingDeliveries,
+  telegramRetryAfterMs,
+  WalletIngestionError,
+  WalletLimitReachedError,
+} from '../src/services/wallet-delivery-ledger'
+import { deliveryStore } from './helpers/wallet-delivery'
 
 describe('Telegram delivery acknowledgements', () => {
   const fixture = () => {
@@ -31,19 +38,75 @@ describe('Telegram delivery acknowledgements', () => {
   })
 
   it('maps ledger mutation codes to actionable user messages', () => {
-    const error = Object.assign(new Error('Wallet ingestion held: invalid-batch'), {
-      name: 'WalletIngestionError',
-      code: 'invalid-batch',
-    })
+    const error = new WalletIngestionError('invalid-batch')
 
     expect(walletMutationErrorMessage(error)).toBe(
       'Could not update this watch. Check the wallet and label, then try again.',
     )
   })
 
-  it('preserves actionable non-ledger watch errors', () => {
-    expect(walletMutationErrorMessage(new Error('Watch limit reached (3 on free tier)'))).toBe(
+  it('preserves the typed watch-limit message', () => {
+    expect(walletMutationErrorMessage(new WalletLimitReachedError(3, 'free'))).toBe(
       'Watch limit reached (3 on free tier)',
     )
+  })
+
+  it('does not expose unexpected database errors to Telegram users', () => {
+    expect(walletMutationErrorMessage(new Error('password authentication failed for user postgres'))).toBe(
+      'Could not update this watch. Please try again.',
+    )
+  })
+
+  it('paces successive sends to one chat', async () => {
+    const store = deliveryStore()
+    store.listPendingIds.mockResolvedValue(['delivery-1', 'delivery-2'])
+    store.claim.mockImplementation(async (id: string) => ({
+      id,
+      claimToken: `claim-${id}`,
+      chatId: '101',
+      message: `Message ${id}`,
+    }))
+    let currentTime = 1_000
+    const waits: number[] = []
+    const sentAt: number[] = []
+    await dispatchPendingDeliveries(
+      store,
+      async () => {
+        sentAt.push(currentTime)
+        return { messageId: String(sentAt.length) }
+      },
+      {
+        minChatIntervalMs: 1_000,
+        now: () => currentTime,
+        wait: async (milliseconds) => {
+          waits.push(milliseconds)
+          currentTime += milliseconds
+        },
+        chatLastSentAt: new Map(),
+      },
+    )
+    expect(waits).toEqual([1_000])
+    expect(sentAt).toEqual([1_000, 2_000])
+  })
+
+  it('returns an explicit Telegram rate limit to pending with retry_after', async () => {
+    const store = deliveryStore()
+    const error = Object.assign(new Error('Too Many Requests'), {
+      code: 429,
+      parameters: { retry_after: 7 },
+    })
+    expect(telegramRetryAfterMs(error)).toBe(7_000)
+    await dispatchPendingDeliveries(
+      store,
+      async () => {
+        throw error
+      },
+      { minChatIntervalMs: 0, chatLastSentAt: new Map() },
+    )
+    expect(store.markRateLimited).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'delivery-1' }),
+      7_000,
+    )
+    expect(store.markUncertain).not.toHaveBeenCalled()
   })
 })

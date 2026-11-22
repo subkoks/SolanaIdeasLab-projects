@@ -16,27 +16,45 @@ import { fixtureBase58, movement, wallet } from './helpers/wallet-delivery'
 import { getWatchLimitForTier } from '../src/lib/watch-limits'
 
 const fixtureDirectory = process.argv[2] ?? ''
-assert.equal(dirname(fixtureDirectory), realpathSync('/tmp'))
-assert.match(basename(fixtureDirectory), /^wallet-delivery-fixture-[A-Za-z0-9]+$/)
-const directory = statSync(fixtureDirectory)
-assert.equal(directory.mode & 0o777, 0o700)
-assert.equal(directory.uid, process.getuid?.())
-const receipt = JSON.parse(readFileSync(join(fixtureDirectory, 'receipt.json'), 'utf8'))
-assert.equal(receipt.fixtureDirectory, fixtureDirectory)
-assert.equal(receipt.started, true)
-assert.equal(receipt.role, 'wallet_fixture')
-assert.equal(receipt.database, 'wallet_delivery_fixture')
-assert.equal(receipt.listenAddresses, '')
-assert.equal(receipt.socketDirectory, join(fixtureDirectory, 'socket'))
-const connectionString = `postgresql://wallet_fixture@localhost:55439/wallet_delivery_fixture?host=${encodeURIComponent(receipt.socketDirectory)}`
-if (receipt.generatedClient) assert.match(receipt.generatedClient, /^\/private\/tmp\/wallet-delivery-validation-[A-Za-z0-9]+\/generated$/)
-const PrismaClient: typeof InstalledPrismaClient = require(receipt.generatedClient ?? '@prisma/client').PrismaClient
+const ciDatabaseUrl = process.env.WALLET_DELIVERY_CI_DATABASE_URL ?? ''
+const fixtureMode = fixtureDirectory.length > 0
+assert.ok(fixtureMode !== Boolean(ciDatabaseUrl), 'Select exactly one Wallet delivery database mode')
+
+let connectionString: string
+let packageDirectory: string
+let generatedClient: string | undefined
+if (fixtureMode) {
+  assert.equal(dirname(fixtureDirectory), realpathSync('/tmp'))
+  assert.match(basename(fixtureDirectory), /^wallet-delivery-fixture-[A-Za-z0-9]+$/)
+  const directory = statSync(fixtureDirectory)
+  assert.equal(directory.mode & 0o777, 0o700)
+  assert.equal(directory.uid, process.getuid?.())
+  const receipt = JSON.parse(readFileSync(join(fixtureDirectory, 'receipt.json'), 'utf8'))
+  assert.equal(receipt.fixtureDirectory, fixtureDirectory)
+  assert.equal(receipt.started, true)
+  assert.equal(receipt.role, 'wallet_fixture')
+  assert.equal(receipt.database, 'wallet_delivery_fixture')
+  assert.equal(receipt.listenAddresses, '')
+  assert.equal(receipt.socketDirectory, join(fixtureDirectory, 'socket'))
+  connectionString = `postgresql://wallet_fixture@localhost:55439/wallet_delivery_fixture?host=${encodeURIComponent(receipt.socketDirectory)}`
+  packageDirectory = receipt.packageDirectory
+  generatedClient = receipt.generatedClient
+  if (generatedClient) {
+    assert.match(generatedClient, /^\/private\/tmp\/wallet-delivery-validation-[A-Za-z0-9]+\/generated$/)
+  }
+} else {
+  const url = new URL(ciDatabaseUrl)
+  assert.ok(url.protocol === 'postgres:' || url.protocol === 'postgresql:')
+  assert.match(url.pathname, /\/wallet_delivery_ci$/)
+  connectionString = ciDatabaseUrl
+  packageDirectory = resolve(process.cwd())
+}
+const PrismaClient: typeof InstalledPrismaClient = require(generatedClient ?? '@prisma/client').PrismaClient
 const pg = new Client({ connectionString, application_name: 'wallet_fixture_controller' })
 const first = new PrismaClient({ adapter: new PrismaPg({ connectionString, application_name: 'wallet_fixture_first', max: 3 }) })
 const second = new PrismaClient({ adapter: new PrismaPg({ connectionString, application_name: 'wallet_fixture_second', max: 3 }) })
 const ledger = new WalletDeliveryLedger(first)
 const competitor = new WalletDeliveryLedger(second)
-const packageDirectory = receipt.packageDirectory
 assert.equal(packageDirectory, resolve(process.cwd()))
 const baseline = readFileSync(join(packageDirectory, 'prisma/migrations/20260705230000_init/migration.sql'), 'utf8')
 const tiers = readFileSync(join(packageDirectory, 'prisma/migrations/20260706100000_subscriber_tier/migration.sql'), 'utf8')
@@ -74,72 +92,80 @@ const waitForLock = async (application: string) => {
   }
   throw new Error(`Synthetic fixture lock was not reached: ${application}`)
 }
+const dispatchWithoutPacing = (
+  store: Parameters<typeof dispatchPendingDeliveries>[0],
+  notify: Parameters<typeof dispatchPendingDeliveries>[1],
+) => dispatchPendingDeliveries(store, notify, {
+  minChatIntervalMs: 0,
+  chatLastSentAt: new Map(),
+})
 
 const main = async () => {
   await pg.connect()
   await first.$connect()
   await second.$connect()
   try {
-    await test('fixture is PostgreSQL 16 on a private Unix socket with TCP disabled', async () => {
-      assert.match((await pg.query('SELECT version()')).rows[0].version, /^PostgreSQL 16\./)
-      assert.equal((await pg.query('SHOW listen_addresses')).rows[0].listen_addresses, '')
-      assert.equal((await pg.query('SELECT inet_server_addr() AS address')).rows[0].address, null)
-      assert.equal((await pg.query('SHOW unix_socket_directories')).rows[0].unix_socket_directories, receipt.socketDirectory)
-    })
+    if (fixtureMode) {
+      await test('fixture is PostgreSQL 16 on a private Unix socket with TCP disabled', async () => {
+        assert.match((await pg.query('SELECT version()')).rows[0].version, /^PostgreSQL 16\./)
+        assert.equal((await pg.query('SHOW listen_addresses')).rows[0].listen_addresses, '')
+        assert.equal((await pg.query('SELECT inet_server_addr() AS address')).rows[0].address, null)
+      })
 
-    await test('target client production read paths remain compatible with baseline-only schema while disabled', async () => {
-      const { DatabaseService } = require('../src/services/database') as typeof import('../src/services/database')
-      const { WALLET_DELIVERY_SCHEMA_VERIFIED } = require('../src/lib/wallet-delivery-gate') as typeof import('../src/lib/wallet-delivery-gate')
-      assert.equal(WALLET_DELIVERY_SCHEMA_VERIFIED, false)
-      await pg.query(baseline)
-      await pg.query(tiers)
-      await subscriber('subscriber-1', '101', 'free')
-      await pg.query('INSERT INTO "WalletWatch" ("id", "subscriberId", "walletAddress", "updatedAt") VALUES (\'baseline-watch\', \'subscriber-1\', $1, CURRENT_TIMESTAMP)', [wallet])
-      await pg.query('INSERT INTO "WalletActivityEvent" ("id", "walletAddress", "signature", "direction", "lamports", "summary") VALUES (\'baseline-event\', $1, $2, \'in\', 12, \'Synthetic baseline activity\')', [wallet, signature(1)])
-      const database = new DatabaseService(first)
-      assert.deepEqual(await database.getSubscriberLimits('101'), { tier: 'free', limit: 3, used: 1, remaining: 2 })
-      await database.upsertSubscriber('101', 'Synthetic fixture')
-      await database.setSubscriberTier('101', 'pro')
-      assert.equal((await database.getSubscriberLimits('101'))!.tier, 'pro')
-      assert.equal((await database.getRecentActivity(wallet))[0]!.id, 'baseline-event')
-      assert.equal((await database.listWatches('101'))[0]!.id, 'baseline-watch')
-      assert.deepEqual(await database.getDashboardStats(), { subscribers: 1, watches: 1, events: 1 })
-      assert.equal((await database.getAnalyticsOverview()).uniqueActiveWallets, 1)
-      assert.equal((await database.getTopActiveWallets())[0]!.walletAddress, wallet)
-      assert.equal((await database.getActivityBreakdown(wallet)).total, 1)
-      assert.equal((await database.getActivityTimeline(wallet)).length, 1)
-      assert.equal((await database.getWalletBehaviorSummary(wallet)).totalEvents, 1)
-      assert.deepEqual(await database.getTokenMintBreakdown(wallet), [])
-      assert.equal((await database.getWalletPortfolioSummary(wallet)).pricingMode, 'mock')
-      await assert.rejects(database.addWatch('101', wallet), /disabled pending reviewed migration/)
-      assert.equal((await pg.query('SELECT COUNT(*)::integer AS count FROM information_schema.columns WHERE table_schema=\'public\' AND column_name IN (\'revision\', \'movementKey\', \'identityVersion\')')).rows[0].count, 0)
-      await pg.query('DELETE FROM "WalletActivityEvent"; DELETE FROM "WalletWatch"; DELETE FROM "TelegramSubscriber"')
-    })
+      await test('target client production read paths remain compatible with baseline-only schema while disabled', async () => {
+        const { DatabaseService } = require('../src/services/database') as typeof import('../src/services/database')
+        const { WALLET_DELIVERY_SCHEMA_VERIFIED } = require('../src/lib/wallet-delivery-gate') as typeof import('../src/lib/wallet-delivery-gate')
+        assert.equal(WALLET_DELIVERY_SCHEMA_VERIFIED, false)
+        await pg.query(baseline)
+        await pg.query(tiers)
+        await subscriber('subscriber-1', '101', 'free')
+        await pg.query('INSERT INTO "WalletWatch" ("id", "subscriberId", "walletAddress", "updatedAt") VALUES (\'baseline-watch\', \'subscriber-1\', $1, CURRENT_TIMESTAMP)', [wallet])
+        await pg.query('INSERT INTO "WalletActivityEvent" ("id", "walletAddress", "signature", "direction", "lamports", "summary") VALUES (\'baseline-event\', $1, $2, \'in\', 12, \'Synthetic baseline activity\')', [wallet, signature(1)])
+        const database = new DatabaseService(first)
+        assert.deepEqual(await database.getSubscriberLimits('101'), { tier: 'free', limit: 3, used: 1, remaining: 2 })
+        await database.upsertSubscriber('101', 'Synthetic fixture')
+        await database.setSubscriberTier('101', 'pro')
+        assert.equal((await database.getSubscriberLimits('101'))!.tier, 'pro')
+        assert.equal((await database.getRecentActivity(wallet))[0]!.id, 'baseline-event')
+        assert.equal((await database.listWatches('101'))[0]!.id, 'baseline-watch')
+        assert.deepEqual(await database.getDashboardStats(), { subscribers: 1, watches: 1, events: 1 })
+        assert.equal((await database.getAnalyticsOverview()).uniqueActiveWallets, 1)
+        assert.equal((await database.getTopActiveWallets())[0]!.walletAddress, wallet)
+        assert.equal((await database.getActivityBreakdown(wallet)).total, 1)
+        assert.equal((await database.getActivityTimeline(wallet)).length, 1)
+        assert.equal((await database.getWalletBehaviorSummary(wallet)).totalEvents, 1)
+        assert.deepEqual(await database.getTokenMintBreakdown(wallet), [])
+        assert.equal((await database.getWalletPortfolioSummary(wallet)).pricingMode, 'mock')
+        await assert.rejects(database.addWatch('101', wallet), /disabled pending reviewed migration/)
+        assert.equal((await pg.query('SELECT COUNT(*)::integer AS count FROM information_schema.columns WHERE table_schema=\'public\' AND column_name IN (\'revision\', \'movementKey\', \'identityVersion\')')).rows[0].count, 0)
+        await pg.query('DELETE FROM "WalletActivityEvent"; DELETE FROM "WalletWatch"; DELETE FROM "TelegramSubscriber"')
+      })
 
-    await test('draft migration preserves every legacy ID and payload and enqueues no history', async () => {
-      await pg.query(notifications)
-      await pg.query(`INSERT INTO "WalletActivityEvent" ("id", "walletAddress", "signature", "direction", "lamports", "tokenMint", "summary", "observedAt")
-        VALUES ('legacy-sol', $1, $2, 'out', -19, NULL, 'Original native payload', '2026-01-01T00:00:00'),
-        ('legacy-spl', $1, $3, 'in', NULL, $4, NULL, '2026-01-02T00:00:00')`,
-      [wallet, signature(1), signature(2), fixtureBase58(2, 32)])
-      const before = (await pg.query('SELECT "id", "walletAddress", "signature", "direction", "lamports"::text, "tokenMint", "summary", "observedAt"::text FROM "WalletActivityEvent" ORDER BY "id"')).rows
-      await pg.query(draft)
-      const after = (await pg.query('SELECT "id", "walletAddress", "signature", "direction", "lamports"::text, "tokenMint", "summary", "observedAt"::text FROM "WalletActivityEvent" ORDER BY "id"')).rows
-      assert.deepEqual(after, before)
-      for (const row of (await events()).rows) {
-        assert.equal(row.movementKey, `legacy:${row.id}`)
-        assert.equal(row.identityVersion, 0)
-      }
-      assert.equal(await count('WalletDelivery'), 0)
-      await subscriber()
-      const watch = await ledger.addWatch('subscriber-1', wallet)
-      await ledger.ingest(watch, [movement({ signature: signature(1) }),
-        movement({ signature: signature(1), lamports: null, tokenMint: fixtureBase58(3, 32) }),
-        movement({ signature: signature(3) })])
-      assert.equal(await count('WalletActivityEvent'), 3)
-      assert.equal(await count('WalletDelivery'), 1)
-      assert.equal((await currentWatch()).lastSignature, signature(3))
-    })
+      await test('draft migration preserves every legacy ID and payload and enqueues no history', async () => {
+        await pg.query(notifications)
+        await pg.query(`INSERT INTO "WalletActivityEvent" ("id", "walletAddress", "signature", "direction", "lamports", "tokenMint", "summary", "observedAt")
+          VALUES ('legacy-sol', $1, $2, 'out', -19, NULL, 'Original native payload', '2026-01-01T00:00:00'),
+          ('legacy-spl', $1, $3, 'in', NULL, $4, NULL, '2026-01-02T00:00:00')`,
+        [wallet, signature(1), signature(2), fixtureBase58(2, 32)])
+        const before = (await pg.query('SELECT "id", "walletAddress", "signature", "direction", "lamports"::text, "tokenMint", "summary", "observedAt"::text FROM "WalletActivityEvent" ORDER BY "id"')).rows
+        await pg.query(draft)
+        const after = (await pg.query('SELECT "id", "walletAddress", "signature", "direction", "lamports"::text, "tokenMint", "summary", "observedAt"::text FROM "WalletActivityEvent" ORDER BY "id"')).rows
+        assert.deepEqual(after, before)
+        for (const row of (await events()).rows) {
+          assert.equal(row.movementKey, `legacy:${row.id}`)
+          assert.equal(row.identityVersion, 0)
+        }
+        assert.equal(await count('WalletDelivery'), 0)
+        await subscriber()
+        const watch = await ledger.addWatch('subscriber-1', wallet)
+        await ledger.ingest(watch, [movement({ signature: signature(1) }),
+          movement({ signature: signature(1), lamports: null, tokenMint: fixtureBase58(3, 32) }),
+          movement({ signature: signature(3) })])
+        assert.equal(await count('WalletActivityEvent'), 5)
+        assert.equal(await count('WalletDelivery'), 3)
+        assert.equal((await currentWatch()).lastSignature, signature(3))
+      })
+    }
 
     await test('migration failure rolls back schema, legacy payload, and old unique index atomically', async () => {
       await pg.query('CREATE SCHEMA rollback_fixture; SET search_path TO rollback_fixture')
@@ -175,6 +201,47 @@ const main = async () => {
       assert.ok(snapshots.filter((row) => row.chatId === '202').every((row) => row.message.includes('[Other label]')))
       assert.equal(await ledger.ingest(watch, movements), 'stale')
       assert.deepEqual((await deliveries()).rows, snapshots)
+    })
+
+    await test('behavior summary normalizes signed outflows without changing legacy rows', async () => {
+      const watch = await setup()
+      await ledger.ingest(watch, [movement({
+        signature: signature(6),
+        direction: 'out',
+        lamports: BigInt(-5),
+        summary: 'Synthetic SOL out',
+      })])
+      await pg.query(`INSERT INTO "WalletActivityEvent"
+        ("id", "walletAddress", "signature", "movementKey", "direction", "lamports", "summary")
+        VALUES ('legacy-out', $1, $2, 'legacy:legacy-out', 'out', 3, 'Legacy SOL out')`,
+      [wallet, signature(7)])
+      const { DatabaseService } = require('../src/services/database') as typeof import('../src/services/database')
+      const database = new DatabaseService(first)
+      const summary = await database.getWalletBehaviorSummary(wallet)
+      assert.equal(summary.outCount, 2)
+      assert.equal(summary.avgOutLamports, '4')
+      assert.equal(summary.netLamports, '-8')
+    })
+
+    await test('recent activity uses persisted order when observation timestamps tie', async () => {
+      await setup()
+      const observedAt = '2026-01-01T00:00:00.000Z'
+      await pg.query(`INSERT INTO "WalletActivityEvent"
+        ("id", "walletAddress", "signature", "movementKey", "identityVersion",
+          "direction", "summary", "transactionOrder", "observedAt")
+        VALUES
+          ('order-two', $1, $2, 'sol', 1, 'in', 'Second', 2, $4),
+          ('order-zero', $1, $3, 'sol', 1, 'in', 'First', 0, $4),
+          ('order-one', $1, $5, 'sol', 1, 'in', 'Middle', 1, $4)`,
+      [wallet, signature(20), signature(21), observedAt, signature(22)])
+      const { DatabaseService } = require('../src/services/database') as typeof import('../src/services/database')
+      const database = new DatabaseService(first)
+      const recent = await database.getRecentActivity(wallet, 3)
+      assert.deepEqual(recent.map((row) => row.id), [
+        'order-two',
+        'order-one',
+        'order-zero',
+      ])
     })
 
     await test('verified history with no movements advances only the current cursor', async () => {
@@ -269,6 +336,32 @@ const main = async () => {
       assert.equal((await ledger.listWatches()).find((item) => item.id === watch.id)?.lastSignature, fresh)
     })
 
+    await test('legacy history suppresses only the watch that owns its notification', async () => {
+      const first = await setup()
+      await subscriber('subscriber-2', '202')
+      const second = await ledger.addWatch('subscriber-2', wallet)
+      const signatureValue = signature(7)
+      await pg.query(
+        `INSERT INTO "WalletActivityEvent"
+          ("id", "walletAddress", "signature", "direction", "movementKey", "identityVersion")
+         VALUES ('shared-legacy', $1, $2, 'unknown', 'legacy:shared-legacy', 0)`,
+        [wallet, signatureValue],
+      )
+      await pg.query(
+        `INSERT INTO "WalletNotification"
+          ("id", "watchId", "signature", "message", "deliveredAt")
+         VALUES ('shared-sent', $1, $2, 'Already delivered', CURRENT_TIMESTAMP)`,
+        [first.id, signatureValue],
+      )
+      const batch = [movement({ signature: signatureValue })]
+      assert.equal(await ledger.ingest(first, batch), 'ingested')
+      assert.equal(await ledger.ingest(second, batch), 'ingested')
+      const rows = (await deliveries()).rows
+      assert.equal(rows.length, 1)
+      assert.equal(rows[0]!.watchId, second.id)
+      assert.equal(rows[0]!.signature, signatureValue)
+    })
+
     await test('two independent claimers grant exactly one permanent dispatch claim', async () => {
       const watch = await setup()
       await ledger.ingest(watch, [movement()])
@@ -281,6 +374,38 @@ const main = async () => {
       assert.equal(await ledger.markSent(claim, { messageId: '42' }), true)
       assert.equal(await ledger.claim(id), null)
       assert.equal((await deliveries()).rows[0].status, 'sent')
+    })
+
+    await test('explicit Telegram rate limits become delayed pending work', async () => {
+      const watch = await setup()
+      await ledger.ingest(watch, [movement()])
+      const id = (await ledger.listPendingIds())[0]!
+      const claim = (await ledger.claim(id))!
+      await ledger.markRateLimited(claim, 50)
+      assert.equal((await ledger.listPendingIds()).length, 0)
+      assert.equal((await deliveries()).rows[0].status, 'pending')
+      assert.equal((await deliveries()).rows[0].failureCode, 'telegram-rate-limited')
+      await delay(60)
+      assert.deepEqual(await ledger.listPendingIds(), [id])
+      assert.ok(await ledger.claim(id))
+    })
+
+    await test('dispatch preserves input transaction order when timestamps tie', async () => {
+      const watch = await setup()
+      const orderedSignatures = [signature(11), signature(12), signature(13)]
+      await ledger.ingest(watch, orderedSignatures.map((value) => movement({
+        signature: value,
+      })))
+      const messages: string[] = []
+      for (const id of await ledger.listPendingIds()) {
+        const claim = await ledger.claim(id)
+        assert.ok(claim)
+        messages.push(claim.message)
+      }
+      assert.deepEqual(
+        messages.map((message) => orderedSignatures.find((value) => message.includes(value))),
+        orderedSignatures,
+      )
     })
 
     await test('watch mutations preserve outstanding legacy notification records for reconciliation', async () => {
@@ -298,6 +423,21 @@ const main = async () => {
       await ledger.addWatch(watch.subscriber.id, wallet, 'Changed fixture label')
       assert.equal((await ledger.removeWatch(watch.subscriber.id, wallet)).count, 1)
       assert.deepEqual((await readLegacy()).rows, before)
+    })
+
+    await test('a label-only edit keeps already-enqueued delivery snapshots eligible', async () => {
+      const watch = await setup()
+      await ledger.ingest(watch, [movement()])
+      const id = (await ledger.listPendingIds())[0]!
+      const relabeled = await ledger.addWatch(
+        watch.subscriber.id,
+        wallet,
+        'Changed fixture label',
+      )
+      assert.equal(relabeled.revision, watch.revision)
+      const claim = await ledger.claim(id)
+      assert.ok(claim)
+      assert.match(claim.message, /^\[Synthetic fixture\]/)
     })
 
     await test('unwatch preserves audited claims, cancels pending only, and re-watch preserves cursor without replay', async () => {
@@ -357,7 +497,7 @@ const main = async () => {
       assert.deepEqual(await removal, { count: 1 })
       assert.equal(await claim, null)
       let sends = 0
-      await dispatchPendingDeliveries(competitor, async () => { sends++; return { messageId: '42' } })
+      await dispatchWithoutPacing(competitor, async () => { sends++; return { messageId: '42' } })
       assert.equal(sends, 0)
       assert.equal((await deliveries()).rows[0].status, 'cancelled')
     })
@@ -399,11 +539,12 @@ const main = async () => {
           isClaimCurrent: (claim: Parameters<WalletDeliveryLedger['isClaimCurrent']>[0]) => ledger.isClaimCurrent(claim),
           markSent: async () => { throw new Error('Synthetic lost DB ACK') },
           markUncertain: (claim: Parameters<WalletDeliveryLedger['markUncertain']>[0], reason: Parameters<WalletDeliveryLedger['markUncertain']>[1]) => ledger.markUncertain(claim, reason),
+          markRateLimited: (claim: Parameters<WalletDeliveryLedger['markRateLimited']>[0], retryAfterMs: number) => ledger.markRateLimited(claim, retryAfterMs),
           recoverInterruptedClaims: () => ledger.recoverInterruptedClaims(),
         } : ledger
         const notify = async () => { sends++; if (failure === 'rejected-send') throw new Error('Synthetic send rejection'); return { messageId: '42' } }
-        await dispatchPendingDeliveries(store, notify)
-        await dispatchPendingDeliveries(store, notify)
+        await dispatchWithoutPacing(store, notify)
+        await dispatchWithoutPacing(store, notify)
         assert.equal(sends, 1)
         assert.equal((await deliveries()).rows[0].status, 'uncertain')
       }
@@ -425,10 +566,10 @@ const main = async () => {
       await ledger.ingest(watch, Array.from({ length: DELIVERY_BATCH_SIZE + 1 }, (_, index) => movement({ signature: signature(index + 1) })))
       let sends = 0
       const notify = async () => ({ messageId: String(++sends) })
-      await dispatchPendingDeliveries(ledger, notify)
+      await dispatchWithoutPacing(ledger, notify)
       assert.equal(sends, DELIVERY_BATCH_SIZE)
       assert.equal((await ledger.listPendingIds()).length, 1)
-      await dispatchPendingDeliveries(ledger, notify)
+      await dispatchWithoutPacing(ledger, notify)
       assert.equal(sends, DELIVERY_BATCH_SIZE + 1)
       assert.equal((await ledger.listPendingIds()).length, 0)
     })

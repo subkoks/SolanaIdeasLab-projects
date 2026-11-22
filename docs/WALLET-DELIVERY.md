@@ -10,7 +10,8 @@ deploying it or applying the draft migration.
 - For a watch with a saved cursor, the reader must find that cursor and retrieve
   metadata for every newer transaction within the bounded RPC window. An
   unavailable transaction or history gap holds the read and preserves the cursor.
-  A new watch without a cursor reads only the newest page.
+  A new watch without a cursor reads only the newest page. Each RPC request has a
+  deadline so one stalled provider response cannot block later watches or drains.
 - Ingestion verifies the subscriber, watch revision, and expected cursor before a
   write. It commits activity, immutable notification snapshots, and the cursor in
   one transaction. Readable transactions with no balance change retain an
@@ -18,12 +19,16 @@ deploying it or applying the draft migration.
   empty batch, it updates only the cursor. Stale readers cannot overwrite it.
 - Activity is keyed by wallet, transaction signature, and movement. Delivery is
   keyed by watch, signature, and movement. Existing activity rows keep their IDs
-  and payloads. A legacy activity suppresses replay of its wallet/signature
-  pair. Any legacy notification suppresses a new send for its watch and
-  signature, while missing activity for that wallet can still be recorded.
+  and payloads. A legacy notification suppresses replay only for the watch that
+  owns it, while missing activity for another watch can still be recorded. A
+  label-only watch edit does not cancel already-enqueued immutable snapshots.
+  Persisted transaction order keeps same-timestamp activity and delivery queues
+  deterministic.
 - The dispatcher claims each pending row before attempting a send. An ambiguous
   Telegram response or an interrupted claim is retained for reconciliation.
-  These rows are outside the automatic retry queue.
+  Sends to one chat are paced, and an explicit Telegram 429 returns the row to
+  pending with `nextAttemptAt` set from `retry_after`. Ambiguous outcomes remain
+  outside the automatic retry queue.
 
 ## Cutover and rollback
 
@@ -56,6 +61,7 @@ The pull request's checks and review identify the exact revision tested.
 On macOS with Homebrew PostgreSQL 16, `npm run test:delivery:postgres` creates a
 private synthetic cluster on a Unix socket with TCP disabled. It verifies
 migration preservation, rollback, concurrent writes, cursor-only advances,
-legacy notifications, and ambiguous sends. CI also runs the four database Jest
-suites against a dedicated service database. It loads the draft explicitly in
-that fixture and fails if the selected suites or tests are skipped.
+legacy notifications, and ambiguous sends. CI also runs the database Jest suites
+and the same durable-delivery integration file against separate dedicated
+service databases. It loads the draft explicitly in those fixtures and fails if
+the selected Jest suites or tests are skipped.
