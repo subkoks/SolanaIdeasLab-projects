@@ -21,10 +21,12 @@ toolchain supports it.
 
 ## Completed migration work
 
-- PR #390 introduced Node `>=24` engines for Wallet and Sniper and aligned CI.
+- PR #390 extended Node 24 CI to Wallet and Sniper and raised Wallet's engine
+  requirement; Sniper's Node `>=24` engine requirement was already raised in
+  PR #367.
 - PR #407 completed the Web3 v3 migration across Safety and Shared, including
-  bigint and `Uint8Array` boundaries and regression coverage for RPC response
-  shapes.
+  bigint signature timestamps and readonly RPC response types. PR #367 added
+  Sniper-specific `Uint8Array` and readonly RPC response-shape coverage.
 - Wallet and Sniper v3 dependency updates were merged through PRs #369 and #367,
   with their package-specific compatibility work completed before the combined
   migration.
