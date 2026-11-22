@@ -36,7 +36,9 @@ Wallet was not pushed or merged.
 
 ### Preserved holds
 
-- Two stashes remain.
+- Two stashes remain. `stash@{0}` replays to its recorded tree from the exact
+  base, and the reflog-only `stash@{1}` object is embedded in the verified bundle
+  with its untracked-file blob matching exactly.
 - Dirty worktrees remain dirty, including the unresolved setup/bootstrap
   conflicts and generated-file changes in their original worktrees.
 - Unique local branches remain unless later evidence proves exact safe cleanup.

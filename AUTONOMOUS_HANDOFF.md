@@ -22,10 +22,13 @@
 - TypeScript 7 stays deferred.
 - The verified recovery set is at
   `/Users/black.terminal/Projects/.maintenance/solanaideaslab-projects-preservation-20261122`.
-  Its refreshed bundle contains 100 heads, verifies successfully, and restores
-  to an isolated mirror containing 85 real refs with a clean `git fsck`.
+  Its refreshed bundle contains 101 heads plus the reflog-only `stash@{1}`
+  object, verifies successfully, and restores to an isolated mirror containing
+  86 real refs with a clean `git fsck`.
 - Both stashes, all dirty worktree patches, conflict stages, Hermes logs, and the
-  original dirty files remain preserved. No dirty worktree was reset or cleaned.
+  original dirty files remain preserved. Exact-base replay matches the
+  `stash@{0}` tree and the `stash@{1}` untracked-file blob. No dirty worktree was
+  reset or cleaned.
 
 ### Wallet delivery status
 
