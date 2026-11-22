@@ -470,7 +470,11 @@ const main = async () => {
       assert.equal((await deliveries()).rows[0].failureCode, 'telegram-rate-limited')
       await delay(60)
       assert.deepEqual(await ledger.listPendingIds(), [id])
-      assert.ok(await ledger.claim(id))
+      const retryClaim = await ledger.claim(id)
+      assert.ok(retryClaim)
+      assert.equal(await ledger.markSent(retryClaim, { messageId: '42' }), true)
+      assert.equal((await deliveries()).rows[0].status, 'sent')
+      assert.equal((await deliveries()).rows[0].failureCode, null)
     })
 
     await test('dispatch preserves input transaction order when timestamps tie', async () => {

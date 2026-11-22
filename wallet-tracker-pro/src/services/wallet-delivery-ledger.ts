@@ -392,7 +392,7 @@ export class WalletDeliveryLedger {
     if (!/^[1-9][0-9]{0,19}$/.test(receipt.messageId)) throw new WalletIngestionError('invalid-batch')
     return (await this.prisma.$executeRaw`
       UPDATE "WalletDelivery" SET "status" = 'sent', "telegramMessageId" = ${receipt.messageId},
-        "sentAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+        "sentAt" = CURRENT_TIMESTAMP, "failureCode" = NULL, "updatedAt" = CURRENT_TIMESTAMP
       WHERE "id" = ${claim.id} AND "claimToken" = ${claim.claimToken} AND "status" = 'dispatching'`) === 1
   }
 
