@@ -56,9 +56,11 @@ and in-memory primitives — never real material.
 ## Branching & PRs
 
 - Branch from `main` (e.g. `feat/...`, `fix/...`).
-- Open a PR against `main`. Same-repo PRs are auto-approved and auto-merged by the
-  `auto-merge` workflow once all required status checks pass (branch protection still
-  gates — nothing merges on red).
+- Open a PR against `main`. Auto-merge is an explicit owner opt-in: the owner adds
+  the `automerge-approved` label and a body line containing
+  `Automerge-approved-head: <full current head SHA>`. The `auto-merge` workflow does
+  not approve PRs; it only enables GitHub auto-merge for that exact same-repository
+  head after the required checks pass. Any new commit invalidates the marker.
 - Keep PRs focused and descriptive. Fill in the PR template, including the security
   checklist for auth/redirect/signing/validation changes.
 
@@ -77,10 +79,11 @@ high priority for review and testing. Please:
 
 ## CI
 
-CI (`ci.yml`) runs `verify` (type-check, lint, tests, and PostgreSQL-gated Prisma
-suites) for `shared` and the three bots, plus CodeQL code scanning and a
-`security-check` job. All required checks must be green before merge; branch
-protection gates auto-merge (nothing merges on red).
+CI (`ci.yml`) runs the `verify` matrix (type-check, lint, production dependency
+audit, tests, and PostgreSQL-gated Prisma suites) for `shared` and the three bots,
+plus `local-lab` token/console checks. CodeQL separately analyzes Actions and
+JavaScript/TypeScript. All seven checks are required by the `main-protection`
+ruleset; auto-merge waits for them and nothing merges on red.
 
 > **Local `npm audit` / `security-check` note:** on some machines a local npm
 > mirror rewrites `package-lock.json` URLs, which can make `npm audit` error
