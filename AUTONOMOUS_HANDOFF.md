@@ -1,70 +1,64 @@
 # AUTONOMOUS_HANDOFF.md — SolanaIdeasLab-projects
 
-Convention: untracked planning artifact at repo root. Updated after each session.
+## Handoff: maintenance cleanup — 2026-11-22
 
-## Handoff: Web3 Dependency Compatibility Assessment — 2026-08-31 (READ-ONLY)
+### Current repository state
 
-**Mode:** PHASE 1 READ-ONLY. Assessment completed; no source, manifest, or lockfile changes performed.
+- `origin/main`: `8e42e82f56c500824d2b49a8446c607c777deb17`.
+- The primary checkout was restored from the obsolete
+  `fix/auto-merge-revocation-20261121` branch to a clean local `main`, then
+  fast-forwarded to `origin/main`.
+- The old primary branch is retained locally and has a recovery ref.
+- No remote branch, PR, merge, protection rule, or repository setting was
+  changed during this pass.
+- Live GitHub reads reported no open pull requests and 11 remote branches.
 
-### What was done
-- Completed full read-only inventory of `@solana/web3.js` across 3 packages (token-safety-bot, token-sniper-bot, wallet-tracker-pro)
-- Identified 4 source files with `@solana/web3.js` imports (all read-only API surface)
-- Confirmed zero transitive `@solana/web3.js` dependencies
-- Verified uuid 9.0.1 advisory is not reachable from `@solana/web3.js` runtime code
-- Recommended retaining `^1.95.0`; documenting advisory as non-reachable
-- No upgrades, installs, publishes, commits, or branch changes performed
-- No secrets, keys, credentials, or wallet material accessed or revealed
+### Completed maintenance
 
-### Assessment exit status
-- Inventory complete: 3 packages, 4 import files, 0 runtime transaction code
-- Advisory reachability: confirmed non-reachable (uuid ^14.0.2 is patched; @solana/web3.js does not depend on vulnerable uuid)
-- Recommendation: retain ^1.95.0; no upgrade needed
-- CI state: all 70 tests pass; tsc --noEmit passes; npm run lint passes
-- Branch state: all branches preserved; no destructive commands
-- Rollback (reverts both docs commits): git revert cfeb417 181eb2a; git push
+- Effect remediation PR #389, Node 24 PR #390, CodeQL repair PRs #377/#391/#392,
+  and Dependabot PRs #403-#409 are on `main`. The relevant PRs are closed or
+  merged; there is no pending dependency merge queue.
+- Web3 v3 and Node 24 are now current for Shared, Safety, Sniper, and Wallet.
+- TypeScript 7 stays deferred.
+- The verified recovery set is at
+  `/Users/black.terminal/Projects/.maintenance/solanaideaslab-projects-preservation-20261122`.
+  Its refreshed bundle contains 100 heads, verifies successfully, and restores
+  to an isolated mirror containing 85 real refs with a clean `git fsck`.
+- Both stashes, all dirty worktree patches, conflict stages, Hermes logs, and the
+  original dirty files remain preserved. No dirty worktree was reset or cleaned.
 
-### Branch state
-- `main` = `bd89f401` (origin/main, token-sniper-bot JWT Phase 1 PR #230 merged); `feat/jwt-phase1-safety-bot-dual-read` = `45f499e` + `ae3c95f` (open PR #231, unmerged)
-- Related Dependabot PRs #232-#234 are open but deliberately unmerged; they are potential remediation candidates, not a completed fix — PR #231 verify remains CI-blocked by pre-existing `npm audit` findings (`fast-uri` 3.0.0-3.1.5, `mysql2 <=3.23.0`), not by JWT Phase 1
-- All feature branches preserved on origin (fe/stripe-wh, feat/release-docs, feat/shared-schema-*, fix/shared-*, etc.)
-- Feature branch `feat/jwt-phase1-safety-bot-dual-read` preserved on origin
-- No branches deleted, force-pushed, or rebased
+### Wallet delivery status
 
-### Rollback evidence
-- `git revert 978adc205432238be5b237a3af05a753084c4278` — revert PR #245 (actual merge SHA on main)
-- `git revert <new-correction-commit-SHA>` — revert this narrow correction PR
-- `git reset --hard HEAD` — no-op for this read-only assessment; do not use as a #245 rollback
-- `npm install` with original lockfile → `^1.95.0`
-- All 70 tests + type-check + lint pass unchanged
-- No database, wallet, or system state was modified
+- Branch: `fix/wallet-durable-delivery-20261121`.
+- Exact local head: `b4187fe853805c7f1c7fe1c0b2c6441fd03dc213`.
+- Worktree:
+  `/Users/black.terminal/Projects/.coordination-worktrees/solana-wallet-delivery-20261101`.
+- The only worktree change is the intentional untracked `node_modules` symlink.
+- The exact-head local validation recorded at this commit covered frozen install,
+  Prisma generation, type-check, lint, default Next build, Jest
+  (`157 passed`, `9 skipped`, `166 total`), PostgreSQL (`23/23`), production
+  audit (`0 vulnerabilities`), public lockfile URLs, and `git diff --check`.
+- Review status is `[BLOCKED: review infrastructure failure]`. The permitted
+  fresh reviewer retry could not spawn shell commands because of
+  `Too many open files (os error 24)`. A timeout or infrastructure failure is
+  not approval.
+- No Wallet branch was pushed, no PR was created, and no merge was attempted.
+  Wallet remains local-only until an independent exact-head review succeeds.
 
-### Post-#245 correction (2026-09-07, narrow scope)
-- PR #245 (`978adc2`) merged 2026-09-03 changed manifests and lockfiles (6 files) and added docs — NOT "all via npm overrides" and NOT a no-op. The previous rollback reference `git revert 5ac1c99` is incorrect; use `git revert 978adc205432238be5b237a3af05a753084c4278` instead.
-- Patched target versions retained: `fast-uri 3.1.7`, `mysql2 3.24.3` (no 3.1.5 / 3.15.3 reintroduced).
-- Correction PR `fix/dependency-manifest-lockfile-hygiene` adds missing `fast-uri` override to token-sniper-bot, normalizes token-sniper-bot lockfile to use `https://registry.npmjs.org/` (removes `pkgs.safetycli.com` URL), and corrects this handoff.
+### Preservation holds
 
-### Post-assessment status
-- `WEB3_COMPATIBILITY_PLAN.md` created at repo root (untracked convention)
-- `AUTONOMOUS_PROGRESS.md` updated with assessment summary
-- `AUTONOMOUS_HANDOFF.md` updated with handoff record
-- No pending implementation; assessment stands as read-only planning document
-- Recommendation: retain `^1.95.0`; no upgrade pursued without explicit approval
+- Dirty or conflicted worktrees remain at their recorded paths; do not reset,
+  clean, or prune them.
+- Local branches with positive `git cherry` commits remain retained.
+- Branches and worktrees used by the separate GitHub/Copilot automation cleanup
+  were not revisited.
+- The two old worktrees named by the original cleanup proposal were already
+  absent at this checkpoint; their commits remain in the verified bundle and
+  archive refs.
 
-### Next steps (blocked on explicit approval)
-1. Review `WEB3_COMPATIBILITY_PLAN.md` and assessment results
-2. Provide explicit approval for any upgrade pursuant to §10-§11 of the Plan
-3. If no approval: assessment complete; retain `^1.95.0`; no further action
-4. If approval: create `feat/web3-upgrade` branch; execute upgrade per plan phases
+### Next eligible action
 
-### Confirmation of constraints honored
-- ✅ No staging, cloud, hosted database, Supabase, Stripe test mode, webhooks, public URLs
-- ✅ No deployments, devnet, testnet, mainnet, live RPC
-- ✅ No wallets, signing, transactions, minting, transfers, staking, swaps, bridging, payments
-- ✅ No production data or external database access
-- ✅ No JWT claims, token issuance, refresh behavior, auth contract changes
-- ✅ No Stripe logic changes
-- ✅ No Hermes/OpenRouter settings changes
-- ✅ No system configuration changes
-- ✅ No @solana/web3.js version alteration during assessment
-- ✅ No uuid 9.0.1 pin alteration
-- ✅ No secrets, keys, seed phrases, wallet material, API keys, tokens, credentials, or .env values accessed or revealed
+When reviewer infrastructure is available, run one fresh independent review
+against exactly `b4187fe` (or a newer exact head if additional local work is
+committed), then continue the Wallet gates from the resulting findings. Do not
+push or merge Wallet first.
