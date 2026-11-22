@@ -438,8 +438,8 @@ export class SolanaWatcherService {
         for (const transaction of parsed) {
           if (!transaction?.meta) {
             throw new WalletHistoryReadError(
-              'Wallet history unavailable: transaction metadata missing',
               'transaction-unavailable',
+              'Wallet history unavailable: transaction metadata missing',
             )
           }
           transactions.push(transaction)
@@ -469,8 +469,8 @@ export class SolanaWatcherService {
       }
       if (!transaction?.meta) {
         throw new WalletHistoryReadError(
-          'Wallet history unavailable: transaction metadata missing',
           'transaction-unavailable',
+          'Wallet history unavailable: transaction metadata missing',
         )
       }
       transactions.push(transaction)

@@ -341,6 +341,29 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     })
   })
 
+  it('keeps a readable transaction with unchanged balances as unknown activity', async () => {
+    const unchanged = signature('unchanged-balances', 2)
+    const cursor = signature('saved-before-unchanged', 1)
+    const watcher = new SolanaWatcherService({
+      getSignaturesForAddress: async () => [unchanged, cursor],
+      getParsedTransaction: async () => parsedTransaction({
+        preLamports: BigInt(10),
+        postLamports: BigInt(10),
+      }),
+    })
+
+    await expect(watcher.fetchNewMovementsWithCursor(WALLET, cursor.signature))
+      .resolves.toEqual({
+        movements: [{
+          direction: 'unknown',
+          lamports: null,
+          signature: unchanged.signature,
+          summary: 'Transaction detected (no balance change)',
+        }],
+        cursor: unchanged.signature,
+      })
+  })
+
   it('holds a batch with unavailable metadata and retries from the same cursor', async () => {
     const cursor = signatureValue('saved-before-missing')
     const newest = signatureValue('batch-newest')

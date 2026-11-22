@@ -39,7 +39,8 @@ net.Socket.prototype.connect = function(...args) {
 };
 require('node:module').syncBuiltinESMExports();
 `, { mode: 0o600 })
-  const binaries = '/usr/local/opt/postgresql@16/bin'
+  const homebrewPrefix = process.arch === 'arm64' ? '/opt/homebrew' : '/usr/local'
+  const binaries = join(homebrewPrefix, 'opt/postgresql@16/bin')
   const cleanEnvironment = { PATH: '/usr/local/bin:/usr/bin:/bin', LANG: 'C', LC_ALL: 'C', TZ: 'UTC' }
   const receipt = { fixtureDirectory, socketDirectory, packageDirectory, port: 55439, role: 'wallet_fixture', database: 'wallet_delivery_fixture',
     generatedClient, listenAddresses: '', startAttempted: false, started: false, stopped: false, stages: [] }

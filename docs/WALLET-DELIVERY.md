@@ -13,11 +13,14 @@ deploying it or applying the draft migration.
   A new watch without a cursor reads only the newest page.
 - Ingestion verifies the subscriber, watch revision, and expected cursor before a
   write. It commits activity, immutable notification snapshots, and the cursor in
-  one transaction. A fully verified batch with no movements updates only the
-  cursor. Concurrent stale readers cannot overwrite the cursor.
+  one transaction. Readable transactions with no balance change retain an
+  `unknown` activity entry. If ingestion receives a verified cursor with an
+  empty batch, it updates only the cursor. Stale readers cannot overwrite it.
 - Activity is keyed by wallet, transaction signature, and movement. Delivery is
   keyed by watch, signature, and movement. Existing activity rows keep their IDs
-  and payloads. Legacy wallet/signature pairs suppress ambiguous replay.
+  and payloads. A legacy activity suppresses replay of its wallet/signature
+  pair. Any legacy notification suppresses a new send for its watch and
+  signature, while missing activity for that wallet can still be recorded.
 - The dispatcher claims each pending row before attempting a send. An ambiguous
   Telegram response or an interrupted claim is retained for reconciliation.
   These rows are outside the automatic retry queue.

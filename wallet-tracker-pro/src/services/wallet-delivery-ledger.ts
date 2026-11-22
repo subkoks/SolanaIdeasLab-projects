@@ -218,6 +218,12 @@ export class WalletDeliveryLedger {
           ${movement.activityId}::text, ${watch.walletAddress}::text, ${movement.signature}::text,
           ${movement.movementKey}::text, ${movement.direction}::text, ${movement.lamports}::bigint,
           ${movement.tokenMint ?? null}::text, ${movement.summary}::text)`))
+        // The legacy outbox deduplicated per watch even when its activity row
+        // belonged to another wallet. Preserve that delivery history separately.
+        const noLegacyNotification = Prisma.sql`NOT EXISTS (
+          SELECT 1 FROM "WalletNotification" n WHERE n."watchId" = ${watch.id}
+            AND n."signature" = v."signature"
+        )`
         const capacity = await tx.$queryRaw<Array<{ outstanding: number; incoming: number }>>(Prisma.sql`
           SELECT (SELECT COUNT(*)::integer FROM "WalletDelivery" WHERE "watchId" = ${watch.id}
             AND "status" IN ('pending', 'dispatching', 'uncertain')) AS "outstanding",
@@ -225,6 +231,7 @@ export class WalletDeliveryLedger {
               ("id", "walletAddress", "signature", "movementKey", "direction", "lamports", "tokenMint", "summary")
           WHERE NOT EXISTS (SELECT 1 FROM "WalletActivityEvent" legacy WHERE legacy."walletAddress" = v."walletAddress"
             AND legacy."signature" = v."signature" AND legacy."identityVersion" = 0)
+            AND ${noLegacyNotification}
             AND NOT EXISTS (SELECT 1 FROM "WalletDelivery" d WHERE d."watchId" = ${watch.id}
               AND d."signature" = v."signature" AND d."movementKey" = v."movementKey")`)
         if (capacity[0]!.outstanding + capacity[0]!.incoming > MAX_OUTSTANDING_DELIVERIES_PER_WATCH) {
@@ -266,6 +273,7 @@ export class WalletDeliveryLedger {
             AND a."signature" = v."signature" AND a."movementKey" = v."movementKey" AND a."identityVersion" = 1
           WHERE NOT EXISTS (SELECT 1 FROM "WalletActivityEvent" legacy
             WHERE legacy."walletAddress" = a."walletAddress" AND legacy."signature" = a."signature" AND legacy."identityVersion" = 0)
+            AND ${noLegacyNotification}
           ON CONFLICT ("watchId", "signature", "movementKey") DO NOTHING`)
       }
       const updated = await tx.$executeRaw`

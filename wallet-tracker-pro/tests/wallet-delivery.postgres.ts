@@ -241,6 +241,34 @@ const main = async () => {
       assert.equal((await currentWatch()).lastSignature, signature(1))
     })
 
+    await test('legacy notifications suppress replay for their watch without suppressing missing activity', async () => {
+      const otherWalletWatch = await setup()
+      const watchedWallet = fixtureBase58(2, 32)
+      const watch = await ledger.addWatch(otherWalletWatch.subscriber.id, watchedWallet)
+      const signatures = [signature(2), signature(3), signature(4)]
+      await pg.query(
+        `INSERT INTO "WalletActivityEvent" ("id", "walletAddress", "signature", "direction", "movementKey", "identityVersion")
+         VALUES ('old-delivered', $1, $2, 'unknown', 'legacy:old-delivered', 0),
+           ('old-claimed', $1, $3, 'unknown', 'legacy:old-claimed', 0),
+           ('old-pending', $1, $4, 'unknown', 'legacy:old-pending', 0)`,
+        [otherWalletWatch.walletAddress, ...signatures],
+      )
+      await pg.query(
+        `INSERT INTO "WalletNotification" ("id", "watchId", "signature", "message", "deliveredAt", "claimedAt", "claimToken")
+         VALUES ('sent', $1, $2, 'Sent fixture', CURRENT_TIMESTAMP, NULL, NULL),
+           ('claimed', $1, $3, 'Claimed fixture', NULL, CURRENT_TIMESTAMP, 'fixture-claim'),
+           ('pending', $1, $4, 'Pending fixture', NULL, NULL, NULL)`,
+        [watch.id, ...signatures],
+      )
+      const fresh = signature(5)
+      const batch = [...signatures, fresh].map((value) => movement({ signature: value }))
+      assert.equal(await ledger.ingest(watch, batch), 'ingested')
+      const activity = (await events()).rows.filter((event) => event.walletAddress === watchedWallet)
+      assert.deepEqual(activity.map((event) => event.signature).sort(), [...signatures, fresh].sort())
+      assert.deepEqual((await deliveries()).rows.map((delivery) => delivery.signature), [fresh])
+      assert.equal((await ledger.listWatches()).find((item) => item.id === watch.id)?.lastSignature, fresh)
+    })
+
     await test('two independent claimers grant exactly one permanent dispatch claim', async () => {
       const watch = await setup()
       await ledger.ingest(watch, [movement()])
@@ -268,7 +296,7 @@ const main = async () => {
       )
       const before = (await readLegacy()).rows
       await ledger.addWatch(watch.subscriber.id, wallet, 'Changed fixture label')
-      assert.deepEqual((await ledger.removeWatch(watch.subscriber.id, wallet)).count, 1)
+      assert.equal((await ledger.removeWatch(watch.subscriber.id, wallet)).count, 1)
       assert.deepEqual((await readLegacy()).rows, before)
     })
 
