@@ -14,6 +14,23 @@ const getMessageText = (context: Context): string => {
   return message.text
 }
 
+export const walletMutationErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.name === 'WalletIngestionError') {
+    const code = (error as Error & { code?: unknown }).code
+    if (code === 'invalid-batch') {
+      return 'Could not update this watch. Check the wallet and label, then try again.'
+    }
+    if (code === 'conflicting-movement' || code === 'cursor-update-failed') {
+      return 'The watch changed while updating. Please try again.'
+    }
+    if (code === 'delivery-capacity') {
+      return 'Delivery is temporarily at capacity for this watch. Please try again later.'
+    }
+  }
+
+  return error instanceof Error ? error.message : 'Failed to update watch'
+}
+
 export class WalletTrackerTelegramBot {
   constructor(
     private readonly bot: Telegraf<Context>,
@@ -102,9 +119,7 @@ export class WalletTrackerTelegramBot {
       await this.database.addWatch(String(chatId), walletAddress, label)
       await context.reply(`Watching ${walletAddress}${label ? ` (${label})` : ''}.`)
     } catch (error) {
-      await context.reply(
-        error instanceof Error ? error.message : 'Failed to add watch',
-      )
+      await context.reply(walletMutationErrorMessage(error))
     }
   }
 
@@ -120,7 +135,13 @@ export class WalletTrackerTelegramBot {
       return
     }
 
-    const result = await this.database.removeWatch(String(chatId), walletAddress)
+    let result
+    try {
+      result = await this.database.removeWatch(String(chatId), walletAddress)
+    } catch (error) {
+      await context.reply(walletMutationErrorMessage(error))
+      return
+    }
     if (!result || result.count === 0) {
       await context.reply('Wallet not found on your watchlist.')
       return
@@ -297,7 +318,13 @@ export class WalletTrackerTelegramBot {
     }
   }
 
-  public async notifyChat(chatId: string, message: string): Promise<void> {
-    await this.bot.telegram.sendMessage(Number(chatId), message)
+  public async notifyChat(chatId: string, message: string): Promise<{ messageId: string }> {
+    if (!/^-?[1-9][0-9]{0,19}$/.test(chatId)) throw new Error('Invalid Telegram recipient')
+    const receipt = await this.bot.telegram.sendMessage(chatId, message)
+    if (!Number.isSafeInteger(receipt?.message_id) || receipt.message_id < 1 ||
+      String(receipt.chat?.id) !== chatId) {
+      throw new Error('Telegram acknowledgement unavailable')
+    }
+    return { messageId: String(receipt.message_id) }
   }
 }

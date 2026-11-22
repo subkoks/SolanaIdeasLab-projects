@@ -7,7 +7,15 @@ import {
 } from '@solana/web3.js'
 import { config } from '../lib/config'
 import { logger } from '../lib/logger'
-import type { DatabaseService } from './database'
+import {
+  dispatchPendingDeliveries,
+  DELIVERY_BATCH_SIZE,
+  MAX_INGESTION_MOVEMENTS,
+  WalletIngestionError,
+  type DeliveryReceipt,
+  type DeliveryStore,
+  type DeliveryWatch,
+} from './wallet-delivery-ledger'
 
 export interface WalletMovement {
   direction: 'in' | 'out' | 'unknown'
@@ -17,23 +25,88 @@ export interface WalletMovement {
   tokenMint?: string
 }
 
+export interface WalletPollingStore extends DeliveryStore {
+  listWatches(afterId: string, limit: number): Promise<Array<DeliveryWatch>>
+  ingest(
+    watch: DeliveryWatch,
+    movements: ReadonlyArray<WalletMovement>,
+    cursor?: string | null,
+  ): Promise<'ingested' | 'stale'>
+  getHoldCounts(): Promise<{ uncertain: number; dispatching: number }>
+}
+
 export interface NewMovementsResult {
   movements: WalletMovement[]
   cursor: string | null
 }
 
-export class SignatureContinuityError extends Error {
-  constructor(message: string) {
+export type WalletHistoryFailure =
+  | 'invalid-cursor'
+  | 'invalid-page-size'
+  | 'invalid-signature-page'
+  | 'repeated-signature'
+  | 'cursor-not-found'
+  | 'pagination-budget'
+  | 'rpc-failure'
+  | 'transaction-unavailable'
+
+export class WalletHistoryReadError extends Error {
+  constructor(
+    public readonly code: WalletHistoryFailure,
+    message: string,
+  ) {
     super(message)
+    this.name = 'WalletHistoryReadError'
+  }
+}
+
+export class SignatureContinuityError extends WalletHistoryReadError {
+  constructor(message: string, code: WalletHistoryFailure = 'repeated-signature') {
+    super(code, message)
     this.name = 'SignatureContinuityError'
   }
 }
 
-export class CursorUnavailableError extends SignatureContinuityError {
-  constructor(message: string) {
-    super(message)
-    this.name = 'CursorUnavailableError'
+export const MAX_WATCH_PAGES_PER_POLL = 5
+
+// Bound both RPC work and retained signatures independently of operator config.
+const MAX_SIGNATURE_PAGES = 5
+const MAX_SIGNATURE_PAGE_SIZE = 100
+const RPC_SIGNATURE_PAGE_LIMIT = 1000
+const BASE58_ALPHABET =
+  '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+const SIGNATURE_BYTE_LENGTH = 64
+const MAX_SIGNATURE_TEXT_LENGTH = 88
+
+// Validate canonical base58 shape only; authenticity remains the chain/provider's job.
+const isTransactionSignature = (value: unknown): value is string => {
+  if (
+    typeof value !== 'string' ||
+    value.length < SIGNATURE_BYTE_LENGTH ||
+    value.length > MAX_SIGNATURE_TEXT_LENGTH
+  ) {
+    return false
   }
+  let decoded = BigInt(0)
+  for (const character of value) {
+    const digit = BASE58_ALPHABET.indexOf(character)
+    if (digit < 0) {
+      return false
+    }
+    decoded = decoded * BigInt(58) + BigInt(digit)
+  }
+  let byteLength = 0
+  while (decoded > BigInt(0)) {
+    byteLength++
+    decoded >>= BigInt(8)
+  }
+  for (const character of value) {
+    if (character !== '1') {
+      break
+    }
+    byteLength++
+  }
+  return byteLength === SIGNATURE_BYTE_LENGTH
 }
 
 function validateSignaturePage(
@@ -48,11 +121,12 @@ function validateSignaturePage(
         typeof item !== 'object' ||
         item === null ||
         typeof item.signature !== 'string' ||
-        item.signature.length === 0,
+        !isTransactionSignature(item.signature),
     )
   ) {
     throw new SignatureContinuityError(
       'Wallet history returned a malformed signature page',
+      'invalid-signature-page',
     )
   }
   return page as ConfirmedSignatureInfo[]
@@ -92,6 +166,7 @@ function formatBaseUnitAmount(
 export class SolanaWatcherService {
   private readonly connection: WatcherConnection
   private pollInFlight: Promise<void> | null = null
+  private nextWatchId = ''
 
   constructor(connection?: WatcherConnection) {
     this.connection =
@@ -111,14 +186,14 @@ export class SolanaWatcherService {
   }
 
   public pollWatchlist(
-    database: DatabaseService,
-    notify: (chatId: string, message: string) => Promise<void>,
+    ledger: WalletPollingStore,
+    notify: (chatId: string, message: string) => Promise<DeliveryReceipt>,
   ): Promise<void> {
     if (this.pollInFlight) {
       return this.pollInFlight
     }
 
-    const poll = this.pollWatchlistOnce(database, notify).finally(() => {
+    const poll = this.runPoll(ledger, notify).finally(() => {
       if (this.pollInFlight === poll) {
         this.pollInFlight = null
       }
@@ -127,75 +202,93 @@ export class SolanaWatcherService {
     return poll
   }
 
-  private async pollWatchlistOnce(
-    database: DatabaseService,
-    notify: (chatId: string, message: string) => Promise<void>,
+  private async runPoll(
+    ledger: WalletPollingStore,
+    notify: (chatId: string, message: string) => Promise<DeliveryReceipt>,
   ): Promise<void> {
-    const watches = await database.listActiveWatches()
-
-    for (const watch of watches) {
-      try {
-        let result
+    // Drain committed work even with no watches, no fresh activity, or held reads.
+    // Each dispatch is one bounded batch. A claimed delivery is never retried.
+    await dispatchPendingDeliveries(ledger, notify)
+    for (let page = 0; page < MAX_WATCH_PAGES_PER_POLL; page++) {
+      const watches = await ledger.listWatches(this.nextWatchId, DELIVERY_BATCH_SIZE)
+      for (const watch of watches) {
         try {
-          result = await this.fetchNewMovementsWithCursor(
+          const result = await this.fetchNewMovementsWithCursor(
             watch.walletAddress,
             watch.lastSignature,
           )
+          await this.ingestResult(ledger, watch, result)
         } catch (error) {
-          if (!(error instanceof CursorUnavailableError)) {
-            throw error
-          }
-
-          await database.resetWatchCursor(watch.id)
-          logger.warn('Saved wallet cursor exceeded the RPC history window', {
-            walletAddress: watch.walletAddress,
-          })
-          result = await this.fetchNewMovementsWithCursor(
-            watch.walletAddress,
-            null,
-          )
-        }
-        const { movements, cursor } = result
-
-        if (cursor) {
-          const label = watch.label ? `[${watch.label}] ` : ''
-          await database.commitWatchProgress({
+          const code = error instanceof WalletIngestionError
+            ? error.code
+            : error instanceof WalletHistoryReadError
+              ? error.code
+              : 'read-or-ingestion-failed'
+          logger.error('Wallet watch held without ingestion', {
             watchId: watch.id,
-            cursor,
-            movements: movements.map((movement) => ({
-              walletAddress: watch.walletAddress,
-              signature: movement.signature,
-              direction: movement.direction,
-              lamports: movement.lamports ?? undefined,
-              tokenMint: movement.tokenMint,
-              summary: movement.summary,
-            })),
-            notifications: movements.map((movement) => ({
-              signature: movement.signature,
-              message: [
-                `${label}Wallet activity`,
-                `Wallet: ${watch.walletAddress}`,
-                movement.summary,
-                `Signature: ${movement.signature}`,
-              ].join('\n'),
-            })),
+            code,
           })
         }
-      } catch (error) {
-        logger.error('Failed to poll wallet watch', {
-          walletAddress: watch.walletAddress,
-          error,
-        })
+        this.nextWatchId = watch.id
       }
+      if (watches.length < DELIVERY_BATCH_SIZE) {
+        this.nextWatchId = ''
+        break
+      }
+    }
+    await dispatchPendingDeliveries(ledger, notify)
+    const holds = await ledger.getHoldCounts()
+    if (holds.uncertain || holds.dispatching) {
+      logger.info('Wallet deliveries held for operator reconciliation', holds)
+    }
+  }
 
-      try {
-        await this.dispatchPendingNotifications(database, notify, watch.id, watch.subscriber.chatId)
-      } catch (error) {
-        logger.error('Failed to deliver wallet notifications', {
-          walletAddress: watch.walletAddress,
-          error,
-        })
+  private async ingestResult(
+    ledger: WalletPollingStore,
+    watch: DeliveryWatch,
+    result: NewMovementsResult,
+  ): Promise<void> {
+    if (!result.cursor) {
+      return
+    }
+    if (result.movements.length === 0) {
+      await ledger.ingest(watch, [], result.cursor)
+      return
+    }
+
+    const movementGroups: WalletMovement[][] = []
+    for (const movement of result.movements) {
+      const group = movementGroups[movementGroups.length - 1]
+      if (group && group[0]!.signature === movement.signature) {
+        group.push(movement)
+      } else {
+        movementGroups.push([movement])
       }
+    }
+
+    let currentWatch = watch
+    let batch: WalletMovement[] = []
+    for (const group of movementGroups) {
+      if (group.length > MAX_INGESTION_MOVEMENTS) {
+        throw new WalletIngestionError('invalid-batch')
+      }
+      if (
+        batch.length > 0 &&
+        batch.length + group.length > MAX_INGESTION_MOVEMENTS
+      ) {
+        const cursor = batch[batch.length - 1]!.signature
+        const outcome = await ledger.ingest(currentWatch, batch, cursor)
+        if (outcome === 'stale') {
+          return
+        }
+        currentWatch = { ...currentWatch, lastSignature: cursor }
+        batch = []
+      }
+      batch.push(...group)
+    }
+
+    if (batch.length > 0) {
+      await ledger.ingest(currentWatch, batch, result.cursor)
     }
   }
 
@@ -212,23 +305,56 @@ export class SolanaWatcherService {
     lastSignature: string | null | undefined,
   ): Promise<NewMovementsResult> {
     const pubkey = new PublicKey(walletAddress)
-    const limit = Math.max(1, Math.trunc(config.watcher.signatureBatchSize))
-    const maxPages = Math.max(1, Math.trunc(config.watcher.signatureMaxPages))
+    if (lastSignature != null && !isTransactionSignature(lastSignature)) {
+      throw new SignatureContinuityError(
+        'Saved signature cursor is invalid',
+        'invalid-cursor',
+      )
+    }
+    const configuredLimit = config.watcher.signatureBatchSize
+    if (
+      !Number.isInteger(configuredLimit) ||
+      configuredLimit < 1 ||
+      configuredLimit > RPC_SIGNATURE_PAGE_LIMIT
+    ) {
+      throw new SignatureContinuityError(
+        'Configured signature page size is invalid',
+        'invalid-page-size',
+      )
+    }
+    const limit = Math.min(configuredLimit, MAX_SIGNATURE_PAGE_SIZE)
+    const maxPages = Math.min(
+      MAX_SIGNATURE_PAGES,
+      Math.max(1, Math.trunc(config.watcher.signatureMaxPages)),
+    )
 
     const fresh: ConfirmedSignatureInfo[] = []
     const seen = new Set<string>()
     let before: string | undefined
     let anchored = !lastSignature
+    let reachedHistoryEnd = false
 
     for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
-      const signatures = validateSignaturePage(
-        await this.connection.getSignaturesForAddress(pubkey, {
+      let signatures: ConfirmedSignatureInfo[]
+      try {
+        signatures = validateSignaturePage(
+          await this.connection.getSignaturesForAddress(pubkey, {
+            limit,
+            ...(before ? { before } : {}),
+          }),
           limit,
-          ...(before ? { before } : {}),
-        }),
-        limit,
-      )
+        )
+      } catch (error) {
+        if (error instanceof WalletHistoryReadError) {
+          throw error
+        }
+        throw new SignatureContinuityError(
+          'Wallet history unavailable: rpc-failure',
+          'rpc-failure',
+        )
+      }
       if (signatures.length === 0) {
+        reachedHistoryEnd = true
         break
       }
 
@@ -236,6 +362,7 @@ export class SolanaWatcherService {
         if (seen.has(item.signature)) {
           throw new SignatureContinuityError(
             'Wallet history returned a repeated signature',
+            'repeated-signature',
           )
         }
         seen.add(item.signature)
@@ -251,25 +378,17 @@ export class SolanaWatcherService {
         break
       }
 
-      const nextBefore = signatures.at(-1)?.signature
-      if (
-        !nextBefore ||
-        nextBefore === before ||
-        signatures.length < limit
-      ) {
+      if (signatures.length < limit) {
+        reachedHistoryEnd = true
         break
       }
-      before = nextBefore
-      if (pageNumber === maxPages - 1) {
-        throw new CursorUnavailableError(
-          'Signature history exceeded the configured page limit before reaching the saved cursor',
-        )
-      }
+      before = signatures[signatures.length - 1]!.signature
     }
 
-    if (lastSignature && !anchored) {
-      throw new CursorUnavailableError(
+    if (!anchored) {
+      throw new SignatureContinuityError(
         'Saved signature cursor was not found within the configured RPC history window',
+        reachedHistoryEnd ? 'cursor-not-found' : 'pagination-budget',
       )
     }
 
@@ -279,46 +398,49 @@ export class SolanaWatcherService {
     const parsed = await this.fetchParsedTransactions(items)
 
     for (const [index, item] of items.entries()) {
-      const transaction = parsed[index]
-      if (!transaction) {
-        continue
-      }
       movements.push(
-        ...this.parseMovements(walletAddress, item.signature, transaction),
+        ...this.parseMovements(walletAddress, item.signature, parsed[index]!),
       )
     }
 
-    return { movements: this.collapseMovementsBySignature(movements), cursor }
+    return { movements, cursor }
   }
 
   private async fetchParsedTransactions(
     items: ConfirmedSignatureInfo[],
-  ): Promise<Array<ParsedTransactionWithMeta | null>> {
+  ): Promise<ParsedTransactionWithMeta[]> {
     const config = {
       commitment: 'confirmed' as const,
       maxSupportedTransactionVersion: 1 as const,
     }
 
     if (this.connection.getParsedTransactions) {
-      const transactions: Array<ParsedTransactionWithMeta | null> = []
+      const transactions: ParsedTransactionWithMeta[] = []
       for (let start = 0; start < items.length; start += TRANSACTION_BATCH_SIZE) {
         const batch = items.slice(start, start + TRANSACTION_BATCH_SIZE)
-        const parsed = await this.connection.getParsedTransactions(
-          batch.map((item) => item.signature),
-          config,
-        )
+        let parsed: Array<ParsedTransactionWithMeta | null>
+        try {
+          parsed = await this.connection.getParsedTransactions(
+            batch.map((item) => item.signature),
+            config,
+          )
+        } catch {
+          throw new SignatureContinuityError(
+            'Wallet history unavailable: rpc-failure',
+            'rpc-failure',
+          )
+        }
         if (!Array.isArray(parsed) || parsed.length !== batch.length) {
           throw new SignatureContinuityError(
             'Wallet transaction batch returned an unexpected shape',
           )
         }
-        for (const [index, transaction] of parsed.entries()) {
+        for (const transaction of parsed) {
           if (!transaction?.meta) {
-            logger.warn('Skipping unavailable confirmed transaction', {
-              signature: batch[index]!.signature,
-            })
-            transactions.push(null)
-            continue
+            throw new WalletHistoryReadError(
+              'Wallet history unavailable: transaction metadata missing',
+              'transaction-unavailable',
+            )
           }
           transactions.push(transaction)
         }
@@ -331,93 +453,29 @@ export class SolanaWatcherService {
         'Wallet connection does not support parsed transactions',
       )
     }
-    const transactions: Array<ParsedTransactionWithMeta | null> = []
+    const transactions: ParsedTransactionWithMeta[] = []
     for (const item of items) {
-      const transaction = await this.connection.getParsedTransaction(
-        item.signature,
-        config,
-      )
+      let transaction: ParsedTransactionWithMeta | null
+      try {
+        transaction = await this.connection.getParsedTransaction(
+          item.signature,
+          config,
+        )
+      } catch {
+        throw new SignatureContinuityError(
+          'Wallet history unavailable: rpc-failure',
+          'rpc-failure',
+        )
+      }
       if (!transaction?.meta) {
-        logger.warn('Skipping unavailable confirmed transaction', {
-          signature: item.signature,
-        })
-        transactions.push(null)
-        continue
+        throw new WalletHistoryReadError(
+          'Wallet history unavailable: transaction metadata missing',
+          'transaction-unavailable',
+        )
       }
       transactions.push(transaction)
     }
     return transactions
-  }
-
-  private async dispatchPendingNotifications(
-    database: Pick<
-      DatabaseService,
-      | 'claimPendingNotifications'
-      | 'markNotificationDelivered'
-      | 'releaseNotificationClaim'
-    >,
-    notify: (chatId: string, message: string) => Promise<void>,
-    watchId: string,
-    chatId: string,
-  ): Promise<void> {
-    const pending = await database.claimPendingNotifications(watchId)
-    const failures: unknown[] = []
-    for (const notification of pending) {
-      try {
-        await notify(chatId, notification.message)
-        await database.markNotificationDelivered(
-          notification.id,
-          notification.claimToken,
-        )
-      } catch (error) {
-        await database.releaseNotificationClaim(
-          notification.id,
-          notification.claimToken,
-        )
-        failures.push(error)
-      }
-    }
-    if (failures.length > 0) {
-      throw failures[0]
-    }
-  }
-
-  private collapseMovementsBySignature(
-    movements: WalletMovement[],
-  ): WalletMovement[] {
-    const bySignature = new Map<string, WalletMovement>()
-    for (const movement of movements) {
-      const existing = bySignature.get(movement.signature)
-      if (!existing) {
-        bySignature.set(movement.signature, movement)
-        continue
-      }
-
-      const direction =
-        existing.direction === movement.direction
-          ? existing.direction
-          : 'unknown'
-      const lamports =
-        existing.lamports !== null && movement.lamports !== null
-          ? existing.lamports + movement.lamports
-          : (existing.lamports ?? movement.lamports)
-      const tokenMint =
-        existing.tokenMint === movement.tokenMint
-          ? existing.tokenMint
-          : undefined
-      const summary = existing.summary.includes(movement.summary)
-        ? existing.summary
-        : `${existing.summary}; ${movement.summary}`
-
-      bySignature.set(movement.signature, {
-        ...existing,
-        direction,
-        lamports,
-        tokenMint,
-        summary,
-      })
-    }
-    return [...bySignature.values()]
   }
 
   public parseMovements(

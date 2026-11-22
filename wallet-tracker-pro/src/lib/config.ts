@@ -37,7 +37,7 @@ export const config = {
     signatureBatchSize: parseNumber(process.env.WATCHER_SIGNATURE_BATCH, 10),
     signatureMaxPages: Math.max(
       1,
-      Math.trunc(parseNumber(process.env.WATCHER_SIGNATURE_MAX_PAGES, 100)),
+      Math.trunc(parseNumber(process.env.WATCHER_SIGNATURE_MAX_PAGES, 5)),
     ),
   },
   analytics: {

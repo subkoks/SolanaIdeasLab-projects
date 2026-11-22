@@ -6,13 +6,25 @@ import { estimateUsdFromSol, lamportsToSol } from '../lib/portfolio'
 import { getSolUsdPrice } from '../lib/sol-price'
 import { getWatchLimitForTier, isValidSubscriberTier } from '../lib/watch-limits'
 import { logger } from '../lib/logger'
+import { WalletDeliveryLedger } from './wallet-delivery-ledger'
+import { assertWalletDeliveryReady } from '../lib/wallet-delivery-gate'
+
+const movementKeyFor = (input: {
+  lamports?: bigint
+  tokenMint?: string
+}): string => input.tokenMint
+  ? `spl:${input.tokenMint}`
+  : input.lamports === undefined
+    ? 'unknown'
+    : 'sol'
 
 export class DatabaseService {
   private readonly prisma: PrismaClient
+  public readonly deliveryLedger: WalletDeliveryLedger
 
-  constructor() {
-    const adapter = new PrismaPg({ connectionString: config.database.url })
-    this.prisma = new PrismaClient({ adapter })
+  constructor(prisma?: PrismaClient) {
+    this.prisma = prisma ?? new PrismaClient({ adapter: new PrismaPg({ connectionString: config.database.url }) })
+    this.deliveryLedger = new WalletDeliveryLedger(this.prisma)
   }
 
   public async connect(): Promise<void> {
@@ -36,49 +48,13 @@ export class DatabaseService {
     walletAddress: string,
     label?: string,
   ) {
+    assertWalletDeliveryReady()
     const subscriber = await this.upsertSubscriber(chatId)
-    const maxWatches = getWatchLimitForTier(subscriber.tier)
-    const activeCount = await this.prisma.walletWatch.count({
-      where: { subscriberId: subscriber.id, active: true },
-    })
-
-    if (activeCount >= maxWatches) {
-      throw new Error(
-        `Watch limit reached (${maxWatches} on ${subscriber.tier} tier)`,
-      )
-    }
-
-    const existing = await this.prisma.walletWatch.findUnique({
-      where: {
-        subscriberId_walletAddress: {
-          subscriberId: subscriber.id,
-          walletAddress,
-        },
-      },
-    })
-
-    return this.prisma.walletWatch.upsert({
-      where: {
-        subscriberId_walletAddress: {
-          subscriberId: subscriber.id,
-          walletAddress,
-        },
-      },
-      update: {
-        label,
-        active: true,
-        ...(existing && !existing.active ? { lastSignature: null } : {}),
-      },
-      create: {
-        subscriberId: subscriber.id,
-        walletAddress,
-        label,
-        active: true,
-      },
-    })
+    return this.deliveryLedger.addWatch(subscriber.id, walletAddress, label)
   }
 
   public async removeWatch(chatId: string, walletAddress: string) {
+    assertWalletDeliveryReady()
     const subscriber = await this.prisma.telegramSubscriber.findUnique({
       where: { chatId },
     })
@@ -87,14 +63,7 @@ export class DatabaseService {
       return null
     }
 
-    return this.prisma.walletWatch.updateMany({
-      where: {
-        subscriberId: subscriber.id,
-        walletAddress,
-        active: true,
-      },
-      data: { active: false },
-    })
+    return this.deliveryLedger.removeWatch(subscriber.id, walletAddress)
   }
 
   public async listWatches(chatId: string) {
@@ -104,6 +73,8 @@ export class DatabaseService {
         watches: {
           where: { active: true },
           orderBy: { createdAt: 'asc' },
+          select: { id: true, subscriberId: true, walletAddress: true, label: true, lastSignature: true,
+            active: true, createdAt: true, updatedAt: true },
         },
       },
     })
@@ -111,6 +82,8 @@ export class DatabaseService {
     return subscriber?.watches ?? []
   }
 
+  // Legacy notification-outbox API. Production ingestion and delivery use
+  // deliveryLedger; these methods remain only for historical regression coverage.
   public async listActiveWatches() {
     return this.prisma.walletWatch.findMany({
       where: { active: true },
@@ -140,10 +113,17 @@ export class DatabaseService {
     tokenMint?: string
     summary?: string
   }) {
+    const movementKey = movementKeyFor(input)
     return this.prisma.walletActivityEvent.upsert({
-      where: { signature: input.signature },
+      where: {
+        walletAddress_signature_movementKey: {
+          walletAddress: input.walletAddress,
+          signature: input.signature,
+          movementKey,
+        },
+      },
       update: {},
-      create: input,
+      create: { ...input, movementKey },
     })
   }
 
@@ -166,7 +146,10 @@ export class DatabaseService {
     return this.prisma.$transaction(async (transaction) => {
       if (input.movements.length > 0) {
         await transaction.walletActivityEvent.createMany({
-          data: input.movements,
+          data: input.movements.map((movement) => ({
+            ...movement,
+            movementKey: movementKeyFor(movement),
+          })),
           skipDuplicates: true,
         })
       }
@@ -255,11 +238,12 @@ export class DatabaseService {
       },
     })
   }
-
   public async getRecentActivity(walletAddress: string, limit = 5) {
     return this.prisma.walletActivityEvent.findMany({
       where: { walletAddress },
-      orderBy: { observedAt: 'desc' },
+      select: { id: true, walletAddress: true, signature: true, direction: true, lamports: true,
+        tokenMint: true, summary: true, observedAt: true },
+      orderBy: [{ observedAt: 'desc' }, { id: 'asc' }],
       take: limit,
     })
   }
@@ -448,6 +432,7 @@ export class DatabaseService {
       include: {
         watches: {
           where: { active: true },
+          select: { id: true },
         },
       },
     })

@@ -13,6 +13,7 @@
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch --passWithNoTests",
     "test:coverage": "jest --coverage --passWithNoTests",
+    "test:delivery:postgres": "node scripts/test-delivery-postgres.cjs",
     "test:patterns": "jest --testPathPattern=patterns",
     "test:performance": "jest --testPathPattern=performance",
     "test:risk": "jest --testPathPattern=risk",

@@ -16,10 +16,11 @@ the script also finds an already-installed `mise` version when `nvm` cannot
 supply the required major.
 
 > **Local validation does not require Postgres or Redis.** All unit/type/lint
-> checks run without a database. DB-backed tests (`describeIfDatabase`) are
-> skipped automatically when `DATABASE_URL` is unset, so you can clone, install,
-> type-check, lint, and test immediately. Install Postgres/Redis only when you
-> want to actually run the apps end-to-end.
+> checks run without a database. Wallet database tests require a dedicated
+> `TEST_DATABASE_URL` whose database name contains `test`, `fixture`, or `ci`;
+> they stay skipped otherwise. Other database-gated suites use `DATABASE_URL`.
+> Install Postgres/Redis when you want to run those integrations or the apps
+> end-to-end.
 
 macOS (Homebrew) — install only if you intend to run the apps with a real DB:
 
@@ -164,8 +165,8 @@ cd wallet-tracker-pro && npm install && npm run type-check && npm test
 ```
 
 `npm test` for the bots auto-builds `shared/dist` first (via the `build:shared`
-pre-hook), so the shared dependency resolves. Tests that need a live database
-are skipped automatically when `DATABASE_URL` is unset.
+pre-hook), so the shared dependency resolves. Wallet database tests are skipped
+unless the dedicated, explicitly isolated `TEST_DATABASE_URL` is set.
 
 > The `scripts/deploy-smoke.sh` and `scripts/production-deploy-checklist.sh`
 > helpers are **production-oriented** (health checks against running services,

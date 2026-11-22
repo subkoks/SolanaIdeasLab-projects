@@ -18,16 +18,18 @@ model TelegramSubscriber {
 }
 
 model WalletWatch {
-  id            String               @id @default(cuid())
-  subscriberId  String
-  walletAddress String
-  label         String?
-  lastSignature String?
-  active        Boolean              @default(true)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  subscriber    TelegramSubscriber   @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
-  notifications WalletNotification[]
+  id             String               @id @default(cuid())
+  subscriberId   String
+  walletAddress  String
+  label          String?
+  lastSignature  String?
+  revision       Int                  @default(0)
+  active         Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  subscriber     TelegramSubscriber   @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  deliveries     WalletDelivery[]
+  notifications  WalletNotification[]
 
   @@unique([subscriberId, walletAddress])
   @@index([walletAddress])
@@ -35,16 +37,50 @@ model WalletWatch {
 }
 
 model WalletActivityEvent {
-  id            String   @id @default(cuid())
-  walletAddress String
-  signature     String   @unique
-  direction     String
-  lamports      BigInt?
-  tokenMint     String?
-  summary       String?
-  observedAt    DateTime @default(now())
+  id              String   @id @default(cuid())
+  walletAddress   String
+  signature       String
+  movementKey     String
+  identityVersion Int      @default(1)
+  direction       String
+  lamports        BigInt?
+  tokenMint       String?
+  summary         String?
+  observedAt      DateTime @default(now())
+  deliveries      WalletDelivery[]
 
+  @@unique([walletAddress, signature, movementKey])
   @@index([walletAddress, observedAt])
+  @@index([walletAddress, signature, identityVersion])
+}
+
+// Ambiguous claims are retained for operator reconciliation, including after unwatch.
+model WalletDelivery {
+  id                String   @id @default(cuid())
+  watchId           String
+  watchRevision     Int
+  activityId        String
+  signature         String
+  movementKey       String
+  chatId            String
+  message           String
+  status            String   @default("pending")
+  claimToken        String?
+  claimedAt         DateTime?
+  sentAt            DateTime?
+  uncertainAt       DateTime?
+  failureCode       String?
+  telegramMessageId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  watch             WalletWatch @relation(fields: [watchId], references: [id], onDelete: Restrict)
+  activity          WalletActivityEvent @relation(fields: [activityId], references: [id], onDelete: Restrict)
+
+  @@unique([watchId, signature, movementKey])
+  @@index([status, createdAt, id])
+  @@index([status, claimedAt])
+  @@index([activityId])
+  @@index([watchId, status])
 }
 
 model WalletNotification {

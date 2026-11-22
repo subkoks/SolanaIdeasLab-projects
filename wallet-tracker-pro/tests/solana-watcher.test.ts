@@ -4,7 +4,7 @@
 jest.mock('../src/lib/config', () => ({
   config: {
     solana: { rpcUrl: 'http://localhost', commitment: 'confirmed' },
-    watcher: { signatureBatchSize: 10, signatureMaxPages: 2 },
+    watcher: { signatureBatchSize: 10, signatureMaxPages: 5 },
   },
 }))
 
@@ -27,24 +27,56 @@ import {
 } from '@solana/web3.js'
 import { config } from '../src/lib/config'
 import {
-  CursorUnavailableError,
   SolanaWatcherService,
 } from '../src/services/solana-watcher'
+import {
+  deliveryStore,
+  fixtureBase58,
+  watch as deliveryWatch,
+} from './helpers/wallet-delivery'
 
 const WALLET = '11111111111111111111111111111112'
 const MINT = 'So11111111111111111111111111111111111111112'
 const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
+const fixtureSignatures = new Map<string, string>()
+
+type MutableWatcherSettings = {
+  signatureBatchSize: number
+  signatureMaxPages: number
+}
+
+async function withWatcherSettings<T>(
+  overrides: Partial<MutableWatcherSettings>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const settings = config.watcher as unknown as MutableWatcherSettings
+  const original = { ...settings }
+  Object.assign(settings, overrides)
+  try {
+    return await run()
+  } finally {
+    Object.assign(settings, original)
+  }
+}
+
+function signatureValue(value: string): string {
+  const existing = fixtureSignatures.get(value)
+  if (existing) return existing
+  const encoded = fixtureBase58(fixtureSignatures.size + 1, 64)
+  fixtureSignatures.set(value, encoded)
+  return encoded
+}
 
 function signature(
   value: string,
   slot: number,
 ): ConfirmedSignatureInfo {
   return {
-    signature: value,
+    signature: signatureValue(value),
     slot: BigInt(slot),
     err: null,
     memo: null,
-    blockTime: BigInt(1_700_000_000 + slot),
+    blockTime: BigInt(1_700_000_000 + slot) as ConfirmedSignatureInfo['blockTime'],
     confirmationStatus: 'confirmed',
   }
 }
@@ -188,21 +220,21 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     ]
     const transactions = new Map<string, ParsedTransactionWithMeta>([
       [
-        'oldest',
+        signatureValue('oldest'),
         parsedTransaction({
           preLamports: BigInt(10),
           postLamports: BigInt(20),
         }),
       ],
       [
-        'middle',
+        signatureValue('middle'),
         parsedTransaction({
           preLamports: BigInt(20),
           postLamports: BigInt(15),
         }),
       ],
       [
-        'newest',
+        signatureValue('newest'),
         parsedTransaction({
           preLamports: BigInt(15),
           postLamports: BigInt(15),
@@ -236,25 +268,28 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     >
     const watcher = new SolanaWatcherService(connection)
 
-    const movements = await watcher.fetchNewMovements(WALLET, 'cursor')
+    const movements = await watcher.fetchNewMovements(
+      WALLET,
+      signatureValue('cursor'),
+    )
 
     expect(signatureCalls).toHaveLength(1)
     expect(signatureCalls[0]?.address).toBeInstanceOf(PublicKey)
     expect(signatureCalls[0]?.address.toBase58()).toBe(WALLET)
     expect(signatureCalls[0]?.options).toEqual({ limit: 10 })
     expect(transactionCalls.map((call) => call.signature)).toEqual([
-      'oldest',
-      'middle',
-      'newest',
+      signatureValue('oldest'),
+      signatureValue('middle'),
+      signatureValue('newest'),
     ])
     expect(transactionCalls[0]?.config).toEqual({
       commitment: 'confirmed',
       maxSupportedTransactionVersion: 1,
     })
     expect(movements.map((movement) => movement.signature)).toEqual([
-      'oldest',
-      'middle',
-      'newest',
+      signatureValue('oldest'),
+      signatureValue('middle'),
+      signatureValue('newest'),
     ])
     expect(movements.map((movement) => movement.lamports)).toEqual([
       BigInt(10),
@@ -264,9 +299,7 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
   })
 
   it('batches catch-up transaction lookups in bounded chunks', async () => {
-    const originalMaxPages = config.watcher.signatureMaxPages
-    config.watcher.signatureMaxPages = 4
-    try {
+    await withWatcherSettings({ signatureMaxPages: 4 }, async () => {
       const pages = [
         Array.from({ length: 10 }, (_, index) =>
           signature(`page-a-${index}`, 40 - index),
@@ -296,85 +329,59 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
       }
       const watcher = new SolanaWatcherService(connection)
 
-      const result = await watcher.fetchNewMovementsWithCursor(WALLET, 'cursor')
+      const result = await watcher.fetchNewMovementsWithCursor(
+        WALLET,
+        signatureValue('cursor'),
+      )
 
       expect(calls.map((call) => call.length)).toEqual([25, 5])
       expect(calls.flat()).toHaveLength(30)
       expect(result.movements).toHaveLength(30)
-      expect(result.cursor).toBe('page-a-0')
-    } finally {
-      config.watcher.signatureMaxPages = originalMaxPages
-    }
+      expect(result.cursor).toBe(signatureValue('page-a-0'))
+    })
   })
 
-  it('skips an unavailable confirmed transaction and advances past it', async () => {
-    const connection = {
-      async getSignaturesForAddress() {
-        return [signature('missing', 2)]
-      },
-      async getParsedTransaction() {
-        return null
-      },
-    } satisfies Pick<
-      Connection,
-      'getSignaturesForAddress' | 'getParsedTransaction'
-    >
-    const watcher = new SolanaWatcherService(connection)
-
-    const result = await watcher.fetchNewMovementsWithCursor(WALLET, null)
-
-    expect(result.movements).toEqual([])
-    expect(result.cursor).toBe('missing')
-  })
-
-  it('advances the cursor past an unavailable transaction without notifying', async () => {
-    const connection = {
-      async getSignaturesForAddress() {
-        return [signature('missing', 2)]
-      },
-      async getParsedTransaction() {
-        return null
-      },
-    } satisfies Pick<
-      Connection,
-      'getSignaturesForAddress' | 'getParsedTransaction'
-    >
-    const commitWatchProgress = jest.fn()
-    const claimPendingNotifications = jest.fn(async () => [])
-    const releaseNotificationClaim = jest.fn()
-    const markNotificationDelivered = jest.fn()
-    const database = {
-      async listActiveWatches() {
-        return [
-          {
-            id: 1,
-            walletAddress: WALLET,
-            lastSignature: null,
-            label: null,
-            subscriber: { chatId: 'chat-1' },
-          },
-        ]
-      },
-      commitWatchProgress,
-      claimPendingNotifications,
-      releaseNotificationClaim,
-      markNotificationDelivered,
+  it('holds a batch with unavailable metadata and retries from the same cursor', async () => {
+    const cursor = signatureValue('saved-before-missing')
+    const newest = signatureValue('batch-newest')
+    const transaction = parsedTransaction({
+      preLamports: BigInt(10),
+      postLamports: BigInt(20),
+    })
+    const getParsedTransactions = jest.fn()
+      .mockResolvedValueOnce([null, transaction])
+      .mockResolvedValueOnce([transaction, transaction])
+    const watcher = new SolanaWatcherService({
+      getSignaturesForAddress: async () => [
+        signature('batch-newest', 3),
+        signature('batch-oldest', 2),
+        signature('saved-before-missing', 1),
+      ],
+      getParsedTransactions,
+    })
+    const row = deliveryWatch({ walletAddress: WALLET, lastSignature: cursor })
+    const ledger = {
+      ...deliveryStore(),
+      listPendingIds: jest.fn().mockResolvedValue([]),
+      listWatches: jest.fn().mockResolvedValue([row]),
+      ingest: jest.fn().mockResolvedValue('ingested'),
+      getHoldCounts: jest.fn().mockResolvedValue({ uncertain: 0, dispatching: 0 }),
     }
-    const watcher = new SolanaWatcherService(connection)
     const notify = jest.fn()
 
-    await watcher.pollWatchlist(database as never, notify)
+    await watcher.pollWatchlist(ledger, notify)
 
-    expect(commitWatchProgress).toHaveBeenCalledTimes(1)
-    expect(commitWatchProgress).toHaveBeenCalledWith(
-      expect.objectContaining({
-        watchId: 1,
-        cursor: 'missing',
-        movements: [],
-        notifications: [],
-      }),
-    )
+    expect(ledger.ingest).not.toHaveBeenCalled()
+    expect(row.lastSignature).toBe(cursor)
     expect(notify).not.toHaveBeenCalled()
+
+    await watcher.pollWatchlist(ledger, notify)
+
+    expect(ledger.ingest).toHaveBeenCalledTimes(1)
+    expect(ledger.ingest).toHaveBeenCalledWith(row, [
+      expect.objectContaining({ signature: signatureValue('batch-oldest') }),
+      expect.objectContaining({ signature: newest }),
+    ], newest)
   })
 
   it('paginates back to the saved cursor before accepting newer signatures', async () => {
@@ -400,13 +407,16 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     >
     const watcher = new SolanaWatcherService(connection)
 
-    const result = await watcher.fetchNewMovementsWithCursor(WALLET, 'cursor')
+    const result = await watcher.fetchNewMovementsWithCursor(
+      WALLET,
+      signatureValue('cursor'),
+    )
 
     expect(signatureCalls).toEqual([
       { limit: 10 },
-      { limit: 10, before: 'new-9' },
+      { limit: 10, before: signatureValue('new-9') },
     ])
-    expect(result.cursor).toBe('new-0')
+    expect(result.cursor).toBe(signatureValue('new-0'))
     expect(result.movements).toHaveLength(11)
   })
 
@@ -428,85 +438,45 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     const watcher = new SolanaWatcherService(connection)
 
     await expect(
-      watcher.fetchNewMovementsWithCursor(WALLET, 'pruned'),
+      watcher.fetchNewMovementsWithCursor(WALLET, signatureValue('pruned')),
     ).rejects.toThrow('Saved signature cursor was not found')
   })
 
-  it('rebases an unavailable saved cursor explicitly before advancing again', async () => {
-    const connection = {
-      async getSignaturesForAddress() {
-        return [signature('newer', 2)]
-      },
-      async getParsedTransaction() {
-        return parsedTransaction({
-          preLamports: BigInt(10),
-          postLamports: BigInt(20),
+  it('holds a saved cursor when the history budget is exhausted', async () => {
+    await withWatcherSettings(
+      { signatureBatchSize: 1, signatureMaxPages: 2 },
+      async () => {
+        const pages = [signature('newer-full-page', 2), signature('older-full-page', 1)]
+        const getSignaturesForAddress = jest.fn()
+          .mockResolvedValueOnce(pages.slice(0, 1))
+          .mockResolvedValueOnce(pages.slice(1))
+        const getParsedTransaction = jest.fn()
+        const watcher = new SolanaWatcherService({
+          getSignaturesForAddress,
+          getParsedTransaction,
         })
-      },
-    } satisfies Pick<
-      Connection,
-      'getSignaturesForAddress' | 'getParsedTransaction'
-    >
-    const watch = {
-      id: 'watch-1',
-      walletAddress: WALLET,
-      lastSignature: 'pruned' as string | null,
-      label: null,
-      subscriber: { chatId: 'chat-1' },
-    }
-    const resetWatchCursor = jest.fn(async () => {
-      watch.lastSignature = null
-    })
-    const commitWatchProgress = jest.fn(async (input) => {
-      watch.lastSignature = input.cursor
-    })
-    const database = {
-      async listActiveWatches() {
-        return [watch]
-      },
-      resetWatchCursor,
-      commitWatchProgress,
-      claimPendingNotifications: jest.fn(async () => []),
-      releaseNotificationClaim: jest.fn(),
-      markNotificationDelivered: jest.fn(),
-    }
-    const watcher = new SolanaWatcherService(connection)
+        const saved = signatureValue('saved-full-pages')
+        const watch = deliveryWatch({ walletAddress: WALLET, lastSignature: saved })
+        const ledger = {
+          ...deliveryStore(),
+          listPendingIds: jest.fn().mockResolvedValue([]),
+          listWatches: jest.fn().mockResolvedValue([watch]),
+          ingest: jest.fn(),
+          getHoldCounts: jest.fn().mockResolvedValue({ uncertain: 0, dispatching: 0 }),
+        }
 
-    await watcher.pollWatchlist(database as never, jest.fn())
+        await watcher.pollWatchlist(ledger, jest.fn())
 
-    expect(resetWatchCursor).toHaveBeenCalledWith('watch-1')
-    expect(commitWatchProgress).toHaveBeenCalledWith(
-      expect.objectContaining({ watchId: 'watch-1', cursor: 'newer' }),
+        expect(getSignaturesForAddress).toHaveBeenCalledTimes(2)
+        expect(getSignaturesForAddress).toHaveBeenLastCalledWith(expect.anything(), {
+          before: pages[0]!.signature,
+          limit: 1,
+        })
+        expect(getParsedTransaction).not.toHaveBeenCalled()
+        expect(ledger.ingest).not.toHaveBeenCalled()
+        expect(watch.lastSignature).toBe(saved)
+      },
     )
-    expect(watch.lastSignature).toBe('newer')
-  })
-
-  it('rebases when the saved cursor falls outside the signature page budget', async () => {
-    const originalMaxPages = config.watcher.signatureMaxPages
-    config.watcher.signatureMaxPages = 1
-    try {
-      const connection = {
-        async getSignaturesForAddress() {
-          return [signature('newer', 2), signature('older', 1)]
-        },
-        async getParsedTransaction() {
-          return parsedTransaction({
-            preLamports: BigInt(10),
-            postLamports: BigInt(10),
-          })
-        },
-      } satisfies Pick<
-        Connection,
-        'getSignaturesForAddress' | 'getParsedTransaction'
-      >
-      const watcher = new SolanaWatcherService(connection)
-
-      await expect(
-        watcher.fetchNewMovementsWithCursor(WALLET, 'ancient'),
-      ).rejects.toBeInstanceOf(CursorUnavailableError)
-    } finally {
-      config.watcher.signatureMaxPages = originalMaxPages
-    }
   })
 
   it('rejects duplicate signatures after the saved cursor before advancing', async () => {
@@ -531,7 +501,7 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     const watcher = new SolanaWatcherService(connection)
 
     await expect(
-      watcher.fetchNewMovementsWithCursor(WALLET, 'cursor'),
+      watcher.fetchNewMovementsWithCursor(WALLET, signatureValue('cursor')),
     ).rejects.toThrow('Wallet history returned a repeated signature')
   })
 
@@ -541,7 +511,7 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     )
     const connection = {
       async getSignaturesForAddress(_address, options) {
-        return options.before
+        return options?.before
           ? [signature('old-new', 5), signature('cursor', 1), firstPage[5]!]
           : firstPage
       },
@@ -558,7 +528,7 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     const watcher = new SolanaWatcherService(connection)
 
     await expect(
-      watcher.fetchNewMovementsWithCursor(WALLET, 'cursor'),
+      watcher.fetchNewMovementsWithCursor(WALLET, signatureValue('cursor')),
     ).rejects.toThrow('Wallet history returned a repeated signature')
   })
 
@@ -578,372 +548,269 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
     expect(getParsedTransaction).not.toHaveBeenCalled()
   })
 
-  it('commits movements and the notification outbox before delivery', async () => {
-    const connection = {
-      async getSignaturesForAddress() {
-        return [signature('new', 2)]
-      },
-      async getParsedTransaction() {
-        return parsedTransaction({
-          preLamports: BigInt(10),
-          postLamports: BigInt(20),
-        })
-      },
-    } satisfies Pick<
-      Connection,
-      'getSignaturesForAddress' | 'getParsedTransaction'
-    >
-    let pending: Array<{
-      id: string
-      message: string
-      claimToken: string | null
-    }> = []
-    const events: string[] = []
-    const commitWatchProgress = jest.fn(async (input) => {
-      events.push('commit')
-      pending = input.notifications.map(
-        (notification: { signature: string; message: string }) => ({
-          id: `notification-${notification.signature}`,
-          message: notification.message,
-          claimToken: null,
-        }),
-      )
+})
+
+
+describe('bounded wallet history reads', () => {
+  const wallet = fixtureBase58(2, 32)
+  const signatureFor = signatureValue
+  const signature = (value: string) => ({ signature: signatureFor(value) })
+  const page = (...values: string[]) => values.map(signature)
+  const fullPage = (prefix: string) =>
+    Array.from({ length: 10 }, (_, index) => `${prefix}-${index}`)
+  const parsed = {
+    meta: { preBalances: [], postBalances: [] },
+    transaction: { message: { accountKeys: [] } },
+  }
+
+  const fixture = () => {
+    const rpc = {
+      getSignaturesForAddress: jest.fn(),
+      getParsedTransaction: jest.fn().mockResolvedValue(parsed),
+    }
+    const service = new SolanaWatcherService(rpc as never)
+    return { rpc, service }
+  }
+
+  it.each([null, { ...parsed, meta: null }])(
+    'holds newer movements when the oldest transaction is unavailable: %p',
+    async (unavailable) => {
+      const { rpc, service } = fixture()
+      rpc.getSignaturesForAddress.mockResolvedValue(page('newer', 'older', 'cursor'))
+      rpc.getParsedTransaction.mockResolvedValueOnce(unavailable)
+      await expect(service.fetchNewMovements(wallet, signatureFor('cursor')))
+        .rejects.toMatchObject({ code: 'transaction-unavailable' })
+      expect(rpc.getParsedTransaction).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('reaches a cursor beyond the first page before returning oldest-first data', async () => {
+    const { rpc, service } = fixture()
+    const first = fullPage('first')
+    rpc.getSignaturesForAddress
+      .mockResolvedValueOnce(page(...first))
+      .mockResolvedValueOnce(page('older', 'cursor', 'before-cursor'))
+    const result = await service.fetchNewMovements(wallet, signatureFor('cursor'))
+    expect(result.map((movement) => movement.signature)).toEqual([
+      'older',
+      ...first.toReversed(),
+    ].map(signatureFor))
+    expect(rpc.getSignaturesForAddress).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      { limit: 10, before: signatureFor('first-9') },
+    )
+    expect(rpc.getParsedTransaction).not.toHaveBeenCalledWith(
+      signatureFor('cursor'),
+      expect.anything(),
+    )
+    expect(rpc.getParsedTransaction).toHaveBeenCalledWith(signatureFor('older'), {
+      commitment: 'confirmed',
+      maxSupportedTransactionVersion: 1,
     })
-    const claimPendingNotifications = jest.fn(async () => {
-      return pending.map((notification) => {
-        notification.claimToken = `claim-${notification.id}`
-        return notification
+  })
+
+  it('holds a stored cursor missing from exhausted provider history', async () => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress.mockResolvedValue(page('newer'))
+    await expect(service.fetchNewMovements(wallet, signatureFor('cursor'))).rejects.toThrow()
+    expect(rpc.getParsedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('holds repeated pages instead of silently losing an older interval', async () => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress.mockResolvedValue(page(...fullPage('same')))
+    await expect(service.fetchNewMovements(wallet, signatureFor('cursor'))).rejects.toThrow()
+    expect(rpc.getSignaturesForAddress).toHaveBeenCalledTimes(2)
+    expect(rpc.getParsedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('holds an RPC error on a later page without returning the first page', async () => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress
+      .mockResolvedValueOnce(page(...fullPage('first')))
+      .mockRejectedValueOnce(new Error('synthetic RPC error'))
+    await expect(service.fetchNewMovements(wallet, signatureFor('cursor'))).rejects.toThrow()
+    expect(rpc.getParsedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('holds after five full pages without an established boundary', async () => {
+    const { rpc, service } = fixture()
+    let index = 0
+    rpc.getSignaturesForAddress.mockImplementation(async () =>
+      page(...fullPage(`page${index++}`)),
+    )
+    await expect(service.fetchNewMovements(wallet, signatureFor('cursor')))
+      .rejects.toMatchObject({ code: 'pagination-budget' })
+    expect(rpc.getSignaturesForAddress).toHaveBeenCalledTimes(5)
+    expect(rpc.getParsedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('bootstraps a full recent page without requiring older provider history', async () => {
+    const { rpc, service } = fixture()
+    const first = fullPage('first')
+    rpc.getSignaturesForAddress
+      .mockResolvedValueOnce(page(...first))
+      .mockResolvedValueOnce(page('oldest'))
+    const result = await service.fetchNewMovements(wallet, null)
+    expect(result.map((movement) => movement.signature)).toEqual(first.toReversed().map(signatureFor))
+    expect(rpc.getSignaturesForAddress).toHaveBeenCalledTimes(1)
+    expect(rpc.getParsedTransaction).not.toHaveBeenCalledWith(signatureFor('oldest'), expect.anything())
+  })
+
+  it('holds the initial cursor when the first-watch page has missing metadata', async () => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress.mockResolvedValue(page('newer', 'older'))
+    rpc.getParsedTransaction.mockResolvedValueOnce(null)
+    await expect(service.fetchNewMovements(wallet, null))
+      .rejects.toMatchObject({ code: 'transaction-unavailable' })
+    expect(rpc.getSignaturesForAddress).toHaveBeenCalledTimes(1)
+    expect(rpc.getParsedTransaction).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds a parsed prefix when a later transaction is unavailable', async () => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress.mockResolvedValue(page('newer', 'older', 'cursor'))
+    rpc.getParsedTransaction.mockResolvedValueOnce(parsed).mockResolvedValueOnce(null)
+    await expect(service.fetchNewMovements(wallet, signatureFor('cursor')))
+      .rejects.toMatchObject({ code: 'transaction-unavailable' })
+    expect(rpc.getParsedTransaction).toHaveBeenCalledTimes(2)
+  })
+
+  it('holds a transaction RPC failure without exposing upstream details', async () => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress.mockResolvedValue(page('newer', 'cursor'))
+    rpc.getParsedTransaction.mockRejectedValue(new Error('synthetic upstream detail'))
+    await expect(service.fetchNewMovements(wallet, signatureFor('cursor'))).rejects.toMatchObject({
+      code: 'rpc-failure',
+      message: 'Wallet history unavailable: rpc-failure',
+    })
+  })
+
+  it.each([[], page('newer')].map((value) => ({ value })))('holds a missing stored cursor on a terminal page: %p', async ({ value }) => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress.mockResolvedValue(value)
+    await expect(service.fetchNewMovements(wallet, signatureFor('cursor'))).rejects.toMatchObject({
+      code: 'cursor-not-found',
+    })
+    expect(rpc.getParsedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('accepts an unchanged cursor without fetching old transactions', async () => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress.mockResolvedValue(page('cursor', 'older'))
+    await expect(service.fetchNewMovements(wallet, signatureFor('cursor'))).resolves.toEqual([])
+    expect(rpc.getParsedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('bootstraps empty or full first-watch windows without a second page', async () => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress.mockResolvedValueOnce([])
+    await expect(service.fetchNewMovements(wallet, undefined)).resolves.toEqual([])
+    const first = fullPage('first')
+    rpc.getSignaturesForAddress
+      .mockResolvedValueOnce(page(...first))
+      .mockResolvedValueOnce([])
+    const result = await service.fetchNewMovements(wallet, null)
+    expect(result.map((movement) => movement.signature)).toEqual(first.toReversed().map(signatureFor))
+    expect(rpc.getSignaturesForAddress).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['', ' ', '0'.repeat(88), 'O'.repeat(88), '1'.repeat(89), '1'.repeat(63), '1'.repeat(65), 'z'.repeat(88)])('holds an invalid saved cursor rather than bootstrapping: %p', async (cursor) => {
+    const { rpc, service } = fixture()
+    await expect(service.fetchNewMovements(wallet, cursor)).rejects.toMatchObject({
+      code: 'invalid-cursor',
+    })
+    expect(rpc.getSignaturesForAddress).not.toHaveBeenCalled()
+  })
+
+  it('rejects overlapping pages even when the final cursor advances', async () => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress
+      .mockResolvedValueOnce(page(...fullPage('first')))
+      .mockResolvedValueOnce(page('first-5', 'older', 'cursor'))
+    await expect(service.fetchNewMovements(wallet, signatureFor('cursor'))).rejects.toMatchObject({
+      code: 'repeated-signature',
+    })
+    expect(rpc.getParsedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects duplicate rows after the saved cursor on a terminal page', async () => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress.mockResolvedValue(page('newer', 'cursor', 'cursor'))
+    await expect(service.fetchNewMovements(wallet, signatureFor('cursor'))).rejects.toMatchObject({
+      code: 'repeated-signature',
+    })
+    expect(rpc.getParsedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects cross-page overlaps after the saved cursor', async () => {
+    const { rpc, service } = fixture()
+    rpc.getSignaturesForAddress
+      .mockResolvedValueOnce(page(...fullPage('first')))
+      .mockResolvedValueOnce(page('older', 'cursor', 'first-5'))
+    await expect(service.fetchNewMovements(wallet, signatureFor('cursor'))).rejects.toMatchObject({
+      code: 'repeated-signature',
+    })
+    expect(rpc.getParsedTransaction).not.toHaveBeenCalled()
+  })
+
+  it('accepts a cursor found on the fifth and final permitted page', async () => {
+    const { rpc, service } = fixture()
+    for (let index = 0; index < 4; index++) {
+      rpc.getSignaturesForAddress.mockResolvedValueOnce(page(...fullPage(`page${index}`)))
+    }
+    rpc.getSignaturesForAddress.mockResolvedValueOnce(page('cursor'))
+    expect(await service.fetchNewMovements(wallet, signatureFor('cursor'))).toHaveLength(40)
+    expect(rpc.getSignaturesForAddress).toHaveBeenCalledTimes(5)
+  })
+
+  it.each([null, {}, [null], [{}], [{ signature: '' }], [{ signature: ' ' }], [{ signature: '0'.repeat(88) }], [{ signature: '1'.repeat(89) }], [{ signature: '1'.repeat(63) }], [{ signature: '1'.repeat(65) }], [{ signature: 42 }], page(...fullPage('too-many'), 'extra')].map((value) => ({ value })))(
+    'holds malformed or over-limit signature pages: %p',
+    async ({ value }) => {
+      const { rpc, service } = fixture()
+      rpc.getSignaturesForAddress.mockResolvedValue(value)
+      await expect(service.fetchNewMovements(wallet, signatureFor('cursor'))).rejects.toMatchObject({
+        code: 'invalid-signature-page',
       })
-    })
-    const releaseNotificationClaim = jest.fn(
-      async (id: string, claimToken: string) => {
-        pending = pending.map((notification) =>
-          notification.id === id &&
-          notification.claimToken === claimToken
-            ? { ...notification, claimToken: null }
-            : notification,
-        )
-      },
-    )
-    const markNotificationDelivered = jest.fn(
-      async (id: string, claimToken: string) => {
-        events.push(`delivered:${id}`)
-        pending = pending.filter(
-          (notification) =>
-            notification.id !== id ||
-            notification.claimToken !== claimToken,
-        )
-      },
-    )
-    const database = {
-      async listActiveWatches() {
-        return [
-          {
-            id: 'watch-1',
-            walletAddress: WALLET,
-            lastSignature: null,
-            label: 'Main',
-            subscriber: { chatId: 'chat-1' },
-          },
-        ]
-      },
-      commitWatchProgress,
-      claimPendingNotifications,
-      releaseNotificationClaim,
-      markNotificationDelivered,
-    }
-    const watcher = new SolanaWatcherService(connection)
-    const notify = jest.fn(async () => {
-      events.push('notify')
-    })
+      expect(rpc.getParsedTransaction).not.toHaveBeenCalled()
+    },
+  )
 
-    await watcher.pollWatchlist(database as never, notify)
-
-    expect(commitWatchProgress).toHaveBeenCalledWith(
-      expect.objectContaining({
-        watchId: 'watch-1',
-        cursor: 'new',
-        movements: [
-          expect.objectContaining({
-            walletAddress: WALLET,
-            signature: 'new',
-            direction: 'in',
-            lamports: BigInt(10),
-          }),
-        ],
-        notifications: [
-          expect.objectContaining({
-            signature: 'new',
-          }),
-        ],
-      }),
-    )
-    expect(notify).toHaveBeenCalledWith(
-      'chat-1',
-      expect.stringContaining('[Main] Wallet activity'),
-    )
-    expect(events).toEqual(['commit', 'notify', 'delivered:notification-new'])
-  })
-
-  it('retries a failed notification without blocking or duplicating progress', async () => {
-    const connection = {
-      async getSignaturesForAddress() {
-        return [signature('new', 2)]
-      },
-      async getParsedTransaction() {
-        return parsedTransaction({
-          preLamports: BigInt(10),
-          postLamports: BigInt(20),
-        })
-      },
-    } satisfies Pick<
-      Connection,
-      'getSignaturesForAddress' | 'getParsedTransaction'
-    >
-    const watch = {
-      id: 'watch-1',
-      walletAddress: WALLET,
-      lastSignature: null as string | null,
-      label: null,
-      subscriber: { chatId: 'chat-1' },
-    }
-    let pending: Array<{
-      id: string
-      message: string
-      claimToken: string | null
-    }> = []
-    const commitWatchProgress = jest.fn(async (input) => {
-      watch.lastSignature = input.cursor
-      pending = input.notifications.map(
-        (notification: { signature: string; message: string }) => ({
-          id: `notification-${notification.signature}`,
-          message: notification.message,
-          claimToken: null,
-        }),
-      )
-    })
-    const claimPendingNotifications = jest.fn(async () => {
-      return pending.map((notification) => {
-        notification.claimToken = `claim-${notification.id}`
-        return notification
+  it.each([0, -1, 1.5, Number.NaN, 1001])('rejects invalid page config: %p', async (value) => {
+    const { rpc, service } = fixture()
+    const override = jest.replaceProperty(config.watcher, 'signatureBatchSize', value)
+    try {
+      await expect(service.fetchNewMovements(wallet, null)).rejects.toMatchObject({
+        code: 'invalid-page-size',
       })
-    })
-    const releaseNotificationClaim = jest.fn(
-      async (id: string, claimToken: string) => {
-        pending = pending.map((notification) =>
-          notification.id === id &&
-          notification.claimToken === claimToken
-            ? { ...notification, claimToken: null }
-            : notification,
-        )
-      },
-    )
-    const markNotificationDelivered = jest.fn(
-      async (id: string, claimToken: string) => {
-        pending = pending.filter(
-          (notification) =>
-            notification.id !== id ||
-            notification.claimToken !== claimToken,
-        )
-      },
-    )
-    const database = {
-      async listActiveWatches() {
-        return [watch]
-      },
-      commitWatchProgress,
-      claimPendingNotifications,
-      releaseNotificationClaim,
-      markNotificationDelivered,
+      expect(rpc.getSignaturesForAddress).not.toHaveBeenCalled()
+    } finally {
+      override.restore()
     }
-    const watcher = new SolanaWatcherService(connection)
-    const notify = jest
-      .fn<Promise<void>, [string, string]>()
-      .mockRejectedValueOnce(new Error('telegram unavailable'))
-      .mockResolvedValueOnce(undefined)
-
-    await watcher.pollWatchlist(database as never, notify)
-
-    expect(watch.lastSignature).toBe('new')
-    expect(commitWatchProgress).toHaveBeenCalledTimes(1)
-    expect(pending).toHaveLength(1)
-    expect(pending[0]?.claimToken).toBeNull()
-
-    await watcher.pollWatchlist(database as never, notify)
-
-    expect(commitWatchProgress).toHaveBeenCalledTimes(1)
-    expect(notify).toHaveBeenCalledTimes(2)
-    expect(markNotificationDelivered).toHaveBeenCalledTimes(1)
-    expect(pending).toEqual([])
   })
 
-  it('delivers later notifications when the first claimed delivery fails', async () => {
-    const connection = {
-      async getSignaturesForAddress() {
-        return []
-      },
-    } satisfies Pick<Connection, 'getSignaturesForAddress'>
-    let pending = [
-      { id: 'first', message: 'first', claimToken: null as string | null },
-      { id: 'second', message: 'second', claimToken: null as string | null },
-    ]
-    const claimPendingNotifications = jest.fn(async () =>
-      pending.map((notification) => {
-        notification.claimToken = `claim-${notification.id}`
-        return notification
-      }),
-    )
-    const releaseNotificationClaim = jest.fn(
-      async (id: string, claimToken: string) => {
-        pending = pending.map((notification) =>
-          notification.id === id &&
-          notification.claimToken === claimToken
-            ? { ...notification, claimToken: null }
-            : notification,
-        )
-      },
-    )
-    const markNotificationDelivered = jest.fn(
-      async (id: string, claimToken: string) => {
-        pending = pending.filter(
-          (notification) =>
-            notification.id !== id ||
-            notification.claimToken !== claimToken,
-        )
-      },
-    )
-    const database = {
-      async listActiveWatches() {
-        return [
-          {
-            id: 'watch-1',
-            walletAddress: WALLET,
-            lastSignature: null,
-            label: null,
-            subscriber: { chatId: 'chat-1' },
-          },
-        ]
-      },
-      commitWatchProgress: jest.fn(),
-      claimPendingNotifications,
-      releaseNotificationClaim,
-      markNotificationDelivered,
+  it('caps an RPC-valid configured page size to 100 rows', async () => {
+    const { rpc, service } = fixture()
+    const override = jest.replaceProperty(config.watcher, 'signatureBatchSize', 1000)
+    try {
+      rpc.getSignaturesForAddress.mockResolvedValue(page('cursor'))
+      await service.fetchNewMovements(wallet, signatureFor('cursor'))
+      expect(rpc.getSignaturesForAddress).toHaveBeenCalledWith(expect.anything(), { limit: 100 })
+    } finally {
+      override.restore()
     }
-    const notify = jest.fn(async (_chatId: string, message: string) => {
-      if (message === 'first') {
-        throw new Error('telegram unavailable')
-      }
-    })
-    const watcher = new SolanaWatcherService(connection)
-
-    await watcher.pollWatchlist(database as never, notify)
-
-    expect(notify).toHaveBeenCalledTimes(2)
-    expect(releaseNotificationClaim).toHaveBeenCalledWith(
-      'first',
-      'claim-first',
-    )
-    expect(markNotificationDelivered).toHaveBeenCalledWith(
-      'second',
-      'claim-second',
-    )
-    expect(pending).toEqual([
-      { id: 'first', message: 'first', claimToken: null },
-    ])
   })
 
-  it('retries the same signatures when the atomic progress commit fails', async () => {
-    const connection = {
-      async getSignaturesForAddress() {
-        return [signature('retry-me', 2)]
-      },
-      async getParsedTransaction() {
-        return parsedTransaction({
-          preLamports: BigInt(10),
-          postLamports: BigInt(20),
-        })
-      },
-    } satisfies Pick<
-      Connection,
-      'getSignaturesForAddress' | 'getParsedTransaction'
-    >
-    const watch = {
-      id: 'watch-1',
-      walletAddress: WALLET,
-      lastSignature: null as string | null,
-      label: null,
-      subscriber: { chatId: 'chat-1' },
-    }
-    const commitWatchProgress = jest
-      .fn<Promise<void>, [{ cursor: string }]>()
-      .mockRejectedValueOnce(new Error('transaction rolled back'))
-      .mockImplementationOnce(async (input) => {
-        watch.lastSignature = input.cursor
-      })
-    const database = {
-      async listActiveWatches() {
-        return [watch]
-      },
-      commitWatchProgress,
-      claimPendingNotifications: jest.fn(async () => []),
-      releaseNotificationClaim: jest.fn(),
-      markNotificationDelivered: jest.fn(),
-    }
-    const watcher = new SolanaWatcherService(connection)
 
-    await watcher.pollWatchlist(database as never, jest.fn())
-    expect(watch.lastSignature).toBeNull()
-
-    await watcher.pollWatchlist(database as never, jest.fn())
-    expect(watch.lastSignature).toBe('retry-me')
-    expect(commitWatchProgress).toHaveBeenCalledTimes(2)
-    expect(commitWatchProgress).toHaveBeenLastCalledWith(
-      expect.objectContaining({ cursor: 'retry-me' }),
+  it('accepts canonical 64-byte signatures with and without leading zero bytes', async () => {
+    const { rpc, service } = fixture()
+    const signatures = ['2'.repeat(88), '1'.repeat(64)]
+    rpc.getSignaturesForAddress.mockResolvedValue(
+      signatures.map((signature) => ({ signature })),
     )
+    const result = await service.fetchNewMovements(wallet, null)
+    expect(result.map((movement) => movement.signature)).toEqual(signatures.toReversed())
   })
 
-  it('serializes overlapping poll cycles', async () => {
-    let resolveSignatures: (
-      value: ConfirmedSignatureInfo[],
-    ) => void = () => undefined
-    const signatures = new Promise<ConfirmedSignatureInfo[]>((resolve) => {
-      resolveSignatures = resolve
-    })
-    const listActiveWatches = jest.fn(async () => [
-      {
-        id: 'watch-1',
-        walletAddress: WALLET,
-        lastSignature: null,
-        label: null,
-        subscriber: { chatId: 'chat-1' },
-      },
-    ])
-    const getSignaturesForAddress = jest.fn(async () => signatures)
-    const connection = {
-      getSignaturesForAddress,
-      async getParsedTransaction() {
-        return null
-      },
-    } satisfies Pick<
-      Connection,
-      'getSignaturesForAddress' | 'getParsedTransaction'
-    >
-    const database = {
-      listActiveWatches,
-      commitWatchProgress: jest.fn(),
-      claimPendingNotifications: jest.fn(async () => []),
-      releaseNotificationClaim: jest.fn(),
-      markNotificationDelivered: jest.fn(),
-    }
-    const watcher = new SolanaWatcherService(connection)
-
-    const first = watcher.pollWatchlist(database as never, jest.fn())
-    const second = watcher.pollWatchlist(database as never, jest.fn())
-    expect(second).toBe(first)
-    resolveSignatures([])
-    await Promise.all([first, second])
-
-    expect(listActiveWatches).toHaveBeenCalledTimes(1)
-    expect(getSignaturesForAddress).toHaveBeenCalledTimes(1)
-  })
 })
