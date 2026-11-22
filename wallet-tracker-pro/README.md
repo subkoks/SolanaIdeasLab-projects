@@ -95,7 +95,7 @@ HELIUS_API_KEY=your_helius_key
 SOLANA_COMMITMENT=confirmed
 WATCHER_POLL_INTERVAL_MS=30000
 WATCHER_SIGNATURE_BATCH=10
-WATCHER_SIGNATURE_MAX_PAGES=100
+WATCHER_SIGNATURE_MAX_PAGES=5
 
 # Database
 DATABASE_URL=postgresql://user:pass@localhost:5432/wallet_tracker
@@ -112,11 +112,11 @@ COINGECKO_API_KEY=your_coingecko_key
 DEXSCREENER_API_KEY=your_dexscreener_key
 ```
 
-`WATCHER_SIGNATURE_MAX_PAGES` bounds catch-up pagination to 100 signature
-pages by default. If a saved cursor has fallen outside the RPC history window,
-the watcher logs the continuity break, resets that cursor, and rebases to the
-latest bounded window. Activity and notification uniqueness constraints keep
-the replay from duplicating already-recorded events.
+`WATCHER_SIGNATURE_MAX_PAGES` defaults to five and is capped at five pages per
+poll. If a saved cursor cannot be found within that window, the watcher logs
+the continuity failure and keeps the saved cursor. A missing transaction or
+missing metadata also holds the read for retry. A watch held by a persistent
+history gap needs operator reconciliation before processing can resume.
 
 ---
 

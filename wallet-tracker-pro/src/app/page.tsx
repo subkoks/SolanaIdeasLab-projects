@@ -23,6 +23,7 @@ interface TopWallet {
 }
 
 interface ActivityEvent {
+  id: string
   direction: string
   summary: string | null
   signature: string
@@ -720,7 +721,7 @@ export default function HomePage(): ReactNode {
         {activity.length > 0 ? (
           <ul style={{ paddingLeft: '1.25rem', lineHeight: 1.8, marginTop: '1rem' }}>
             {activity.map((event) => (
-              <li key={event.signature}>
+              <li key={event.id}>
                 {event.summary ?? event.direction} —{' '}
                 {new Date(event.observedAt).toLocaleString()}
               </li>

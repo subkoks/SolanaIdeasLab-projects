@@ -29,7 +29,7 @@ const FORBIDDEN_WORDS = ['buy','sell','trade','swap','execute','transact','sign'
 const FORBIDDEN_SOURCES = ['fixtureId','isSimulated','generatedAt','wallet','activity','local-fixture']
 const FORBIDDEN_SERVICE_LEAKS = ['SolanaWatcherService','DatabaseService','pollWatchlist','fetchNewMovements','listActiveWatches','recordActivity','commitWatchProgress','claimPendingNotifications','releaseNotificationClaim','markNotificationDelivered','WalletTrackerTelegramBot','notifyChat','prisma','redis','rpcUrl']
 
-type LiveSpy = { calls: unknown[][] }
+type LiveSpy = { calls: unknown[][]; mockRestore: () => void }
 const liveSpies: LiveSpy[] = []
 
 const installLiveServiceSpies = (): void => {

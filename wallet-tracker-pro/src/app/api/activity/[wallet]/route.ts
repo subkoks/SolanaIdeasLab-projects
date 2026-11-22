@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { DatabaseService } from '@/services/database'
 import { SolanaWatcherService } from '@/services/solana-watcher'
+import { WALLET_DELIVERY_SCHEMA_VERIFIED } from '@/lib/wallet-delivery-gate'
 
 const DEFAULT_LIMIT = 10
 
@@ -8,6 +9,9 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ wallet: string }> },
 ): Promise<NextResponse> {
+  if (!WALLET_DELIVERY_SCHEMA_VERIFIED) {
+    return NextResponse.json({ error: 'Wallet activity is disabled pending reviewed delivery migration' }, { status: 503 })
+  }
   const { wallet } = await context.params
   const url = new URL(request.url)
   const limit = Number(url.searchParams.get('limit') ?? DEFAULT_LIMIT)
@@ -39,6 +43,7 @@ export async function GET(
       tokenMints,
       portfolio,
       activity: activity.map((event) => ({
+        id: event.id,
         direction: event.direction,
         summary: event.summary,
         signature: event.signature,
@@ -46,11 +51,10 @@ export async function GET(
         observedAt: event.observedAt.toISOString(),
       })),
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : 'Failed to load wallet activity',
+        error: 'Failed to load wallet activity',
       },
       { status: 500 },
     )
