@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import {
   Connection,
   PublicKey,
@@ -31,6 +32,7 @@ export interface WalletPollingStore extends DeliveryStore {
     watch: DeliveryWatch,
     movements: ReadonlyArray<WalletMovement>,
     cursor?: string | null,
+    transactionOrderOffset?: number,
   ): Promise<'ingested' | 'stale'>
   getHoldCounts(): Promise<{ uncertain: number; dispatching: number }>
 }
@@ -48,6 +50,7 @@ export type WalletHistoryFailure =
   | 'cursor-not-found'
   | 'pagination-budget'
   | 'rpc-failure'
+  | 'rpc-timeout'
   | 'transaction-unavailable'
 
 export class WalletHistoryReadError extends Error {
@@ -73,6 +76,8 @@ export const MAX_WATCH_PAGES_PER_POLL = 5
 const MAX_SIGNATURE_PAGES = 5
 const MAX_SIGNATURE_PAGE_SIZE = 100
 const RPC_SIGNATURE_PAGE_LIMIT = 1000
+const DEFAULT_RPC_DEADLINE_MS = 15_000
+const rpcDeadlineSignals = new AsyncLocalStorage<AbortSignal>()
 const BASE58_ALPHABET =
   '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 const SIGNATURE_BYTE_LENGTH = 64
@@ -140,6 +145,20 @@ type WatcherConnection = Pick<
 
 const TRANSACTION_BATCH_SIZE = 25
 
+export const createAbortableRpcFetch = (
+  fetchImplementation: typeof globalThis.fetch,
+): typeof globalThis.fetch => async (input, init) => {
+  const initSignal = init?.signal
+  const deadlineSignal = rpcDeadlineSignals.getStore()
+  const signal = initSignal && deadlineSignal
+    ? AbortSignal.any([initSignal, deadlineSignal])
+    : initSignal ?? deadlineSignal
+  return fetchImplementation(input, {
+    ...init,
+    ...(signal ? { signal } : {}),
+  })
+}
+
 function formatBaseUnitAmount(
   value: bigint,
   decimals: number,
@@ -165,15 +184,21 @@ function formatBaseUnitAmount(
 
 export class SolanaWatcherService {
   private readonly connection: WatcherConnection
+  private readonly rpcDeadlineMs: number
   private pollInFlight: Promise<void> | null = null
   private nextWatchId = ''
 
-  constructor(connection?: WatcherConnection) {
+  constructor(connection?: WatcherConnection, rpcDeadlineMs = DEFAULT_RPC_DEADLINE_MS) {
+    if (!Number.isSafeInteger(rpcDeadlineMs) || rpcDeadlineMs < 1) {
+      throw new Error('RPC deadline must be a positive integer')
+    }
     this.connection =
       connection ??
       new Connection(config.solana.rpcUrl, {
         commitment: config.solana.commitment as 'confirmed',
+        fetch: createAbortableRpcFetch(globalThis.fetch.bind(globalThis)),
       })
+    this.rpcDeadlineMs = rpcDeadlineMs
   }
 
   public isValidAddress(address: string): boolean {
@@ -182,6 +207,29 @@ export class SolanaWatcherService {
       return true
     } catch {
       return false
+    }
+  }
+
+  private async withRpcDeadline<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController()
+    let deadline: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await rpcDeadlineSignals.run(controller.signal, async () =>
+        Promise.race([
+          operation(controller.signal),
+          new Promise<never>((_resolve, reject) => {
+            deadline = setTimeout(() => {
+              const timeout = new WalletHistoryReadError(
+                'rpc-timeout',
+                'Wallet history unavailable: rpc-timeout',
+              )
+              controller.abort(timeout)
+              reject(timeout)
+            }, this.rpcDeadlineMs)
+          }),
+        ]))
+    } finally {
+      clearTimeout(deadline)
     }
   }
 
@@ -268,6 +316,7 @@ export class SolanaWatcherService {
 
     let currentWatch = watch
     let batch: WalletMovement[] = []
+    let transactionOrderOffset = 0
     for (const group of movementGroups) {
       if (group.length > MAX_INGESTION_MOVEMENTS) {
         throw new WalletIngestionError('invalid-batch')
@@ -277,18 +326,25 @@ export class SolanaWatcherService {
         batch.length + group.length > MAX_INGESTION_MOVEMENTS
       ) {
         const cursor = batch[batch.length - 1]!.signature
-        const outcome = await ledger.ingest(currentWatch, batch, cursor)
+        const outcome = transactionOrderOffset === 0
+          ? await ledger.ingest(currentWatch, batch, cursor)
+          : await ledger.ingest(currentWatch, batch, cursor, transactionOrderOffset)
         if (outcome === 'stale') {
           return
         }
         currentWatch = { ...currentWatch, lastSignature: cursor }
+        transactionOrderOffset += batch.length
         batch = []
       }
       batch.push(...group)
     }
 
     if (batch.length > 0) {
-      await ledger.ingest(currentWatch, batch, result.cursor)
+      if (transactionOrderOffset === 0) {
+        await ledger.ingest(currentWatch, batch, result.cursor)
+      } else {
+        await ledger.ingest(currentWatch, batch, result.cursor, transactionOrderOffset)
+      }
     }
   }
 
@@ -338,10 +394,12 @@ export class SolanaWatcherService {
       let signatures: ConfirmedSignatureInfo[]
       try {
         signatures = validateSignaturePage(
-          await this.connection.getSignaturesForAddress(pubkey, {
-            limit,
-            ...(before ? { before } : {}),
-          }),
+          await this.withRpcDeadline(
+            () => this.connection.getSignaturesForAddress(pubkey, {
+              limit,
+              ...(before ? { before } : {}),
+            }),
+          ),
           limit,
         )
       } catch (error) {
@@ -420,11 +478,16 @@ export class SolanaWatcherService {
         const batch = items.slice(start, start + TRANSACTION_BATCH_SIZE)
         let parsed: Array<ParsedTransactionWithMeta | null>
         try {
-          parsed = await this.connection.getParsedTransactions(
-            batch.map((item) => item.signature),
-            config,
+          parsed = await this.withRpcDeadline(
+            () => this.connection.getParsedTransactions!(
+              batch.map((item) => item.signature),
+              config,
+            ),
           )
-        } catch {
+        } catch (error) {
+          if (error instanceof WalletHistoryReadError) {
+            throw error
+          }
           throw new SignatureContinuityError(
             'Wallet history unavailable: rpc-failure',
             'rpc-failure',
@@ -457,11 +520,16 @@ export class SolanaWatcherService {
     for (const item of items) {
       let transaction: ParsedTransactionWithMeta | null
       try {
-        transaction = await this.connection.getParsedTransaction(
-          item.signature,
-          config,
+        transaction = await this.withRpcDeadline(
+          () => this.connection.getParsedTransaction!(
+            item.signature,
+            config,
+          ),
         )
-      } catch {
+      } catch (error) {
+        if (error instanceof WalletHistoryReadError) {
+          throw error
+        }
         throw new SignatureContinuityError(
           'Wallet history unavailable: rpc-failure',
           'rpc-failure',
@@ -557,16 +625,24 @@ export class SolanaWatcherService {
       }
     }
 
-    for (const mint of mints) {
-      const preAmount = BigInt(
-        preBalances.find(
-          (entry) => entry.mint === mint && entry.owner === walletAddress,
-        )?.uiTokenAmount?.amount ?? '0',
+    const ownedBalances = (
+      entries: TokenBalance[],
+      mint: string,
+    ): TokenBalance[] =>
+      entries.filter(
+        (entry) => entry.mint === mint && entry.owner === walletAddress,
       )
-      const postAmount = BigInt(
-        postBalances.find(
-          (entry) => entry.mint === mint && entry.owner === walletAddress,
-        )?.uiTokenAmount?.amount ?? '0',
+
+    for (const mint of mints) {
+      const preOwned = ownedBalances(preBalances, mint)
+      const postOwned = ownedBalances(postBalances, mint)
+      const preAmount = preOwned.reduce(
+        (sum, entry) => sum + BigInt(entry.uiTokenAmount?.amount ?? '0'),
+        BigInt(0),
+      )
+      const postAmount = postOwned.reduce(
+        (sum, entry) => sum + BigInt(entry.uiTokenAmount?.amount ?? '0'),
+        BigInt(0),
       )
       const delta = postAmount - preAmount
 
@@ -575,12 +651,8 @@ export class SolanaWatcherService {
       }
 
       const decimals =
-        postBalances.find(
-          (entry) => entry.mint === mint && entry.owner === walletAddress,
-        )?.uiTokenAmount?.decimals ??
-        preBalances.find(
-          (entry) => entry.mint === mint && entry.owner === walletAddress,
-        )?.uiTokenAmount?.decimals ??
+        postOwned[0]?.uiTokenAmount?.decimals ??
+        preOwned[0]?.uiTokenAmount?.decimals ??
         0
 
       const uiDelta = formatBaseUnitAmount(

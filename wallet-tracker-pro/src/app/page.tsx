@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { ActivityChart } from '@/components/activity-chart'
 import { ActivityTimelineChart } from '@/components/activity-timeline-chart'
+import { WALLET_DELIVERY_SCHEMA_VERIFIED } from '@/lib/wallet-delivery-gate'
 
 interface DashboardStats {
   subscribers: number
@@ -407,8 +408,9 @@ export default function HomePage(): ReactNode {
         Wallet Tracker Pro
       </h1>
       <p style={{ color: '#cbd5e1', lineHeight: 1.6, maxWidth: '48rem' }}>
-        Telegram bot MVP is live. This dashboard reads watch activity from
-        Postgres. Use the bot for alerts; use this page for lookup and stats.
+        {WALLET_DELIVERY_SCHEMA_VERIFIED
+          ? 'Telegram alerts are enabled for this deployment. Use this dashboard for wallet lookup and activity stats.'
+          : 'Telegram alerts and the full activity API are disabled pending reviewed schema activation. Fixture demos remain available; this dashboard reads the configured Postgres data.'}
       </p>
 
       <section style={{ marginTop: '2rem' }}>

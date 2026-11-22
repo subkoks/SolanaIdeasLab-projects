@@ -7,8 +7,11 @@ export const MAX_INGESTION_MOVEMENTS = 1000
 export const MAX_OUTSTANDING_DELIVERIES_PER_WATCH = 2 * MAX_INGESTION_MOVEMENTS
 export const DELIVERY_BATCH_SIZE = 50
 export const DELIVERY_ACK_TIMEOUT_MS = 15_000
+export const TELEGRAM_CHAT_SEND_INTERVAL_MS = 1_000
+const DEFAULT_TELEGRAM_RETRY_AFTER_MS = 1_000
 const STALE_CLAIM_MS = 10 * 60 * 1000
 const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+const chatSendGates = new Map<string, number>()
 
 export interface DeliveryWatch {
   id: string
@@ -41,12 +44,26 @@ export interface DeliveryReceipt { messageId: string }
 export interface PreparedMovement extends WalletMovement {
   movementKey: string
   activityId: string
+  transactionOrder: number
 }
 
 export class WalletIngestionError extends Error {
-  constructor(public readonly code: 'invalid-batch' | 'conflicting-movement' | 'cursor-update-failed' | 'delivery-capacity') {
+  constructor(
+    public readonly code:
+      | 'invalid-batch'
+      | 'conflicting-movement'
+      | 'cursor-update-failed'
+      | 'delivery-capacity',
+  ) {
     super(`Wallet ingestion held: ${code}`)
     this.name = 'WalletIngestionError'
+  }
+}
+
+export class WalletLimitReachedError extends Error {
+  constructor(limit: number, tier: string) {
+    super(`Watch limit reached (${limit} on ${tier} tier)`)
+    this.name = 'WalletLimitReachedError'
   }
 }
 
@@ -70,13 +87,16 @@ const identityId = (prefix: string, parts: Array<string>): string =>
 export const prepareMovements = (
   walletAddress: string,
   movements: ReadonlyArray<WalletMovement>,
+  transactionOrderOffset = 0,
 ): Array<PreparedMovement> => {
   if (!isBase58Bytes(walletAddress, 32, 44) || !Array.isArray(movements) ||
-    movements.length < 1 || movements.length > MAX_INGESTION_MOVEMENTS) {
+    movements.length < 1 || movements.length > MAX_INGESTION_MOVEMENTS ||
+    !Number.isSafeInteger(transactionOrderOffset) || transactionOrderOffset < 0 ||
+    transactionOrderOffset + movements.length > 2 ** 31 - 1) {
     throw new WalletIngestionError('invalid-batch')
   }
   const unique = new Map<string, PreparedMovement>()
-  for (const movement of movements) {
+  for (const [transactionOrder, movement] of movements.entries()) {
     if (!movement || !isBase58Bytes(movement.signature, 64, 88) ||
       typeof movement.summary !== 'string' || movement.summary.length < 1 || movement.summary.length > 1024) {
       throw new WalletIngestionError('invalid-batch')
@@ -103,11 +123,18 @@ export const prepareMovements = (
       previous.tokenMint !== movement.tokenMint || previous.summary !== movement.summary)) {
       throw new WalletIngestionError('conflicting-movement')
     }
-    unique.set(key, {
-      ...movement,
-      movementKey,
-      activityId: identityId('wa1', [walletAddress, movement.signature, movementKey]),
-    })
+    if (!previous) {
+      unique.set(key, {
+        ...movement,
+        movementKey,
+        activityId: identityId('wa1', [
+          walletAddress,
+          movement.signature,
+          movementKey,
+        ]),
+        transactionOrder: transactionOrderOffset + transactionOrder,
+      })
+    }
   }
   return Array.from(unique.values())
 }
@@ -146,19 +173,21 @@ export class WalletDeliveryLedger {
         const counts = await tx.$queryRaw<Array<{ count: number }>>`
           SELECT COUNT(*)::integer AS "count" FROM "WalletWatch" WHERE "subscriberId" = ${subscriberId} AND "active"`
         const limit = getWatchLimitForTier(subscriber.tier)
-        if (counts[0]!.count >= limit) throw new Error(`Watch limit reached (${limit} on ${subscriber.tier} tier)`)
+        if (counts[0]!.count >= limit) {
+          throw new WalletLimitReachedError(limit, subscriber.tier)
+        }
       }
-      const changed = previous && (!previous.active || previous.label !== nextLabel)
+      const reactivated = Boolean(previous && !previous.active)
       const rows = await tx.$queryRaw<Array<WatchRow>>`
         INSERT INTO "WalletWatch" ("id", "subscriberId", "walletAddress", "label", "updatedAt")
         VALUES (${`ww1_${randomUUID()}`}, ${subscriberId}, ${walletAddress}, ${nextLabel}, CURRENT_TIMESTAMP)
         ON CONFLICT ("subscriberId", "walletAddress") DO UPDATE SET
           "label" = EXCLUDED."label", "active" = true,
           "lastSignature" = "WalletWatch"."lastSignature",
-          "revision" = "WalletWatch"."revision" + ${changed ? 1 : 0}, "updatedAt" = CURRENT_TIMESTAMP
+          "revision" = "WalletWatch"."revision" + ${reactivated ? 1 : 0}, "updatedAt" = CURRENT_TIMESTAMP
         RETURNING "id", "walletAddress", "lastSignature", "revision", "label", "subscriberId"`
       const watch = rows[0]!
-      if (changed) {
+      if (reactivated) {
         await tx.$executeRaw`
           UPDATE "WalletDelivery" SET "status" = 'cancelled', "failureCode" = 'watch-changed', "updatedAt" = CURRENT_TIMESTAMP
           WHERE "watchId" = ${watch.id} AND "status" = 'pending'`
@@ -184,10 +213,11 @@ export class WalletDeliveryLedger {
     watch: DeliveryWatch,
     movements: ReadonlyArray<WalletMovement>,
     cursor?: string | null,
+    transactionOrderOffset = 0,
   ): Promise<'ingested' | 'stale'> {
     const prepared = movements.length === 0
       ? []
-      : prepareMovements(watch.walletAddress, movements)
+      : prepareMovements(watch.walletAddress, movements, transactionOrderOffset)
     const nextCursor = cursor === undefined
       ? movements[movements.length - 1]?.signature ?? null
       : cursor
@@ -217,9 +247,11 @@ export class WalletDeliveryLedger {
         const values = Prisma.join(prepared.map((movement) => Prisma.sql`(
           ${movement.activityId}::text, ${watch.walletAddress}::text, ${movement.signature}::text,
           ${movement.movementKey}::text, ${movement.direction}::text, ${movement.lamports}::bigint,
-          ${movement.tokenMint ?? null}::text, ${movement.summary}::text)`))
-        // The legacy outbox deduplicated per watch even when its activity row
-        // belonged to another wallet. Preserve that delivery history separately.
+          ${movement.tokenMint ?? null}::text, ${movement.summary}::text,
+          ${movement.transactionOrder}::integer)`))
+        // The legacy outbox deduplicated notifications per watch even when its
+        // activity row belonged to another wallet. Preserve that history only
+        // for the watch that owns the matching notification.
         const noLegacyNotification = Prisma.sql`NOT EXISTS (
           SELECT 1 FROM "WalletNotification" n WHERE n."watchId" = ${watch.id}
             AND n."signature" = v."signature"
@@ -228,10 +260,9 @@ export class WalletDeliveryLedger {
           SELECT (SELECT COUNT(*)::integer FROM "WalletDelivery" WHERE "watchId" = ${watch.id}
             AND "status" IN ('pending', 'dispatching', 'uncertain')) AS "outstanding",
             COUNT(*)::integer AS "incoming" FROM (VALUES ${values}) v
-              ("id", "walletAddress", "signature", "movementKey", "direction", "lamports", "tokenMint", "summary")
-          WHERE NOT EXISTS (SELECT 1 FROM "WalletActivityEvent" legacy WHERE legacy."walletAddress" = v."walletAddress"
-            AND legacy."signature" = v."signature" AND legacy."identityVersion" = 0)
-            AND ${noLegacyNotification}
+              ("id", "walletAddress", "signature", "movementKey", "direction", "lamports",
+                "tokenMint", "summary", "transactionOrder")
+          WHERE ${noLegacyNotification}
             AND NOT EXISTS (SELECT 1 FROM "WalletDelivery" d WHERE d."watchId" = ${watch.id}
               AND d."signature" = v."signature" AND d."movementKey" = v."movementKey")`)
         if (capacity[0]!.outstanding + capacity[0]!.incoming > MAX_OUTSTANDING_DELIVERIES_PER_WATCH) {
@@ -240,18 +271,18 @@ export class WalletDeliveryLedger {
 
         await tx.$executeRaw(Prisma.sql`
           INSERT INTO "WalletActivityEvent"
-            ("id", "walletAddress", "signature", "movementKey", "direction", "lamports", "tokenMint", "summary", "identityVersion")
+            ("id", "walletAddress", "signature", "movementKey", "direction", "lamports",
+              "tokenMint", "summary", "transactionOrder", "identityVersion")
           SELECT v.*, 1 FROM (VALUES ${values}) v
-            ("id", "walletAddress", "signature", "movementKey", "direction", "lamports", "tokenMint", "summary")
-          WHERE NOT EXISTS (SELECT 1 FROM "WalletActivityEvent" legacy
-            WHERE legacy."walletAddress" = v."walletAddress" AND legacy."signature" = v."signature"
-              AND legacy."identityVersion" = 0)
+            ("id", "walletAddress", "signature", "movementKey", "direction", "lamports",
+              "tokenMint", "summary", "transactionOrder")
           ON CONFLICT ("walletAddress", "signature", "movementKey") DO NOTHING`)
 
         // DO NOTHING is idempotent only if the immutable movement payload agrees.
         const conflicts = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
           SELECT a."id" FROM "WalletActivityEvent" a JOIN (VALUES ${values}) v
-            ("id", "walletAddress", "signature", "movementKey", "direction", "lamports", "tokenMint", "summary")
+            ("id", "walletAddress", "signature", "movementKey", "direction", "lamports",
+              "tokenMint", "summary", "transactionOrder")
             ON a."walletAddress" = v."walletAddress" AND a."signature" = v."signature" AND a."movementKey" = v."movementKey"
           WHERE a."identityVersion" = 1 AND (a."direction" IS DISTINCT FROM v."direction"
             OR a."lamports" IS DISTINCT FROM v."lamports" OR a."tokenMint" IS DISTINCT FROM v."tokenMint"
@@ -263,17 +294,18 @@ export class WalletDeliveryLedger {
           const message = [`${label}Wallet activity`, `Wallet: ${watch.walletAddress}`,
             movement.summary, `Signature: ${movement.signature}`].join('\n')
           return Prisma.sql`(${identityId('wd1', [watch.id, movement.signature, movement.movementKey])}::text,
-            ${movement.signature}::text, ${movement.movementKey}::text, ${message}::text)`
+            ${movement.signature}::text, ${movement.movementKey}::text, ${message}::text,
+            ${movement.transactionOrder}::integer)`
         }))
         await tx.$executeRaw(Prisma.sql`
-          INSERT INTO "WalletDelivery" ("id", "watchId", "watchRevision", "activityId", "signature", "movementKey", "chatId", "message")
-          SELECT v."id", ${watch.id}, ${watch.revision}, a."id", v."signature", v."movementKey", ${subscribers[0]!.chatId}, v."message"
-          FROM (VALUES ${deliveries}) v ("id", "signature", "movementKey", "message")
+          INSERT INTO "WalletDelivery" ("id", "watchId", "watchRevision", "activityId", "signature",
+            "movementKey", "chatId", "message", "transactionOrder", "updatedAt")
+          SELECT v."id", ${watch.id}, ${watch.revision}, a."id", v."signature", v."movementKey",
+            ${subscribers[0]!.chatId}, v."message", v."transactionOrder", CURRENT_TIMESTAMP
+          FROM (VALUES ${deliveries}) v ("id", "signature", "movementKey", "message", "transactionOrder")
           JOIN "WalletActivityEvent" a ON a."walletAddress" = ${watch.walletAddress}
             AND a."signature" = v."signature" AND a."movementKey" = v."movementKey" AND a."identityVersion" = 1
-          WHERE NOT EXISTS (SELECT 1 FROM "WalletActivityEvent" legacy
-            WHERE legacy."walletAddress" = a."walletAddress" AND legacy."signature" = a."signature" AND legacy."identityVersion" = 0)
-            AND ${noLegacyNotification}
+          WHERE ${noLegacyNotification}
           ON CONFLICT ("watchId", "signature", "movementKey") DO NOTHING`)
       }
       const updated = await tx.$executeRaw`
@@ -303,8 +335,10 @@ export class WalletDeliveryLedger {
 
   public async listPendingIds(limit = DELIVERY_BATCH_SIZE): Promise<Array<string>> {
     const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT "id" FROM "WalletDelivery" WHERE "status" = 'pending'
-      ORDER BY "createdAt" ASC, "id" ASC LIMIT ${boundedLimit(limit)}`
+      SELECT "id" FROM "WalletDelivery"
+      WHERE "status" = 'pending' AND "nextAttemptAt" <= CURRENT_TIMESTAMP
+      ORDER BY "createdAt" ASC, "transactionOrder" ASC, "id" ASC
+      LIMIT ${boundedLimit(limit)}`
     return rows.map((row) => row.id)
   }
 
@@ -323,7 +357,8 @@ export class WalletDeliveryLedger {
           AND "subscriberId" = ${owner.subscriberId} FOR SHARE`
       const rows = await tx.$queryRaw<Array<{ id: string; watchId: string; watchRevision: number; chatId: string; message: string }>>`
         SELECT "id", "watchId", "watchRevision", "chatId", "message" FROM "WalletDelivery"
-        WHERE "id" = ${id} AND "status" = 'pending' FOR UPDATE`
+        WHERE "id" = ${id} AND "status" = 'pending'
+          AND "nextAttemptAt" <= CURRENT_TIMESTAMP FOR UPDATE`
       const delivery = rows[0]
       if (!delivery) return null
       const subscriber = subscribers[0]
@@ -357,7 +392,7 @@ export class WalletDeliveryLedger {
     if (!/^[1-9][0-9]{0,19}$/.test(receipt.messageId)) throw new WalletIngestionError('invalid-batch')
     return (await this.prisma.$executeRaw`
       UPDATE "WalletDelivery" SET "status" = 'sent', "telegramMessageId" = ${receipt.messageId},
-        "sentAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+        "sentAt" = CURRENT_TIMESTAMP, "failureCode" = NULL, "updatedAt" = CURRENT_TIMESTAMP
       WHERE "id" = ${claim.id} AND "claimToken" = ${claim.claimToken} AND "status" = 'dispatching'`) === 1
   }
 
@@ -365,6 +400,19 @@ export class WalletDeliveryLedger {
     await this.prisma.$executeRaw`
       UPDATE "WalletDelivery" SET "status" = 'uncertain', "uncertainAt" = CURRENT_TIMESTAMP,
         "failureCode" = ${reason}, "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ${claim.id} AND "claimToken" = ${claim.claimToken} AND "status" = 'dispatching'`
+  }
+
+  public async markRateLimited(claim: DeliveryClaim, retryAfterMs: number): Promise<void> {
+    if (!Number.isSafeInteger(retryAfterMs) || retryAfterMs < 1) {
+      throw new WalletIngestionError('invalid-batch')
+    }
+    await this.prisma.$executeRaw`
+      UPDATE "WalletDelivery"
+      SET "status" = 'pending', "claimToken" = NULL, "claimedAt" = NULL,
+        "failureCode" = 'telegram-rate-limited',
+        "nextAttemptAt" = CURRENT_TIMESTAMP + ${retryAfterMs} * INTERVAL '1 millisecond',
+        "updatedAt" = CURRENT_TIMESTAMP
       WHERE "id" = ${claim.id} AND "claimToken" = ${claim.claimToken} AND "status" = 'dispatching'`
   }
 
@@ -393,7 +441,36 @@ export interface DeliveryStore {
   isClaimCurrent(claim: DeliveryClaim): Promise<boolean>
   markSent(claim: DeliveryClaim, receipt: DeliveryReceipt): Promise<boolean>
   markUncertain(claim: DeliveryClaim, reason: 'send-or-ack-failed' | 'watch-changed'): Promise<void>
+  markRateLimited(claim: DeliveryClaim, retryAfterMs: number): Promise<void>
   recoverInterruptedClaims(): Promise<void>
+}
+
+export interface DeliveryDispatchOptions {
+  readonly minChatIntervalMs?: number
+  readonly now?: () => number
+  readonly wait?: (milliseconds: number) => Promise<void>
+  readonly chatLastSentAt?: Map<string, number>
+}
+
+export const telegramRetryAfterMs = (error: unknown): number | null => {
+  if (!error || typeof error !== 'object') return null
+  const candidate = error as {
+    code?: unknown
+    parameters?: { retry_after?: unknown }
+    response?: {
+      error_code?: unknown
+      parameters?: { retry_after?: unknown }
+    }
+  }
+  const code = candidate.code ?? candidate.response?.error_code
+  if (code !== 429) return null
+  const retryAfter = candidate.parameters?.retry_after ??
+    candidate.response?.parameters?.retry_after
+  if (typeof retryAfter !== 'number' || !Number.isSafeInteger(retryAfter) ||
+    retryAfter < 1) {
+    return DEFAULT_TELEGRAM_RETRY_AFTER_MS
+  }
+  return retryAfter * 1_000
 }
 
 const awaitReceipt = async (
@@ -416,7 +493,13 @@ const awaitReceipt = async (
 export const dispatchPendingDeliveries = async (
   ledger: DeliveryStore,
   notify: (chatId: string, message: string) => Promise<DeliveryReceipt>,
+  options: DeliveryDispatchOptions = {},
 ): Promise<void> => {
+  const minChatIntervalMs = options.minChatIntervalMs ?? TELEGRAM_CHAT_SEND_INTERVAL_MS
+  const now = options.now ?? Date.now
+  const wait = options.wait ?? ((milliseconds: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, milliseconds)))
+  const chatLastSentAt = options.chatLastSentAt ?? chatSendGates
   await ledger.recoverInterruptedClaims()
   const pending = await ledger.listPendingIds()
   for (const id of pending) {
@@ -427,10 +510,36 @@ export const dispatchPendingDeliveries = async (
         await ledger.markUncertain(claim, 'watch-changed')
         continue
       }
+      const currentTime = now()
+      const lastSentAt = chatLastSentAt.get(claim.chatId) ?? 0
+      const pacingDelay = Math.max(
+        0,
+        lastSentAt + minChatIntervalMs - currentTime,
+      )
+      if (pacingDelay > 0) {
+        await wait(pacingDelay)
+        if (!await ledger.isClaimCurrent(claim)) {
+          await ledger.markUncertain(claim, 'watch-changed')
+          continue
+        }
+      }
+      chatLastSentAt.set(claim.chatId, currentTime + pacingDelay)
       const receipt = await awaitReceipt(() => notify(claim.chatId, claim.message))
       if (!receipt || typeof receipt.messageId !== 'string' || !/^[1-9][0-9]{0,19}$/.test(receipt.messageId) ||
         !await ledger.markSent(claim, receipt)) throw new Error('Delivery acknowledgement unavailable')
-    } catch {
+    } catch (error) {
+      const retryAfterMs = telegramRetryAfterMs(error)
+      if (retryAfterMs !== null) {
+        chatLastSentAt.set(
+          claim.chatId,
+          Math.max(
+            chatLastSentAt.get(claim.chatId) ?? 0,
+            now() + retryAfterMs,
+          ),
+        )
+        await ledger.markRateLimited(claim, retryAfterMs)
+        continue
+      }
       // Includes a rejected send, lost Telegram acknowledgement and lost DB ack.
       // If this write also fails the durable dispatching claim remains non-retryable.
       await ledger.markUncertain(claim, 'send-or-ack-failed')

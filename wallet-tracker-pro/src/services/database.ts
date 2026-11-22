@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { randomUUID } from 'node:crypto'
 import { config } from '../lib/config'
@@ -18,13 +18,61 @@ const movementKeyFor = (input: {
     ? 'unknown'
     : 'sol'
 
+const visibleWalletActivity = Prisma.sql`
+  NOT (
+    activity."identityVersion" = 0 AND EXISTS (
+      SELECT 1
+      FROM "WalletActivityEvent" canonical
+      WHERE canonical."walletAddress" = activity."walletAddress"
+        AND canonical."signature" = activity."signature"
+        AND canonical."identityVersion" = 1
+    )
+  )`
+
 export class DatabaseService {
   private readonly prisma: PrismaClient
   public readonly deliveryLedger: WalletDeliveryLedger
+  private transactionOrderSupport: Promise<boolean> | undefined
+  private identityVersionSupport: Promise<boolean> | undefined
 
   constructor(prisma?: PrismaClient) {
     this.prisma = prisma ?? new PrismaClient({ adapter: new PrismaPg({ connectionString: config.database.url }) })
     this.deliveryLedger = new WalletDeliveryLedger(this.prisma)
+  }
+
+  private async hasActivityColumn(
+    column: 'transactionOrder' | 'identityVersion',
+  ): Promise<boolean> {
+    const cached = column === 'transactionOrder'
+      ? this.transactionOrderSupport
+      : this.identityVersionSupport
+    if (cached) {
+      return cached
+    }
+
+    const probe = this.prisma.$queryRaw<Array<{ present: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'WalletActivityEvent'
+          AND column_name = ${column}
+      ) AS "present"`
+      .then((rows) => rows[0]?.present === true)
+    if (column === 'transactionOrder') {
+      this.transactionOrderSupport = probe
+    } else {
+      this.identityVersionSupport = probe
+    }
+
+    try {
+      return await probe
+    } catch (error) {
+      if (column === 'transactionOrder' && this.transactionOrderSupport === probe) {
+        this.transactionOrderSupport = undefined
+      } else if (column === 'identityVersion' && this.identityVersionSupport === probe) {
+        this.identityVersionSupport = undefined
+      }
+      throw error
+    }
   }
 
   public async connect(): Promise<void> {
@@ -239,6 +287,50 @@ export class DatabaseService {
     })
   }
   public async getRecentActivity(walletAddress: string, limit = 5) {
+    if (await this.hasActivityColumn('identityVersion')) {
+      const transactionOrder = await this.hasActivityColumn('transactionOrder')
+      if (!transactionOrder) {
+        return this.prisma.$queryRaw<Array<{
+          id: string
+          walletAddress: string
+          signature: string
+          direction: string
+          lamports: bigint | null
+          tokenMint: string | null
+          summary: string | null
+          observedAt: Date
+        }>>(Prisma.sql`
+          SELECT activity."id", activity."walletAddress", activity."signature",
+            activity."direction", activity."lamports", activity."tokenMint",
+            activity."summary", activity."observedAt"
+          FROM "WalletActivityEvent" activity
+          WHERE activity."walletAddress" = ${walletAddress}
+            AND ${visibleWalletActivity}
+          ORDER BY activity."observedAt" DESC, activity."id" ASC
+          LIMIT ${limit}`)
+      }
+      return this.prisma.$queryRaw<Array<{
+        id: string
+        walletAddress: string
+        signature: string
+        direction: string
+        lamports: bigint | null
+        tokenMint: string | null
+        summary: string | null
+        observedAt: Date
+        transactionOrder: number
+      }>>(Prisma.sql`
+        SELECT activity."id", activity."walletAddress", activity."signature",
+          activity."direction", activity."lamports", activity."tokenMint",
+          activity."summary", activity."observedAt", activity."transactionOrder"
+        FROM "WalletActivityEvent" activity
+        WHERE activity."walletAddress" = ${walletAddress}
+          AND ${visibleWalletActivity}
+        ORDER BY activity."observedAt" DESC, activity."transactionOrder" DESC,
+          activity."id" ASC
+        LIMIT ${limit}`
+      )
+    }
     return this.prisma.walletActivityEvent.findMany({
       where: { walletAddress },
       select: { id: true, walletAddress: true, signature: true, direction: true, lamports: true,
@@ -249,10 +341,16 @@ export class DatabaseService {
   }
 
   public async getActivityBreakdown(walletAddress: string) {
-    const events = await this.prisma.walletActivityEvent.findMany({
-      where: { walletAddress },
-      select: { direction: true },
-    })
+    const events = await this.hasActivityColumn('identityVersion')
+      ? await this.prisma.$queryRaw<Array<{ direction: string }>>(Prisma.sql`
+        SELECT activity."direction"
+        FROM "WalletActivityEvent" activity
+        WHERE activity."walletAddress" = ${walletAddress}
+          AND ${visibleWalletActivity}`)
+      : await this.prisma.walletActivityEvent.findMany({
+        where: { walletAddress },
+        select: { direction: true },
+      })
 
     const breakdown = { in: 0, out: 0, unknown: 0 }
 
@@ -276,14 +374,22 @@ export class DatabaseService {
     const since = new Date()
     since.setUTCDate(since.getUTCDate() - days)
 
-    const events = await this.prisma.walletActivityEvent.findMany({
-      where: {
-        walletAddress,
-        observedAt: { gte: since },
-      },
-      select: { observedAt: true, direction: true },
-      orderBy: { observedAt: 'asc' },
-    })
+    const events = await this.hasActivityColumn('identityVersion')
+      ? await this.prisma.$queryRaw<Array<{ observedAt: Date; direction: string }>>(Prisma.sql`
+        SELECT activity."observedAt", activity."direction"
+        FROM "WalletActivityEvent" activity
+        WHERE activity."walletAddress" = ${walletAddress}
+          AND activity."observedAt" >= ${since}
+          AND ${visibleWalletActivity}
+        ORDER BY activity."observedAt" ASC`)
+      : await this.prisma.walletActivityEvent.findMany({
+        where: {
+          walletAddress,
+          observedAt: { gte: since },
+        },
+        select: { observedAt: true, direction: true },
+        orderBy: { observedAt: 'asc' },
+      })
 
     const buckets = new Map<string, { date: string; in: number; out: number }>()
 
@@ -304,10 +410,16 @@ export class DatabaseService {
   }
 
   public async getDashboardStats() {
+    const visibleEventCount = await this.hasActivityColumn('identityVersion')
+      ? (await this.prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
+        SELECT COUNT(*)::integer AS "count"
+        FROM "WalletActivityEvent" activity
+        WHERE ${visibleWalletActivity}`))[0]!.count
+      : await this.prisma.walletActivityEvent.count()
     const [subscribers, watches, events] = await Promise.all([
       this.prisma.telegramSubscriber.count({ where: { active: true } }),
       this.prisma.walletWatch.count({ where: { active: true } }),
-      this.prisma.walletActivityEvent.count(),
+      Promise.resolve(visibleEventCount),
     ])
 
     return { subscribers, watches, events }
@@ -318,8 +430,35 @@ export class DatabaseService {
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
-    const [eventsLast24h, eventsLast7d, activeWallets, watches, totalEvents] =
-      await Promise.all([
+    let eventsLast24h: number
+    let eventsLast7d: number
+    let uniqueActiveWallets: number
+    let totalEvents: number
+    if (await this.hasActivityColumn('identityVersion')) {
+      const rows = await this.prisma.$queryRaw<Array<{
+        eventsLast24h: number
+        eventsLast7d: number
+        uniqueActiveWallets: number
+        totalEvents: number
+      }>>(Prisma.sql`
+        SELECT
+          (COUNT(*) FILTER (WHERE activity."observedAt" >= ${dayAgo}))::integer
+            AS "eventsLast24h",
+          (COUNT(*) FILTER (WHERE activity."observedAt" >= ${weekAgo}))::integer
+            AS "eventsLast7d",
+          (COUNT(DISTINCT activity."walletAddress")
+            FILTER (WHERE activity."observedAt" >= ${weekAgo}))::integer
+            AS "uniqueActiveWallets",
+          COUNT(*)::integer AS "totalEvents"
+        FROM "WalletActivityEvent" activity
+        WHERE ${visibleWalletActivity}`)
+      const totals = rows[0]!
+      eventsLast24h = totals.eventsLast24h
+      eventsLast7d = totals.eventsLast7d
+      uniqueActiveWallets = totals.uniqueActiveWallets
+      totalEvents = totals.totalEvents
+    } else {
+      const [last24h, last7d, activeWallets, total] = await Promise.all([
         this.prisma.walletActivityEvent.count({
           where: { observedAt: { gte: dayAgo } },
         }),
@@ -330,11 +469,15 @@ export class DatabaseService {
           by: ['walletAddress'],
           where: { observedAt: { gte: weekAgo } },
         }),
-        this.prisma.walletWatch.count({ where: { active: true } }),
         this.prisma.walletActivityEvent.count(),
       ])
+      eventsLast24h = last24h
+      eventsLast7d = last7d
+      uniqueActiveWallets = activeWallets.length
+      totalEvents = total
+    }
+    const watches = await this.prisma.walletWatch.count({ where: { active: true } })
 
-    const uniqueActiveWallets = activeWallets.length
     const avgEventsPerWatch =
       watches > 0 ? Math.round((totalEvents / watches) * 10) / 10 : 0
 
@@ -349,6 +492,16 @@ export class DatabaseService {
   public async getTopActiveWallets(limit = 5) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
+    if (await this.hasActivityColumn('identityVersion')) {
+      return this.prisma.$queryRaw<Array<{ walletAddress: string; eventCount: number }>>(Prisma.sql`
+        SELECT activity."walletAddress", COUNT(*)::integer AS "eventCount"
+        FROM "WalletActivityEvent" activity
+        WHERE activity."observedAt" >= ${weekAgo}
+          AND ${visibleWalletActivity}
+        GROUP BY activity."walletAddress"
+        ORDER BY "eventCount" DESC, activity."walletAddress" ASC
+        LIMIT ${limit}`)
+    }
     const grouped = await this.prisma.walletActivityEvent.groupBy({
       by: ['walletAddress'],
       where: { observedAt: { gte: weekAgo } },
@@ -366,10 +519,17 @@ export class DatabaseService {
   public async getWalletBehaviorSummary(walletAddress: string, days = 30) {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
-    const events = await this.prisma.walletActivityEvent.findMany({
-      where: { walletAddress, observedAt: { gte: since } },
-      select: { direction: true, lamports: true },
-    })
+    const events = await this.hasActivityColumn('identityVersion')
+      ? await this.prisma.$queryRaw<Array<{ direction: string; lamports: bigint | null }>>(Prisma.sql`
+        SELECT activity."direction", activity."lamports"
+        FROM "WalletActivityEvent" activity
+        WHERE activity."walletAddress" = ${walletAddress}
+          AND activity."observedAt" >= ${since}
+          AND ${visibleWalletActivity}`)
+      : await this.prisma.walletActivityEvent.findMany({
+        where: { walletAddress, observedAt: { gte: since } },
+        select: { direction: true, lamports: true },
+      })
 
     let inCount = 0
     let outCount = 0
@@ -377,12 +537,17 @@ export class DatabaseService {
     let outLamports = BigInt(0)
 
     for (const event of events) {
+      const lamports = event.lamports === null
+        ? BigInt(0)
+        : event.lamports < BigInt(0)
+          ? -event.lamports
+          : event.lamports
       if (event.direction === 'in') {
         inCount += 1
-        inLamports += event.lamports ?? BigInt(0)
+        inLamports += lamports
       } else if (event.direction === 'out') {
         outCount += 1
-        outLamports += event.lamports ?? BigInt(0)
+        outLamports += lamports
       }
     }
 
@@ -402,6 +567,17 @@ export class DatabaseService {
   }
 
   public async getTokenMintBreakdown(walletAddress: string, limit = 10) {
+    if (await this.hasActivityColumn('identityVersion')) {
+      return this.prisma.$queryRaw<Array<{ tokenMint: string; eventCount: number }>>(Prisma.sql`
+        SELECT activity."tokenMint", COUNT(*)::integer AS "eventCount"
+        FROM "WalletActivityEvent" activity
+        WHERE activity."walletAddress" = ${walletAddress}
+          AND activity."tokenMint" IS NOT NULL
+          AND ${visibleWalletActivity}
+        GROUP BY activity."tokenMint"
+        ORDER BY "eventCount" DESC, activity."tokenMint" ASC
+        LIMIT ${limit}`)
+    }
     const events = await this.prisma.walletActivityEvent.findMany({
       where: {
         walletAddress,

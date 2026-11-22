@@ -3,12 +3,24 @@ import {
 } from '../src/services/wallet-delivery-ledger'
 import { deliveryStore, fixtureBase58, movement, wallet } from './helpers/wallet-delivery'
 
+const dispatchWithoutPacing = (
+  ledger: ReturnType<typeof deliveryStore>,
+  notify: (chatId: string, message: string) => Promise<{ messageId: string }>,
+) => dispatchPendingDeliveries(ledger, notify, {
+  minChatIntervalMs: 0,
+  chatLastSentAt: new Map(),
+})
+
 describe('semantic movement identities', () => {
   it('distinguishes wallets, native movement and each SPL mint for one signature', () => {
     const movements = [movement(), movement({ lamports: null, tokenMint: fixtureBase58(2, 32) }),
       movement({ lamports: null, tokenMint: fixtureBase58(3, 32) })]
     const prepared = prepareMovements(wallet, movements)
     expect(prepared.map((row) => row.movementKey)).toEqual(['sol', `spl:${fixtureBase58(2, 32)}`, `spl:${fixtureBase58(3, 32)}`])
+    expect(prepared.map((row) => row.transactionOrder)).toEqual([0, 1, 2])
+    expect(
+      prepareMovements(wallet, movements, 1_000).map((row) => row.transactionOrder),
+    ).toEqual([1_000, 1_001, 1_002])
     expect(new Set(prepared.map((row) => row.activityId)).size).toBe(3)
     expect(prepareMovements(wallet, movements)).toEqual(prepared)
     expect(prepareMovements(fixtureBase58(2, 32), movements)[0]!.activityId).not.toBe(prepared[0]!.activityId)
@@ -38,6 +50,9 @@ describe('semantic movement identities', () => {
   it('bounds wallet shape and retained input', () => {
     expect(() => prepareMovements('invalid', [movement()])).toThrow('invalid-batch')
     expect(() => prepareMovements(wallet, [])).toThrow('invalid-batch')
+    expect(() => prepareMovements(wallet, [movement()], -1)).toThrow('invalid-batch')
+    expect(() => prepareMovements(wallet, [movement()], 1.5)).toThrow('invalid-batch')
+    expect(() => prepareMovements(wallet, [movement()], 2 ** 31 - 1)).toThrow('invalid-batch')
     expect(() => prepareMovements(wallet, Array.from({ length: MAX_INGESTION_MOVEMENTS + 1 }, () => movement()))).toThrow('invalid-batch')
   })
 })
@@ -46,7 +61,7 @@ describe('one-time durable dispatch', () => {
   it('recovers before listing, then claims before sending and records the ACK', async () => {
     const ledger = deliveryStore()
     const notify = jest.fn().mockResolvedValue({ messageId: '42' })
-    await dispatchPendingDeliveries(ledger, notify)
+    await dispatchWithoutPacing(ledger, notify)
     expect(ledger.recoverInterruptedClaims.mock.invocationCallOrder[0]).toBeLessThan(ledger.listPendingIds.mock.invocationCallOrder[0]!)
     expect(ledger.claim.mock.invocationCallOrder[0]).toBeLessThan(notify.mock.invocationCallOrder[0]!)
     expect(ledger.markSent).toHaveBeenCalledWith(await ledger.claim.mock.results[0]!.value, { messageId: '42' })
@@ -58,7 +73,7 @@ describe('one-time durable dispatch', () => {
     const ledger = deliveryStore()
     ledger.claim.mockResolvedValue(null)
     const notify = jest.fn()
-    await dispatchPendingDeliveries(ledger, notify)
+    await dispatchWithoutPacing(ledger, notify)
     expect(notify).not.toHaveBeenCalled()
   })
 
@@ -66,15 +81,36 @@ describe('one-time durable dispatch', () => {
     const ledger = deliveryStore()
     ledger.isClaimCurrent.mockResolvedValue(false)
     const notify = jest.fn()
-    await dispatchPendingDeliveries(ledger, notify)
+    await dispatchWithoutPacing(ledger, notify)
     expect(notify).not.toHaveBeenCalled()
     expect(ledger.markUncertain).toHaveBeenCalledWith(expect.anything(), 'watch-changed')
+  })
+
+  it('revalidates a claim after pacing and before the network boundary', async () => {
+    const ledger = deliveryStore()
+    ledger.isClaimCurrent
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+    const notify = jest.fn()
+    const chatLastSentAt = new Map([['101', 2_000]])
+
+    await dispatchPendingDeliveries(ledger, notify, {
+      minChatIntervalMs: 1_000,
+      now: () => 1_000,
+      wait: jest.fn().mockResolvedValue(undefined),
+      chatLastSentAt,
+    })
+
+    expect(ledger.isClaimCurrent).toHaveBeenCalledTimes(2)
+    expect(notify).not.toHaveBeenCalled()
+    expect(ledger.markUncertain).toHaveBeenCalledWith(expect.anything(), 'watch-changed')
+    expect(chatLastSentAt.get('101')).toBe(2_000)
   })
 
   it.each([undefined, {}, { messageId: '' }, { messageId: '0' }, { messageId: '1.5' }, { messageId: 42 }])(
     'holds an ambiguous or invalid acknowledgement: %p', async (receipt) => {
       const ledger = deliveryStore()
-      await dispatchPendingDeliveries(ledger, jest.fn().mockResolvedValue(receipt))
+      await dispatchWithoutPacing(ledger, jest.fn().mockResolvedValue(receipt))
       expect(ledger.markSent).not.toHaveBeenCalled()
       expect(ledger.markUncertain).toHaveBeenCalledWith(expect.anything(), 'send-or-ack-failed')
     },
@@ -86,9 +122,9 @@ describe('one-time durable dispatch', () => {
     if (failure === 'rejected-send') notify.mockRejectedValue(new Error('Synthetic rejection'))
     if (failure === 'lost-database-ack') ledger.markSent.mockRejectedValue(new Error('Synthetic lost ACK'))
     if (failure === 'stale-ack') ledger.markSent.mockResolvedValue(false)
-    await dispatchPendingDeliveries(ledger, notify)
+    await dispatchWithoutPacing(ledger, notify)
     ledger.claim.mockResolvedValue(null)
-    await dispatchPendingDeliveries(ledger, notify)
+    await dispatchWithoutPacing(ledger, notify)
     expect(notify).toHaveBeenCalledTimes(1)
     expect(ledger.markUncertain).toHaveBeenCalledTimes(1)
   })
@@ -97,7 +133,7 @@ describe('one-time durable dispatch', () => {
     jest.useFakeTimers()
     try {
       const ledger = deliveryStore()
-      const pending = dispatchPendingDeliveries(ledger, () => new Promise(() => {}))
+      const pending = dispatchWithoutPacing(ledger, () => new Promise(() => {}))
       await jest.advanceTimersByTimeAsync(DELIVERY_ACK_TIMEOUT_MS)
       await pending
       expect(ledger.markUncertain).toHaveBeenCalledWith(expect.anything(), 'send-or-ack-failed')
@@ -108,7 +144,7 @@ describe('one-time durable dispatch', () => {
     const ledger = deliveryStore()
     ledger.markUncertain.mockRejectedValue(new Error('Synthetic database outage'))
     const notify = jest.fn().mockRejectedValue(new Error('Synthetic send rejection'))
-    await expect(dispatchPendingDeliveries(ledger, notify)).rejects.toThrow('Synthetic database outage')
+    await expect(dispatchWithoutPacing(ledger, notify)).rejects.toThrow('Synthetic database outage')
     expect(notify).toHaveBeenCalledTimes(1)
     expect(ledger.claim).toHaveBeenCalledTimes(1)
   })
@@ -118,9 +154,42 @@ describe('one-time durable dispatch', () => {
     ledger.listPendingIds.mockResolvedValue(['one', 'two'])
     ledger.claim.mockImplementation(async (id: string) => ({ id, claimToken: `claim-${id}`, chatId: '101', message: id }))
     const notify = jest.fn().mockRejectedValueOnce(new Error('Synthetic rejection')).mockResolvedValueOnce({ messageId: '42' })
-    await dispatchPendingDeliveries(ledger, notify)
+    await dispatchWithoutPacing(ledger, notify)
     expect(notify).toHaveBeenCalledTimes(2)
     expect(ledger.markSent).toHaveBeenCalledTimes(1)
     expect(ledger.markUncertain).toHaveBeenCalledTimes(1)
+  })
+
+  it('applies a Telegram retry window to every pending delivery in the chat', async () => {
+    const ledger = deliveryStore()
+    ledger.listPendingIds.mockResolvedValue(['one', 'two'])
+    ledger.claim.mockImplementation(async (id: string) => ({
+      id,
+      claimToken: `claim-${id}`,
+      chatId: '101',
+      message: id,
+    }))
+    const notify = jest.fn()
+      .mockRejectedValueOnce({ code: 429, parameters: { retry_after: 7 } })
+      .mockResolvedValueOnce({ messageId: '42' })
+    const waits: number[] = []
+    const chatLastSentAt = new Map<string, number>()
+
+    await dispatchPendingDeliveries(ledger, notify, {
+      minChatIntervalMs: 1_000,
+      now: () => 1_000,
+      wait: jest.fn(async (milliseconds: number) => {
+        waits.push(milliseconds)
+      }),
+      chatLastSentAt,
+    })
+
+    expect(ledger.markRateLimited).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'one' }),
+      7_000,
+    )
+    expect(waits).toEqual([8_000])
+    expect(notify).toHaveBeenCalledTimes(2)
+    expect(chatLastSentAt.get('101')).toBe(9_000)
   })
 })
