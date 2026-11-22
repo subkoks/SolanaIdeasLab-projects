@@ -196,3 +196,43 @@ Wallet tracker webhook must receive `metadata.chatId` on checkout for tier sync.
 ```bash
 stripe listen --forward-to localhost:3001/api/webhooks/stripe
 ```
+
+
+## Wallet history polling — bounded continuity (29 October 2026)
+
+The full Wallet watch service reads address-reference signatures newest-first in at most
+five pages per poll. `WATCHER_SIGNATURE_BATCH` must be an integer from 1 to 1000;
+the effective page size is capped at 100 (default 10), so at most 500 signatures and
+500 transaction detail reads are attempted. Existing transaction-version support is
+unchanged (`maxSupportedTransactionVersion: 1`). This service is separate from fixture demos.
+
+For an existing watch, the saved signature must be encountered before any activities are
+returned. Exhausted/truncated history without that cursor, repeated or malformed pages (including non-base58 or non-64-byte signatures),
+RPC failure, budget exhaustion, or a null/metadata-missing transaction holds the whole read.
+The poll logs a history-unavailable error and leaves the saved cursor/activity/notification
+state unchanged for that read; it never treats a readable newer transaction as proof that
+an older missing transaction was handled.
+
+A first watch with no saved cursor deliberately bootstraps one newest page only (the same
+bounded recent-window scope as the earlier reader). Even a full page establishes that initial
+window without requesting older history; it is not a backfill or a claim that older activity was
+processed. Every transaction in the selected window must still be readable before returning it.
+An empty window returns no activities and does not fabricate a cursor. Provider pruning,
+omitted token-account-only activity, reorganizations and unavailable history are not solved
+by pagination. An established watch that is held needs reviewed recovery/backfill, not an
+automatic cursor reset or fabricated alert.
+
+The durable delivery implementation remains **disabled pending reviewed migration and
+runtime activation**. Bot startup fails before constructing services; the full activity API
+returns an explicit 503 hold. Fixture demos continue to use their deterministic local data.
+When separately activated, polling stores semantic wallet/movement activity, immutable
+notification snapshots, and its cursor in one transaction. Dispatch claims each pending
+delivery once; rejected, missing, or ambiguous acknowledgements become visible operator
+holds without automatic replay. Pending work drains even without new activity, and both
+watch scans and outstanding delivery work are bounded.
+
+The target SQL is deliberately outside automatic Prisma migration discovery. Legacy rows
+keep their IDs and payloads, create no historical sends, and suppress ambiguous same-wallet
+signature replay while the bounded cursor progresses. See
+[Wallet delivery](./WALLET-DELIVERY.md) for the verification commands, rollback
+limits, and legacy notification reconciliation required before activation.

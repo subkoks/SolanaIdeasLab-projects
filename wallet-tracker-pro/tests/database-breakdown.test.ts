@@ -2,12 +2,14 @@
  * @jest-environment node
  */
 import { DatabaseService } from '../src/services/database'
+import {
+  createTestPrismaClient,
+  describeIfTestDatabase,
+} from './helpers/test-database'
 
-const describeIfDatabase = process.env.DATABASE_URL ? describe : describe.skip
-
-describeIfDatabase('DatabaseService activity breakdown', () => {
+describeIfTestDatabase('DatabaseService activity breakdown', () => {
   it('returns zero counts for wallets with no events', async () => {
-    const database = new DatabaseService()
+    const database = new DatabaseService(createTestPrismaClient())
     await database.connect()
 
     try {

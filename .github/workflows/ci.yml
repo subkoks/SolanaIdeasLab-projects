@@ -116,14 +116,10 @@ jobs:
       - name: Test (default — JSON/fallback and unit)
         run: npm test
 
-      # Real-database coverage for packages that have DATABASE_URL-gated
-      # Prisma suites. Skipped for token-sniper-bot (no DB-gated suites) and
-      # shared (no database). DATABASE_URL is set ONLY in this step's env, so
-      # the default `npm test` step above keeps exercising the JSON/fallback path
-      # untouched. We run the explicit DB test files (not a name filter) so the
-      # JSON-fallback HTTP suite is never loaded while a live DATABASE_URL is in scope.
+      # Set DATABASE_URL only for the Safety database step so default tests
+      # above still exercise the JSON fallback.
       - name: Test (PostgreSQL — claim/P2002/stale-claim suites)
-        if: matrix.project != 'token-sniper-bot' && matrix.project != 'shared'
+        if: matrix.project == 'token-safety-bot'
         env:
           DATABASE_URL: postgresql://postgres:***@localhost:5432/postgres?schema=public
           # Lets token-safety-bot's seeded-wallet DB test call authenticateWallet
@@ -143,6 +139,45 @@ jobs:
           else
             echo "No DATABASE_URL-gated test files in ${{ matrix.project }}"
           fi
+
+      - name: Test (PostgreSQL — Wallet database suites)
+        if: matrix.project == 'wallet-tracker-pro'
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/wallet_ci
+        run: |
+          docker exec "$POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            -c 'CREATE DATABASE wallet_ci'
+          DATABASE_URL="$TEST_DATABASE_URL" npx prisma migrate deploy
+          # The delivery schema stays outside normal migration discovery.
+          # Apply this draft only to the throwaway CI database.
+          docker exec -i "$POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d wallet_ci \
+            < prisma/drafts/20261030010000_wallet_delivery_ledger.sql
+
+          db_files=(
+            tests/database-analytics.test.ts
+            tests/database-behavior.test.ts
+            tests/database-breakdown.test.ts
+            tests/database-watcher-outbox.test.ts
+          )
+          test_results="$(mktemp)"
+          npx jest --runInBand --json --outputFile="$test_results" --runTestsByPath "${db_files[@]}"
+          node --input-type=commonjs - "$test_results" "${db_files[@]}" <<'NODE'
+          const { readFileSync } = require('node:fs')
+          const { resolve } = require('node:path')
+          const [resultsPath, ...files] = process.argv.slice(2)
+          const results = JSON.parse(readFileSync(resultsPath, 'utf8'))
+          const allSuitesPassed = files.every(file =>
+            results.testResults.some(suite =>
+              suite.name === resolve(file) && suite.status === 'passed' &&
+              suite.assertionResults.length > 0 &&
+              suite.assertionResults.every(test => test.status === 'passed')
+            )
+          )
+          if (!results.success || results.testResults.length !== files.length || !allSuitesPassed) {
+            throw new Error('Expected all four Wallet PostgreSQL suites to run with no skipped tests')
+          }
+          NODE
 
   local-lab:
     name: local-lab (tokens + console)

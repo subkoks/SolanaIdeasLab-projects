@@ -5,9 +5,11 @@
 ### Verified complete
 
 - Current remote `main` was read as
-  `8e42e82f56c500824d2b49a8446c607c777deb17`.
+  `5fb723120736af94e4a59e292e3d2663f1929c66`, the merge commit for PR #410.
 - The primary checkout was clean before recovery, was switched to `main`, and
   fast-forwarded to current `origin/main`.
+- PR #410 merged the reconciled maintenance documents from clean head
+  `ca1e56f0bfa0b5120cfaf375f85b1441b5c78882`; its CI and CodeQL checks passed.
 - The recovery bundle was refreshed after a non-pruning fetch, verified, cloned
   into isolation, and passed `git fsck --full`.
 - GitHub currently reports no open PRs. Dependency, Node 24, CodeQL, Web3 v3, and
@@ -18,21 +20,22 @@
 ### Local-only
 
 - Wallet delivery remains at
-  `b4187fe853805c7f1c7fe1c0b2c6441fd03dc213` on
-  `fix/wallet-durable-delivery-20261121`.
-- Recorded local evidence at that exact commit: frozen install, Prisma
-  generation, type-check, ESLint, default Next build, Jest
-  (`157 passed`, `9 skipped`, `166 total`), PostgreSQL (`23/23`), and a
-  high-threshold production audit with zero vulnerabilities.
-- Those checks were not rerun after the reviewer timeout because the exact head
-  did not change. They are validation evidence, not independent approval.
+  `24aeb6ec07efceae9e344232ee8087c5d2c7c9a2` on
+  `fix/wallet-durable-delivery-20261121`. This merges current `origin/main`;
+  `b4187fe853805c7f1c7fe1c0b2c6441fd03dc213` remains the source-validation
+  commit.
+- Fresh exact-head evidence at `24aeb6e`: Node 24.22.3 frozen install, Prisma
+  7.10.1 generation, type-check, ESLint, default Next build, Jest
+  (`157 passed`, `9 skipped`, `166 total`), PostgreSQL (`23/23`), a
+  high-threshold production audit with zero vulnerabilities, public-only
+  lockfile URLs, and `git diff --check`.
+- Those checks are validation evidence, not independent approval.
 
 ### Blocked
 
-`[BLOCKED: review infrastructure failure]` The one authorized fresh-review retry
-after shell recovery failed because shell process creation returned
-`Too many open files (os error 24)`. No findings or approval were produced.
-Wallet was not pushed or merged.
+`[BLOCKED: exact-head Wallet reviewer inspected the documentation branch instead
+of Wallet]` The reviewer did not inspect `24aeb6e`, produced no Wallet findings,
+and supplied no exact-head approval. Wallet was not pushed or merged.
 
 ### Preserved holds
 
