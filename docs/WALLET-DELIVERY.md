@@ -11,7 +11,8 @@ deploying it or applying the draft migration.
   metadata for every newer transaction within the bounded RPC window. An
   unavailable transaction or history gap holds the read and preserves the cursor.
   A new watch without a cursor reads only the newest page. Each RPC request has a
-  deadline so one stalled provider response cannot block later watches or drains.
+  deadline that aborts its transport so one stalled provider response cannot
+  block later watches or drains.
 - Ingestion verifies the subscriber, watch revision, and expected cursor before a
   write. It commits activity, immutable notification snapshots, and the cursor in
   one transaction. Readable transactions with no balance change retain an

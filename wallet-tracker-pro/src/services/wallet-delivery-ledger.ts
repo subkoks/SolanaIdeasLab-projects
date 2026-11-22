@@ -282,8 +282,7 @@ export class WalletDeliveryLedger {
             ON a."walletAddress" = v."walletAddress" AND a."signature" = v."signature" AND a."movementKey" = v."movementKey"
           WHERE a."identityVersion" = 1 AND (a."direction" IS DISTINCT FROM v."direction"
             OR a."lamports" IS DISTINCT FROM v."lamports" OR a."tokenMint" IS DISTINCT FROM v."tokenMint"
-            OR a."summary" IS DISTINCT FROM v."summary"
-            OR a."transactionOrder" IS DISTINCT FROM v."transactionOrder") LIMIT 1`)
+            OR a."summary" IS DISTINCT FROM v."summary") LIMIT 1`)
         if (conflicts.length) throw new WalletIngestionError('conflicting-movement')
 
         const deliveries = Prisma.join(prepared.map((movement) => {
@@ -354,7 +353,8 @@ export class WalletDeliveryLedger {
           AND "subscriberId" = ${owner.subscriberId} FOR SHARE`
       const rows = await tx.$queryRaw<Array<{ id: string; watchId: string; watchRevision: number; chatId: string; message: string }>>`
         SELECT "id", "watchId", "watchRevision", "chatId", "message" FROM "WalletDelivery"
-        WHERE "id" = ${id} AND "status" = 'pending' FOR UPDATE`
+        WHERE "id" = ${id} AND "status" = 'pending'
+          AND "nextAttemptAt" <= CURRENT_TIMESTAMP FOR UPDATE`
       const delivery = rows[0]
       if (!delivery) return null
       const subscriber = subscribers[0]
@@ -514,6 +514,10 @@ export const dispatchPendingDeliveries = async (
       )
       if (pacingDelay > 0) {
         await wait(pacingDelay)
+        if (!await ledger.isClaimCurrent(claim)) {
+          await ledger.markUncertain(claim, 'watch-changed')
+          continue
+        }
       }
       chatLastSentAt.set(claim.chatId, currentTime + pacingDelay)
       const receipt = await awaitReceipt(() => notify(claim.chatId, claim.message))

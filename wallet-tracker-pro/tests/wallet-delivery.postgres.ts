@@ -203,7 +203,30 @@ const main = async () => {
       assert.deepEqual((await deliveries()).rows, snapshots)
     })
 
-    await test('behavior summary normalizes signed outflows without changing legacy rows', async () => {
+    await test('overlapping watches agree on shared movements despite different batch positions', async () => {
+      const first = await setup()
+      await subscriber('subscriber-2', '202')
+      const second = await ledger.addWatch('subscriber-2', wallet)
+      const shared = signature(31)
+      const earlier = signature(30)
+
+      assert.equal(await ledger.ingest(first, [
+        movement({ signature: earlier }),
+        movement({ signature: shared }),
+      ]), 'ingested')
+      assert.equal(await ledger.ingest(second, [
+        movement({ signature: shared }),
+      ]), 'ingested')
+
+      assert.equal(await count('WalletActivityEvent'), 2)
+      assert.equal(await count('WalletDelivery'), 3)
+      assert.equal(
+        (await ledger.listWatches()).find((watch) => watch.id === second.id)?.lastSignature,
+        shared,
+      )
+    })
+
+    await test('behavior summary counts canonical movement once while preserving distinct legacy activity', async () => {
       const watch = await setup()
       await ledger.ingest(watch, [movement({
         signature: signature(6),
@@ -212,15 +235,17 @@ const main = async () => {
         summary: 'Synthetic SOL out',
       })])
       await pg.query(`INSERT INTO "WalletActivityEvent"
-        ("id", "walletAddress", "signature", "movementKey", "direction", "lamports", "summary")
-        VALUES ('legacy-out', $1, $2, 'legacy:legacy-out', 'out', 3, 'Legacy SOL out')`,
-      [wallet, signature(7)])
+        ("id", "walletAddress", "signature", "movementKey", "identityVersion", "direction", "lamports", "summary")
+        VALUES ('legacy-duplicate-out', $1, $2, 'legacy:legacy-duplicate-out', 0, 'out', 3, 'Legacy duplicate out'),
+          ('legacy-distinct-out', $1, $3, 'legacy:legacy-distinct-out', 0, 'out', 3, 'Legacy distinct out')`,
+      [wallet, signature(6), signature(7)])
       const { DatabaseService } = require('../src/services/database') as typeof import('../src/services/database')
       const database = new DatabaseService(first)
       const summary = await database.getWalletBehaviorSummary(wallet)
       assert.equal(summary.outCount, 2)
       assert.equal(summary.avgOutLamports, '4')
       assert.equal(summary.netLamports, '-8')
+      assert.equal((await events()).rows.length, 3)
     })
 
     await test('recent activity uses persisted order when observation timestamps tie', async () => {
@@ -383,6 +408,7 @@ const main = async () => {
       const claim = (await ledger.claim(id))!
       await ledger.markRateLimited(claim, 50)
       assert.equal((await ledger.listPendingIds()).length, 0)
+      assert.equal(await ledger.claim(id), null)
       assert.equal((await deliveries()).rows[0].status, 'pending')
       assert.equal((await deliveries()).rows[0].failureCode, 'telegram-rate-limited')
       await delay(60)

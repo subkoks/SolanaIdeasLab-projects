@@ -2,17 +2,25 @@
  * @jest-environment node
  */
 import { startWalletRuntime } from '../src/bot/index'
+import type { WalletPollingStore } from '../src/services/solana-watcher'
+import { deliveryStore } from './helpers/wallet-delivery'
 
 describe('Wallet runtime startup', () => {
   it('starts polling before Telegram long polling begins', async () => {
     const launch = jest.fn(() => new Promise<void>(() => undefined))
     const pollWatchlist = jest.fn().mockResolvedValue(undefined)
     const setIntervalSpy = jest.spyOn(global, 'setInterval')
+    const deliveryLedger: WalletPollingStore = {
+      ...deliveryStore(),
+      listWatches: jest.fn().mockResolvedValue([]),
+      ingest: jest.fn().mockResolvedValue('ingested'),
+      getHoldCounts: jest.fn().mockResolvedValue({ uncertain: 0, dispatching: 0 }),
+    }
     const runtime = {
       database: {
         connect: jest.fn().mockResolvedValue(undefined),
         disconnect: jest.fn().mockResolvedValue(undefined),
-        deliveryLedger: {},
+        deliveryLedger,
       },
       watcher: { pollWatchlist },
       bot: {

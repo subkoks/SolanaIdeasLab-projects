@@ -27,6 +27,7 @@ import {
 } from '@solana/web3.js'
 import { config } from '../src/lib/config'
 import {
+  createAbortableRpcFetch,
   SolanaWatcherService,
 } from '../src/services/solana-watcher'
 import {
@@ -756,6 +757,34 @@ describe('bounded wallet history reads', () => {
       code: 'rpc-failure',
       message: 'Wallet history unavailable: rpc-failure',
     })
+  })
+
+  it('aborts the underlying transport request when an RPC deadline expires', async () => {
+    let requestSignal: AbortSignal | undefined
+    const fetchMock = jest.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        requestSignal = init?.signal ?? undefined
+        if (!requestSignal) {
+          reject(new Error('RPC transport did not receive an abort signal'))
+          return
+        }
+        requestSignal.addEventListener(
+          'abort',
+          () => reject(new Error('RPC transport aborted')),
+          { once: true },
+        )
+      }))
+    const connection = new Connection('http://127.0.0.1:8899', {
+      commitment: 'confirmed',
+      fetch: createAbortableRpcFetch(fetchMock as typeof globalThis.fetch),
+    })
+    const watcher = new SolanaWatcherService(connection, 20)
+
+    await expect(watcher.fetchNewMovements(wallet, null)).rejects.toMatchObject({
+      code: 'rpc-timeout',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(requestSignal?.aborted).toBe(true)
   })
 
   it('deadline-bounds a stalled RPC read and retries it on the next poll', async () => {

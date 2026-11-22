@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import {
   Connection,
   PublicKey,
@@ -75,6 +76,7 @@ const MAX_SIGNATURE_PAGES = 5
 const MAX_SIGNATURE_PAGE_SIZE = 100
 const RPC_SIGNATURE_PAGE_LIMIT = 1000
 const DEFAULT_RPC_DEADLINE_MS = 15_000
+const rpcDeadlineSignals = new AsyncLocalStorage<AbortSignal>()
 const BASE58_ALPHABET =
   '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 const SIGNATURE_BYTE_LENGTH = 64
@@ -142,6 +144,20 @@ type WatcherConnection = Pick<
 
 const TRANSACTION_BATCH_SIZE = 25
 
+export const createAbortableRpcFetch = (
+  fetchImplementation: typeof globalThis.fetch,
+): typeof globalThis.fetch => async (input, init) => {
+  const initSignal = init?.signal
+  const deadlineSignal = rpcDeadlineSignals.getStore()
+  const signal = initSignal && deadlineSignal
+    ? AbortSignal.any([initSignal, deadlineSignal])
+    : initSignal ?? deadlineSignal
+  return fetchImplementation(input, {
+    ...init,
+    ...(signal ? { signal } : {}),
+  })
+}
+
 function formatBaseUnitAmount(
   value: bigint,
   decimals: number,
@@ -179,6 +195,7 @@ export class SolanaWatcherService {
       connection ??
       new Connection(config.solana.rpcUrl, {
         commitment: config.solana.commitment as 'confirmed',
+        fetch: createAbortableRpcFetch(globalThis.fetch.bind(globalThis)),
       })
     this.rpcDeadlineMs = rpcDeadlineMs
   }
@@ -192,22 +209,24 @@ export class SolanaWatcherService {
     }
   }
 
-  private async withRpcDeadline<T>(operation: Promise<T>): Promise<T> {
+  private async withRpcDeadline<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
     const controller = new AbortController()
     let deadline: ReturnType<typeof setTimeout> | undefined
     try {
-      return await Promise.race([
-        operation,
-        new Promise<never>((_resolve, reject) => {
-          deadline = setTimeout(() => {
-            controller.abort()
-            reject(new WalletHistoryReadError(
-              'rpc-timeout',
-              'Wallet history unavailable: rpc-timeout',
-            ))
-          }, this.rpcDeadlineMs)
-        }),
-      ])
+      return await rpcDeadlineSignals.run(controller.signal, async () =>
+        Promise.race([
+          operation(controller.signal),
+          new Promise<never>((_resolve, reject) => {
+            deadline = setTimeout(() => {
+              const timeout = new WalletHistoryReadError(
+                'rpc-timeout',
+                'Wallet history unavailable: rpc-timeout',
+              )
+              controller.abort(timeout)
+              reject(timeout)
+            }, this.rpcDeadlineMs)
+          }),
+        ]))
     } finally {
       clearTimeout(deadline)
     }
@@ -367,7 +386,7 @@ export class SolanaWatcherService {
       try {
         signatures = validateSignaturePage(
           await this.withRpcDeadline(
-            this.connection.getSignaturesForAddress(pubkey, {
+            () => this.connection.getSignaturesForAddress(pubkey, {
               limit,
               ...(before ? { before } : {}),
             }),
@@ -451,7 +470,7 @@ export class SolanaWatcherService {
         let parsed: Array<ParsedTransactionWithMeta | null>
         try {
           parsed = await this.withRpcDeadline(
-            this.connection.getParsedTransactions(
+            () => this.connection.getParsedTransactions!(
               batch.map((item) => item.signature),
               config,
             ),
@@ -493,7 +512,7 @@ export class SolanaWatcherService {
       let transaction: ParsedTransactionWithMeta | null
       try {
         transaction = await this.withRpcDeadline(
-          this.connection.getParsedTransaction(
+          () => this.connection.getParsedTransaction!(
             item.signature,
             config,
           ),

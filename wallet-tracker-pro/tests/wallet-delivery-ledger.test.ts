@@ -80,6 +80,27 @@ describe('one-time durable dispatch', () => {
     expect(ledger.markUncertain).toHaveBeenCalledWith(expect.anything(), 'watch-changed')
   })
 
+  it('revalidates a claim after pacing and before the network boundary', async () => {
+    const ledger = deliveryStore()
+    ledger.isClaimCurrent
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+    const notify = jest.fn()
+    const chatLastSentAt = new Map([['101', 2_000]])
+
+    await dispatchPendingDeliveries(ledger, notify, {
+      minChatIntervalMs: 1_000,
+      now: () => 1_000,
+      wait: jest.fn().mockResolvedValue(undefined),
+      chatLastSentAt,
+    })
+
+    expect(ledger.isClaimCurrent).toHaveBeenCalledTimes(2)
+    expect(notify).not.toHaveBeenCalled()
+    expect(ledger.markUncertain).toHaveBeenCalledWith(expect.anything(), 'watch-changed')
+    expect(chatLastSentAt.get('101')).toBe(2_000)
+  })
+
   it.each([undefined, {}, { messageId: '' }, { messageId: '0' }, { messageId: '1.5' }, { messageId: 42 }])(
     'holds an ambiguous or invalid acknowledgement: %p', async (receipt) => {
       const ledger = deliveryStore()

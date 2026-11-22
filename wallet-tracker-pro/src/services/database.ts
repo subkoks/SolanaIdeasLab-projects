@@ -22,6 +22,7 @@ export class DatabaseService {
   private readonly prisma: PrismaClient
   public readonly deliveryLedger: WalletDeliveryLedger
   private transactionOrderSupport: Promise<boolean> | undefined
+  private identityVersionSupport: Promise<boolean> | undefined
 
   constructor(prisma?: PrismaClient) {
     this.prisma = prisma ?? new PrismaClient({ adapter: new PrismaPg({ connectionString: config.database.url }) })
@@ -393,10 +394,33 @@ export class DatabaseService {
   public async getWalletBehaviorSummary(walletAddress: string, days = 30) {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
-    const events = await this.prisma.walletActivityEvent.findMany({
-      where: { walletAddress, observedAt: { gte: since } },
-      select: { direction: true, lamports: true },
-    })
+    this.identityVersionSupport ??= this.prisma.$queryRaw<Array<{ present: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'WalletActivityEvent'
+          AND column_name = 'identityVersion'
+      ) AS "present"`
+      .then((rows) => rows[0]?.present === true)
+    const identityVersionSupported = await this.identityVersionSupport
+    const events = identityVersionSupported
+      ? await this.prisma.$queryRaw<Array<{ direction: string; lamports: bigint | null }>>`
+        SELECT activity."direction", activity."lamports"
+        FROM "WalletActivityEvent" activity
+        WHERE activity."walletAddress" = ${walletAddress}
+          AND activity."observedAt" >= ${since}
+          AND NOT (
+            activity."identityVersion" = 0 AND EXISTS (
+              SELECT 1
+              FROM "WalletActivityEvent" canonical
+              WHERE canonical."walletAddress" = activity."walletAddress"
+                AND canonical."signature" = activity."signature"
+                AND canonical."identityVersion" = 1
+            )
+          )`
+      : await this.prisma.walletActivityEvent.findMany({
+        where: { walletAddress, observedAt: { gte: since } },
+        select: { direction: true, lamports: true },
+      })
 
     let inCount = 0
     let outCount = 0
