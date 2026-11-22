@@ -226,26 +226,83 @@ const main = async () => {
       )
     })
 
-    await test('behavior summary counts canonical movement once while preserving distinct legacy activity', async () => {
+    await test('activity reads count canonical movements once while preserving distinct legacy activity', async () => {
       const watch = await setup()
-      await ledger.ingest(watch, [movement({
-        signature: signature(6),
-        direction: 'out',
-        lamports: BigInt(-5),
-        summary: 'Synthetic SOL out',
-      })])
+      const mintA = fixtureBase58(3, 32)
+      const mintB = fixtureBase58(4, 32)
+      await ledger.ingest(watch, [
+        movement({
+          signature: signature(6),
+          direction: 'out',
+          lamports: BigInt(-5),
+          summary: 'Synthetic SOL out',
+        }),
+        movement({
+          signature: signature(6),
+          direction: 'in',
+          lamports: null,
+          tokenMint: mintA,
+          summary: 'Synthetic mint A in',
+        }),
+        movement({
+          signature: signature(8),
+          direction: 'in',
+          lamports: null,
+          tokenMint: mintB,
+          summary: 'Synthetic mint B in',
+        }),
+      ])
       await pg.query(`INSERT INTO "WalletActivityEvent"
-        ("id", "walletAddress", "signature", "movementKey", "identityVersion", "direction", "lamports", "summary")
-        VALUES ('legacy-duplicate-out', $1, $2, 'legacy:legacy-duplicate-out', 0, 'out', 3, 'Legacy duplicate out'),
-          ('legacy-distinct-out', $1, $3, 'legacy:legacy-distinct-out', 0, 'out', 3, 'Legacy distinct out')`,
-      [wallet, signature(6), signature(7)])
+        ("id", "walletAddress", "signature", "movementKey", "identityVersion",
+          "direction", "lamports", "tokenMint", "summary")
+        VALUES
+          ('legacy-duplicate-sol', $1, $2, 'legacy:duplicate-sol', 0, 'out', -3, NULL, 'Legacy duplicate SOL'),
+          ('legacy-duplicate-spl', $1, $2, 'legacy:duplicate-spl', 0, 'in', NULL, $3, 'Legacy duplicate mint'),
+          ('legacy-distinct-in', $1, $4, 'legacy:distinct-in', 0, 'in', NULL, $3, 'Legacy distinct mint')`,
+      [wallet, signature(6), mintA, signature(7)])
       const { DatabaseService } = require('../src/services/database') as typeof import('../src/services/database')
       const database = new DatabaseService(first)
       const summary = await database.getWalletBehaviorSummary(wallet)
-      assert.equal(summary.outCount, 2)
-      assert.equal(summary.avgOutLamports, '4')
-      assert.equal(summary.netLamports, '-8')
-      assert.equal((await events()).rows.length, 3)
+      assert.equal(summary.totalEvents, 4)
+      assert.equal(summary.inCount, 3)
+      assert.equal(summary.outCount, 1)
+      assert.equal(summary.avgOutLamports, '5')
+      assert.equal(summary.netLamports, '-5')
+
+      const recent = await database.getRecentActivity(wallet, 10)
+      assert.equal(recent.length, 4)
+      assert.equal(recent.some((row) => row.id.startsWith('legacy-duplicate')), false)
+      assert.equal(recent.some((row) => row.id === 'legacy-distinct-in'), true)
+      assert.deepEqual(await database.getActivityBreakdown(wallet), {
+        total: 4,
+        in: 3,
+        out: 1,
+        unknown: 0,
+      })
+      assert.equal(
+        (await database.getActivityTimeline(wallet))
+          .reduce((total, bucket) => total + bucket.in + bucket.out, 0),
+        4,
+      )
+      assert.deepEqual(await database.getDashboardStats(), {
+        subscribers: 1,
+        watches: 1,
+        events: 4,
+      })
+      assert.deepEqual(await database.getAnalyticsOverview(), {
+        eventsLast24h: 4,
+        eventsLast7d: 4,
+        uniqueActiveWallets: 1,
+        avgEventsPerWatch: 4,
+      })
+      assert.deepEqual(await database.getTopActiveWallets(), [
+        { walletAddress: wallet, eventCount: 4 },
+      ])
+      assert.deepEqual(await database.getTokenMintBreakdown(wallet), [
+        { tokenMint: mintA, eventCount: 2 },
+        { tokenMint: mintB, eventCount: 1 },
+      ])
+      assert.equal((await events()).rows.length, 6)
     })
 
     await test('recent activity uses persisted order when observation timestamps tie', async () => {
@@ -432,6 +489,42 @@ const main = async () => {
         messages.map((message) => orderedSignatures.find((value) => message.includes(value))),
         orderedSignatures,
       )
+    })
+
+    await test('transaction order remains cumulative across bounded ingestion chunks', async () => {
+      let watch = await setup()
+      const firstChunk = Array.from(
+        { length: MAX_INGESTION_MOVEMENTS },
+        (_, index) => movement({ signature: signature(index + 1) }),
+      )
+      await ledger.ingest(watch, firstChunk)
+      watch = await currentWatch()
+      const finalMovement = movement({
+        signature: signature(MAX_INGESTION_MOVEMENTS + 1),
+      })
+      await ledger.ingest(
+        watch,
+        [finalMovement],
+        finalMovement.signature,
+        MAX_INGESTION_MOVEMENTS,
+      )
+      await pg.query(
+        'UPDATE "WalletDelivery" SET "createdAt" = \'2026-01-01T00:00:00.000Z\'',
+      )
+      const activity = await pg.query(
+        'SELECT "transactionOrder" FROM "WalletActivityEvent" WHERE "signature" = $1',
+        [finalMovement.signature],
+      )
+      const delivery = await pg.query(
+        'SELECT "transactionOrder" FROM "WalletDelivery" WHERE "signature" = $1',
+        [finalMovement.signature],
+      )
+      assert.equal(activity.rows[0].transactionOrder, MAX_INGESTION_MOVEMENTS)
+      assert.equal(delivery.rows[0].transactionOrder, MAX_INGESTION_MOVEMENTS)
+      const newest = await pg.query(
+        'SELECT "signature" FROM "WalletDelivery" ORDER BY "transactionOrder" DESC, "id" ASC LIMIT 1',
+      )
+      assert.equal(newest.rows[0].signature, finalMovement.signature)
     })
 
     await test('watch mutations preserve outstanding legacy notification records for reconciliation', async () => {

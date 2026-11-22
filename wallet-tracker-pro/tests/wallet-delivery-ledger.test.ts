@@ -18,6 +18,9 @@ describe('semantic movement identities', () => {
     const prepared = prepareMovements(wallet, movements)
     expect(prepared.map((row) => row.movementKey)).toEqual(['sol', `spl:${fixtureBase58(2, 32)}`, `spl:${fixtureBase58(3, 32)}`])
     expect(prepared.map((row) => row.transactionOrder)).toEqual([0, 1, 2])
+    expect(
+      prepareMovements(wallet, movements, 1_000).map((row) => row.transactionOrder),
+    ).toEqual([1_000, 1_001, 1_002])
     expect(new Set(prepared.map((row) => row.activityId)).size).toBe(3)
     expect(prepareMovements(wallet, movements)).toEqual(prepared)
     expect(prepareMovements(fixtureBase58(2, 32), movements)[0]!.activityId).not.toBe(prepared[0]!.activityId)
@@ -47,6 +50,9 @@ describe('semantic movement identities', () => {
   it('bounds wallet shape and retained input', () => {
     expect(() => prepareMovements('invalid', [movement()])).toThrow('invalid-batch')
     expect(() => prepareMovements(wallet, [])).toThrow('invalid-batch')
+    expect(() => prepareMovements(wallet, [movement()], -1)).toThrow('invalid-batch')
+    expect(() => prepareMovements(wallet, [movement()], 1.5)).toThrow('invalid-batch')
+    expect(() => prepareMovements(wallet, [movement()], 2 ** 31 - 1)).toThrow('invalid-batch')
     expect(() => prepareMovements(wallet, Array.from({ length: MAX_INGESTION_MOVEMENTS + 1 }, () => movement()))).toThrow('invalid-batch')
   })
 })

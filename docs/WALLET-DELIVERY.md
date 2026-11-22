@@ -20,11 +20,13 @@ deploying it or applying the draft migration.
   empty batch, it updates only the cursor. Stale readers cannot overwrite it.
 - Activity is keyed by wallet, transaction signature, and movement. Delivery is
   keyed by watch, signature, and movement. Existing activity rows keep their IDs
-  and payloads. A legacy notification suppresses replay only for the watch that
-  owns it, while missing activity for another watch can still be recorded. A
-  label-only watch edit does not cancel already-enqueued immutable snapshots.
-  Persisted transaction order keeps same-timestamp activity and delivery queues
-  deterministic.
+  and payloads. Read models use canonical rows when a migrated legacy row has
+  the same wallet and signature, while retaining distinct legacy activity. A
+  legacy notification suppresses replay only for the watch that owns it, while
+  missing activity for another watch can still be recorded. A label-only watch
+  edit does not cancel already-enqueued immutable snapshots. Persisted
+  transaction order remains cumulative across bounded ingestion chunks and keeps
+  same-timestamp activity and delivery queues deterministic.
 - The dispatcher claims each pending row before attempting a send. An ambiguous
   Telegram response or an interrupted claim is retained for reconciliation.
   Sends to one chat are paced, and an explicit Telegram 429 returns the row to

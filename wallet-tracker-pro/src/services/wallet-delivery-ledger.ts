@@ -87,9 +87,12 @@ const identityId = (prefix: string, parts: Array<string>): string =>
 export const prepareMovements = (
   walletAddress: string,
   movements: ReadonlyArray<WalletMovement>,
+  transactionOrderOffset = 0,
 ): Array<PreparedMovement> => {
   if (!isBase58Bytes(walletAddress, 32, 44) || !Array.isArray(movements) ||
-    movements.length < 1 || movements.length > MAX_INGESTION_MOVEMENTS) {
+    movements.length < 1 || movements.length > MAX_INGESTION_MOVEMENTS ||
+    !Number.isSafeInteger(transactionOrderOffset) || transactionOrderOffset < 0 ||
+    transactionOrderOffset + movements.length > 2 ** 31 - 1) {
     throw new WalletIngestionError('invalid-batch')
   }
   const unique = new Map<string, PreparedMovement>()
@@ -129,7 +132,7 @@ export const prepareMovements = (
           movement.signature,
           movementKey,
         ]),
-        transactionOrder,
+        transactionOrder: transactionOrderOffset + transactionOrder,
       })
     }
   }
@@ -210,10 +213,11 @@ export class WalletDeliveryLedger {
     watch: DeliveryWatch,
     movements: ReadonlyArray<WalletMovement>,
     cursor?: string | null,
+    transactionOrderOffset = 0,
   ): Promise<'ingested' | 'stale'> {
     const prepared = movements.length === 0
       ? []
-      : prepareMovements(watch.walletAddress, movements)
+      : prepareMovements(watch.walletAddress, movements, transactionOrderOffset)
     const nextCursor = cursor === undefined
       ? movements[movements.length - 1]?.signature ?? null
       : cursor

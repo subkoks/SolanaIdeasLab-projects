@@ -32,6 +32,7 @@ export interface WalletPollingStore extends DeliveryStore {
     watch: DeliveryWatch,
     movements: ReadonlyArray<WalletMovement>,
     cursor?: string | null,
+    transactionOrderOffset?: number,
   ): Promise<'ingested' | 'stale'>
   getHoldCounts(): Promise<{ uncertain: number; dispatching: number }>
 }
@@ -315,6 +316,7 @@ export class SolanaWatcherService {
 
     let currentWatch = watch
     let batch: WalletMovement[] = []
+    let transactionOrderOffset = 0
     for (const group of movementGroups) {
       if (group.length > MAX_INGESTION_MOVEMENTS) {
         throw new WalletIngestionError('invalid-batch')
@@ -324,18 +326,25 @@ export class SolanaWatcherService {
         batch.length + group.length > MAX_INGESTION_MOVEMENTS
       ) {
         const cursor = batch[batch.length - 1]!.signature
-        const outcome = await ledger.ingest(currentWatch, batch, cursor)
+        const outcome = transactionOrderOffset === 0
+          ? await ledger.ingest(currentWatch, batch, cursor)
+          : await ledger.ingest(currentWatch, batch, cursor, transactionOrderOffset)
         if (outcome === 'stale') {
           return
         }
         currentWatch = { ...currentWatch, lastSignature: cursor }
+        transactionOrderOffset += batch.length
         batch = []
       }
       batch.push(...group)
     }
 
     if (batch.length > 0) {
-      await ledger.ingest(currentWatch, batch, result.cursor)
+      if (transactionOrderOffset === 0) {
+        await ledger.ingest(currentWatch, batch, result.cursor)
+      } else {
+        await ledger.ingest(currentWatch, batch, result.cursor, transactionOrderOffset)
+      }
     }
   }
 
