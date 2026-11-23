@@ -21,16 +21,11 @@
 
 - PR #412 merged at `07b3d1c6708c420320913702d74da062c8239d5b`. Hosted
   CI and CodeQL passed on the PR head and on the resulting `main`.
-- Follow-up PR #413 remains draft at
-  `1731bf5042410b6b637afeeee2c577afb46a3702`. Independent local Codex
-  review, hosted CI, and CodeQL passed at that head.
+- GitHub recorded PR #413 merged into `main` on 22 November 2026 at
+  `4de0bc63b675a3ef2e97d17611edd463311858d0`. Its last PR head was
+  `1731bf5042410b6b637afeeee2c577afb46a3702`.
 - The disabled runtime gate and the SQL under
   `wallet-tracker-pro/prisma/drafts/` remain in place.
-
-### Blocked
-
-`[BLOCKED: independent GitHub approval unavailable]` PR #413 has no formal
-GitHub review at the verified draft head.
 
 ### Preserved holds
 

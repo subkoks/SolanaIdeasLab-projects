@@ -40,11 +40,9 @@
 
 - PR #412 merged at `07b3d1c6708c420320913702d74da062c8239d5b`.
   CI and CodeQL passed on the resulting `main`.
-- Follow-up PR #413 is draft at
-  `1731bf5042410b6b637afeeee2c577afb46a3702` on
-  `fix/wallet-delivery-followup-20261122`. The independent local Codex review,
-  hosted CI, and CodeQL passed at that head. A formal independent GitHub
-  approval is still pending.
+- GitHub recorded PR #413 merged into `main` on 22 November 2026 at
+  `4de0bc63b675a3ef2e97d17611edd463311858d0`. Its last PR head was
+  `1731bf5042410b6b637afeeee2c577afb46a3702`.
 - The runtime gate is disabled. The ledger SQL remains under
   `wallet-tracker-pro/prisma/drafts/`.
 - The earlier `fix/wallet-durable-delivery-20261121` worktree remains on HOLD
@@ -61,9 +59,7 @@
   absent at this checkpoint; their commits remain in the verified bundle and
   archive refs.
 
-### Remaining Wallet gate
+### Runtime scope
 
-Keep PR #413 draft until an eligible independent GitHub reviewer approves its
-current head. Recheck review and hosted checks before marking it ready. A head
-change requires fresh review and check evidence. Verify that the merge will
-retain the published branch before proceeding.
+Wallet delivery remains disabled. Live migrations, RPC delivery and Telegram
+activation require separate operator authorization.
