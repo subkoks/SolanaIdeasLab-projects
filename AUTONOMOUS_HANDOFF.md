@@ -2,7 +2,7 @@
 
 ## Handoff: maintenance cleanup — 2026-11-22
 
-### Current repository state
+### State at the previous checkpoint
 
 - `origin/main` at the start of this follow-up:
   `5fb723120736af94e4a59e292e3d2663f1929c66`, the merge commit for PR #410.
@@ -38,24 +38,15 @@
 
 ### Wallet delivery status
 
-- Branch: `fix/wallet-durable-delivery-20261121`.
-- Exact local head: `24aeb6ec07efceae9e344232ee8087c5d2c7c9a2`, a merge of
-  current `origin/main`. Source-validation commit
-  `b4187fe853805c7f1c7fe1c0b2c6441fd03dc213` remains reachable; the delta from
-  it to the current head contains only the three reconciled documentation files.
-- Worktree:
-  `/Users/black.terminal/Projects/.coordination-worktrees/solana-wallet-delivery-20261101`.
-- The only worktree change is the intentional untracked `node_modules` symlink.
-- Fresh exact-head validation at `24aeb6e` used Node `24.22.3` and npm `11.19.1`
-  in a disposable archive: frozen install, Prisma 7.10.1 generation, type-check,
-  lint, default Next build, Jest (`157 passed`, `9 skipped`, `166 total`),
-  PostgreSQL (`23/23`), production audit (`0 vulnerabilities`), public-only
-  lockfile URLs, and `git diff --check` all passed.
-- Review status is `[BLOCKED: exact-head Wallet reviewer inspected the
-  documentation branch instead of Wallet]`. The review did not inspect
-  `24aeb6e`, produced no Wallet findings, and is not approval.
-- No Wallet branch was pushed, no PR was created, and no merge was attempted.
-  Wallet remains local-only until an independent exact-head review succeeds.
+- PR #412 merged at `07b3d1c6708c420320913702d74da062c8239d5b`.
+  CI and CodeQL passed on the resulting `main`.
+- GitHub recorded PR #413 merged into `main` on 22 November 2026 at
+  `4de0bc63b675a3ef2e97d17611edd463311858d0`. Its last PR head was
+  `1731bf5042410b6b637afeeee2c577afb46a3702`.
+- The runtime gate is disabled. The ledger SQL remains under
+  `wallet-tracker-pro/prisma/drafts/`.
+- The earlier `fix/wallet-durable-delivery-20261121` worktree remains on HOLD
+  with its intentional untracked `wallet-tracker-pro/node_modules` symlink.
 
 ### Preservation holds
 
@@ -68,8 +59,7 @@
   absent at this checkpoint; their commits remain in the verified bundle and
   archive refs.
 
-### Next eligible action
+### Runtime scope
 
-Run a genuinely target-bound independent review against exactly `24aeb6e` (or
-the resulting newer head after any valid finding is fixed), then repeat affected
-checks and review that resulting head. Do not push or merge Wallet first.
+Wallet delivery remains disabled. Live migrations, RPC delivery and Telegram
+activation require separate operator authorization.

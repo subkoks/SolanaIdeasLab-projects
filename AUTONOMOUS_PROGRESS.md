@@ -4,7 +4,7 @@
 
 ### Verified complete
 
-- Current remote `main` was read as
+- Remote `main` at the previous checkpoint was
   `5fb723120736af94e4a59e292e3d2663f1929c66`, the merge commit for PR #410.
 - The primary checkout was clean before recovery, was switched to `main`, and
   fast-forwarded to current `origin/main`.
@@ -12,30 +12,20 @@
   `ca1e56f0bfa0b5120cfaf375f85b1441b5c78882`; its CI and CodeQL checks passed.
 - The recovery bundle was refreshed after a non-pruning fetch, verified, cloned
   into isolation, and passed `git fsck --full`.
-- GitHub currently reports no open PRs. Dependency, Node 24, CodeQL, Web3 v3, and
-  automation PRs that were pending earlier are now closed or merged on `main`.
+- The previously pending dependency, Node 24, CodeQL, Web3 v3, and automation
+  PRs were closed or merged by that checkpoint.
 - Web3 compatibility and autonomous maintenance documents were reconciled with
   the current package manifests and Node requirements.
 
-### Local-only
+### Wallet delivery
 
-- Wallet delivery remains at
-  `24aeb6ec07efceae9e344232ee8087c5d2c7c9a2` on
-  `fix/wallet-durable-delivery-20261121`. This merges current `origin/main`;
-  `b4187fe853805c7f1c7fe1c0b2c6441fd03dc213` remains the source-validation
-  commit.
-- Fresh exact-head evidence at `24aeb6e`: Node 24.22.3 frozen install, Prisma
-  7.10.1 generation, type-check, ESLint, default Next build, Jest
-  (`157 passed`, `9 skipped`, `166 total`), PostgreSQL (`23/23`), a
-  high-threshold production audit with zero vulnerabilities, public-only
-  lockfile URLs, and `git diff --check`.
-- Those checks are validation evidence, not independent approval.
-
-### Blocked
-
-`[BLOCKED: exact-head Wallet reviewer inspected the documentation branch instead
-of Wallet]` The reviewer did not inspect `24aeb6e`, produced no Wallet findings,
-and supplied no exact-head approval. Wallet was not pushed or merged.
+- PR #412 merged at `07b3d1c6708c420320913702d74da062c8239d5b`. Hosted
+  CI and CodeQL passed on the PR head and on the resulting `main`.
+- GitHub recorded PR #413 merged into `main` on 22 November 2026 at
+  `4de0bc63b675a3ef2e97d17611edd463311858d0`. Its last PR head was
+  `1731bf5042410b6b637afeeee2c577afb46a3702`.
+- The disabled runtime gate and the SQL under
+  `wallet-tracker-pro/prisma/drafts/` remain in place.
 
 ### Preserved holds
 
@@ -50,9 +40,7 @@ and supplied no exact-head approval. Wallet was not pushed or merged.
 - The original watcher cookie was already absent and its preservation remains
   `UNVERIFIED`.
 
-### Unverified
+### Runtime scope
 
-- Independent review of the Wallet head.
-- Hosted CI/CodeQL for a Wallet PR because no Wallet remote branch or PR exists.
-- Live migration, runtime activation, RPC delivery, and Telegram delivery remain
-  intentionally unexercised.
+Live migration, runtime activation, RPC delivery, and Telegram delivery were
+outside this maintenance pass.
