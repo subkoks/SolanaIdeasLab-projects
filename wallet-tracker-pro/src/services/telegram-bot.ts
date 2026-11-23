@@ -5,6 +5,10 @@ import { isValidSubscriberTier } from '../lib/watch-limits'
 import { logger } from '../lib/logger'
 import type { DatabaseService } from './database'
 import type { SolanaWatcherService } from './solana-watcher'
+import {
+  WalletIngestionError,
+  WalletLimitReachedError,
+} from './wallet-delivery-ledger'
 
 const getMessageText = (context: Context): string => {
   const message = context.message
@@ -15,20 +19,22 @@ const getMessageText = (context: Context): string => {
 }
 
 export const walletMutationErrorMessage = (error: unknown): string => {
-  if (error instanceof Error && error.name === 'WalletIngestionError') {
-    const code = (error as Error & { code?: unknown }).code
-    if (code === 'invalid-batch') {
+  if (error instanceof WalletIngestionError) {
+    if (error.code === 'invalid-batch') {
       return 'Could not update this watch. Check the wallet and label, then try again.'
     }
-    if (code === 'conflicting-movement' || code === 'cursor-update-failed') {
+    if (error.code === 'conflicting-movement' || error.code === 'cursor-update-failed') {
       return 'The watch changed while updating. Please try again.'
     }
-    if (code === 'delivery-capacity') {
+    if (error.code === 'delivery-capacity') {
       return 'Delivery is temporarily at capacity for this watch. Please try again later.'
     }
   }
+  if (error instanceof WalletLimitReachedError) {
+    return error.message
+  }
 
-  return error instanceof Error ? error.message : 'Failed to update watch'
+  return 'Could not update this watch. Please try again.'
 }
 
 export class WalletTrackerTelegramBot {

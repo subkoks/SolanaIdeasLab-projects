@@ -179,6 +179,23 @@ jobs:
           }
           NODE
 
+      - name: Test (PostgreSQL — Wallet durable-delivery suite)
+        if: matrix.project == 'wallet-tracker-pro'
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          DELIVERY_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/wallet_delivery_ci
+        run: |
+          docker exec "$POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            -c 'CREATE DATABASE wallet_delivery_ci'
+          DATABASE_URL="$DELIVERY_DATABASE_URL" npx prisma migrate deploy
+          docker exec -i "$POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d wallet_delivery_ci \
+            < prisma/drafts/20261030010000_wallet_delivery_ledger.sql
+          # Jest intentionally excludes this node:test file. Run it directly so
+          # cursor atomicity, concurrency, claim recovery, and dispatch behavior
+          # remain required current-head CI coverage.
+          WALLET_DELIVERY_CI_DATABASE_URL="$DELIVERY_DATABASE_URL" \
+            npx tsx tests/wallet-delivery.postgres.ts
+
   local-lab:
     name: local-lab (tokens + console)
     runs-on: ubuntu-latest

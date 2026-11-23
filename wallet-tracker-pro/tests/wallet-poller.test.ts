@@ -5,8 +5,16 @@ jest.mock('../src/lib/logger', () => ({
 }))
 
 import { SolanaWatcherService, MAX_WATCH_PAGES_PER_POLL } from '../src/services/solana-watcher'
-import { DELIVERY_BATCH_SIZE } from '../src/services/wallet-delivery-ledger'
-import { deliveryStore, movement, watch } from './helpers/wallet-delivery'
+import {
+  DELIVERY_BATCH_SIZE,
+  MAX_INGESTION_MOVEMENTS,
+} from '../src/services/wallet-delivery-ledger'
+import {
+  deliveryStore,
+  fixtureBase58,
+  movement,
+  watch,
+} from './helpers/wallet-delivery'
 
 const store = () => ({
   ...deliveryStore(),
@@ -115,5 +123,34 @@ describe('serialized bounded wallet polling', () => {
     await service.pollWatchlist(ledger, notify)
     expect(ledger.ingest).toHaveBeenCalledTimes(1)
     expect(notify).not.toHaveBeenCalled()
+  })
+
+  it('carries transaction order across bounded ingestion chunks', async () => {
+    const ledger = store()
+    const signatures = Array.from(
+      { length: MAX_INGESTION_MOVEMENTS + 1 },
+      (_, index) => fixtureBase58(index + 1, 64),
+    )
+    const service = new SolanaWatcherService()
+    jest.spyOn(service, 'fetchNewMovementsWithCursor').mockResolvedValue({
+      movements: signatures.map((signature) => movement({ signature })),
+      cursor: signatures.at(-1)!,
+    })
+
+    await service.pollWatchlist(ledger, jest.fn())
+
+    const calls = ledger.ingest.mock.calls
+    expect(calls).toHaveLength(2)
+    expect(calls[0]![1]).toHaveLength(MAX_INGESTION_MOVEMENTS)
+    expect(calls[0]![2]).toBe(signatures[MAX_INGESTION_MOVEMENTS - 1])
+    expect(calls[0]![3]).toBeUndefined()
+    expect(calls[1]![0].lastSignature).toBe(
+      signatures[MAX_INGESTION_MOVEMENTS - 1],
+    )
+    expect(calls[1]![1]).toEqual([
+      movement({ signature: signatures[MAX_INGESTION_MOVEMENTS] }),
+    ])
+    expect(calls[1]![2]).toBe(signatures[MAX_INGESTION_MOVEMENTS])
+    expect(calls[1]![3]).toBe(MAX_INGESTION_MOVEMENTS)
   })
 })

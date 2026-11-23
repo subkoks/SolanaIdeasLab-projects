@@ -31,5 +31,6 @@ export const deliveryStore = () => ({
   isClaimCurrent: jest.fn().mockResolvedValue(true),
   markSent: jest.fn().mockResolvedValue(true),
   markUncertain: jest.fn().mockResolvedValue(undefined),
+  markRateLimited: jest.fn().mockResolvedValue(undefined),
   recoverInterruptedClaims: jest.fn().mockResolvedValue(undefined),
 }) satisfies DeliveryStore

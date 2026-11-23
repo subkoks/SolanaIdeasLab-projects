@@ -27,6 +27,7 @@ import {
 } from '@solana/web3.js'
 import { config } from '../src/lib/config'
 import {
+  createAbortableRpcFetch,
   SolanaWatcherService,
 } from '../src/services/solana-watcher'
 import {
@@ -81,10 +82,14 @@ function signature(
   }
 }
 
-function tokenBalance(amount: string, decimals: number): TokenBalance {
+function tokenBalance(
+  amount: string,
+  decimals: number,
+  accountIndex = 1,
+): TokenBalance {
   const numericAmount = Number(amount)
   return {
-    accountIndex: 1,
+    accountIndex,
     mint: MINT,
     owner: WALLET,
     programId: TOKEN_PROGRAM,
@@ -209,6 +214,50 @@ describe('SolanaWatcherService with @solana/web3.js 3.2.1 response shapes', () =
       signature: 'token-signature',
     })
     expect(movements[0]?.summary).toContain('SPL in: 1.5000')
+  })
+
+  it('aggregates every owned token account before calculating a mint delta', () => {
+    const watcher = new SolanaWatcherService()
+    const movements = watcher.parseMovements(
+      WALLET,
+      'multi-account-token-signature',
+      parsedTransaction({
+        preLamports: BigInt(1_000),
+        postLamports: BigInt(1_000),
+        preTokens: [tokenBalance('1000', 6, 1), tokenBalance('0', 6, 2)],
+        postTokens: [tokenBalance('0', 6, 1), tokenBalance('2500', 6, 2)],
+      }),
+    )
+
+    expect(movements).toEqual([
+      expect.objectContaining({
+        direction: 'in',
+        lamports: null,
+        tokenMint: MINT,
+        summary: expect.stringContaining('SPL in: 0.0015'),
+      }),
+    ])
+  })
+
+  it('does not report an outflow when owned token accounts only exchange balances', () => {
+    const watcher = new SolanaWatcherService()
+    const movements = watcher.parseMovements(
+      WALLET,
+      'internal-token-transfer-signature',
+      parsedTransaction({
+        preLamports: BigInt(1_000),
+        postLamports: BigInt(1_000),
+        preTokens: [tokenBalance('1000', 6, 1), tokenBalance('0', 6, 2)],
+        postTokens: [tokenBalance('0', 6, 1), tokenBalance('1000', 6, 2)],
+      }),
+    )
+
+    expect(movements).toEqual([{
+      direction: 'unknown',
+      lamports: null,
+      signature: 'internal-token-transfer-signature',
+      summary: 'Transaction detected (no balance change)',
+    }])
   })
 
   it('passes real PublicKey and typed config to RPC-compatible methods and preserves cursor order', async () => {
@@ -708,6 +757,64 @@ describe('bounded wallet history reads', () => {
       code: 'rpc-failure',
       message: 'Wallet history unavailable: rpc-failure',
     })
+  })
+
+  it('aborts the underlying transport request when an RPC deadline expires', async () => {
+    let requestSignal: AbortSignal | undefined
+    const fetchMock = jest.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        requestSignal = init?.signal ?? undefined
+        if (!requestSignal) {
+          reject(new Error('RPC transport did not receive an abort signal'))
+          return
+        }
+        requestSignal.addEventListener(
+          'abort',
+          () => reject(new Error('RPC transport aborted')),
+          { once: true },
+        )
+      }))
+    const connection = new Connection('http://127.0.0.1:8899', {
+      commitment: 'confirmed',
+      fetch: createAbortableRpcFetch(fetchMock as typeof globalThis.fetch),
+    })
+    const watcher = new SolanaWatcherService(connection, 20)
+
+    await expect(watcher.fetchNewMovements(wallet, null)).rejects.toMatchObject({
+      code: 'rpc-timeout',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(requestSignal?.aborted).toBe(true)
+  })
+
+  it('deadline-bounds a stalled RPC read and retries it on the next poll', async () => {
+    const signature = signatureFor('stalled-then-fresh')
+    const getSignaturesForAddress = jest.fn()
+      .mockImplementationOnce(() => new Promise(() => undefined))
+      .mockResolvedValueOnce([{ signature }])
+    const getParsedTransaction = jest.fn().mockResolvedValue({
+      meta: { preBalances: [BigInt(1)], postBalances: [BigInt(2)] },
+      transaction: { message: { accountKeys: [] } },
+    })
+    const watcher = new SolanaWatcherService({
+      getSignaturesForAddress,
+      getParsedTransaction,
+    }, 20)
+    const watch = deliveryWatch({ walletAddress: wallet, lastSignature: null })
+    const ledger = {
+      ...deliveryStore(),
+      listPendingIds: jest.fn().mockResolvedValue([]),
+      listWatches: jest.fn().mockResolvedValue([watch]),
+      ingest: jest.fn().mockResolvedValue('ingested'),
+      getHoldCounts: jest.fn().mockResolvedValue({ uncertain: 0, dispatching: 0 }),
+    }
+
+    await watcher.pollWatchlist(ledger, jest.fn())
+    expect(ledger.ingest).not.toHaveBeenCalled()
+
+    await watcher.pollWatchlist(ledger, jest.fn())
+    expect(getSignaturesForAddress).toHaveBeenCalledTimes(2)
+    expect(ledger.ingest).toHaveBeenCalledTimes(1)
   })
 
   it.each([[], page('newer')].map((value) => ({ value })))('holds a missing stored cursor on a terminal page: %p', async ({ value }) => {
