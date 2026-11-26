@@ -58,7 +58,7 @@ npm run security-check
 ## CI
 
 GitHub Actions runs each package's type-check, lint, production dependency audit,
-tests, and PostgreSQL suites. Managed CodeQL analyzes Actions and TypeScript.
+tests, and PostgreSQL suites. The CodeQL workflow analyzes Actions and JavaScript/TypeScript.
 Codex provides pull-request review through the repository's GitHub integration;
 no Claude workflow or `@claude` trigger is configured.
 
